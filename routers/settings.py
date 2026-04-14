@@ -101,3 +101,68 @@ async def collect_token(req: CollectTokenRequest):
         save_account(req.account_index + 1, updated)  # 1-based
         return {"ok": True, "message": "Thu token thành công", "logs": logs}
     return {"ok": False, "message": "Không thu được token", "logs": logs}
+
+
+class CookieToTokenRequest(BaseModel):
+    account_index: int
+    cookie_string: str
+
+
+@router.post("/cookie-to-token")
+async def cookie_to_token(req: CookieToTokenRequest):
+    """
+    Nhận cookie string từ user → tự động lấy access_token → lưu vào account.
+    Không cần extension hay Playwright.
+    """
+    from fastapi import HTTPException
+    from services.cookie_token_service import get_token_from_cookie
+    from services.config_service import get_all_accounts, save_account, load_config
+
+    cookie = req.cookie_string.strip()
+    if not cookie:
+        raise HTTPException(400, "Cookie string không được trống")
+
+    logs: list[str] = []
+
+    try:
+        result = await get_token_from_cookie(cookie, log=lambda m: logs.append(m))
+    except PermissionError as e:
+        return {"ok": False, "message": str(e), "logs": logs, "status": "die"}
+    except Exception as e:
+        return {"ok": False, "message": str(e), "logs": logs, "status": "error"}
+
+    # Load current account data để merge (giữ các field khác)
+    cfg = load_config()
+    acc_key = f"account{req.account_index + 1}"
+    current = dict(cfg.get(acc_key, {}))
+
+    # Cập nhật các field mới
+    current["ACCESS_TOKEN"] = result["access_token"]
+    current["COOKIE"] = cookie
+    if result.get("email"):
+        current["EMAIL"] = result["email"]
+    if result.get("project_id"):
+        current["PROJECT_ID"] = result["project_id"]
+
+    save_account(req.account_index + 1, current)
+
+    return {
+        "ok": True,
+        "message": "Lấy token từ cookie thành công",
+        "email": result.get("email"),
+        "project_id": result.get("project_id"),
+        "token_preview": result["access_token"][:30] + "...",
+        "logs": logs,
+        "status": "live",
+    }
+
+
+@router.post("/check-cookie")
+async def check_cookie(body: dict):
+    """Kiểm tra cookie live/die mà không lưu."""
+    from services.cookie_token_service import check_cookie_status
+    cookie = str(body.get("cookie_string", "")).strip()
+    if not cookie:
+        return {"ok": False, "live": False, "error": "Cookie trống"}
+    result = await check_cookie_status(cookie)
+    return {"ok": True, **result}

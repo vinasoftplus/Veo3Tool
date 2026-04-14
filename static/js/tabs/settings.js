@@ -108,8 +108,9 @@
         </div>
 
         <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px;">
-          <button class="btn btn-primary btn-sm" onclick="Settings.saveAccount(${i})">L\u01b0u</button>
-          <button class="btn btn-secondary btn-sm" onclick="Settings.collectToken(${i})" title="D\u00f9ng extension Chrome \u0111\u1ec3 t\u1ef1 \u0111\u1ed9ng l\u1ea5y token m\u1edbi">L\u1ea5y Token t\u1ef1 \u0111\u1ed9ng</button>
+          <button class="btn btn-primary btn-sm" onclick="Settings.saveAccount(${i})">Lưu</button>
+          <button class="btn btn-secondary btn-sm" onclick="Settings.collectToken(${i})" title="Dùng extension Chrome để tự động lấy token mới">Lấy Token tự động</button>
+          <button class="btn btn-secondary btn-sm" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;border-color:transparent;" onclick="Settings.openCookieModal(${i})" title="Dán cookie Google để tự động lấy token — không cần extension">🍪 Dán Cookie</button>
         </div>`;
       container.appendChild(block);
     }
@@ -160,6 +161,108 @@
         }, 5000);
       } catch {
         Settings.showExtGuide();
+      }
+    },
+
+    openCookieModal: function (idx) {
+      let modal = document.getElementById('cookie-modal');
+      if (!modal) {
+        modal = document.createElement('div');
+        modal.id = 'cookie-modal';
+        modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.70);z-index:3000;display:flex;align-items:center;justify-content:center;';
+        document.body.appendChild(modal);
+      }
+      modal.innerHTML = `
+        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px;width:600px;max-width:95vw;max-height:90vh;overflow-y:auto;">
+          <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;">
+            <div style="font-size:16px;font-weight:700;">🍪 Dán Cookie Google — Tài khoản #${idx + 1}</div>
+            <button onclick="document.getElementById('cookie-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);">×</button>
+          </div>
+          <p style="color:var(--text2);font-size:12px;margin-bottom:16px;line-height:1.7;">
+            Dán cookie từ trình duyệt → hệ thống tự lấy <strong>access_token</strong> và lưu vào tài khoản.<br>
+            Token sẽ được tự động làm mới mỗi lần bạn bấm nút này — không cần cài extension.
+          </p>
+
+          <div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.8;">
+            <strong style="color:var(--text);">Cách lấy cookie:</strong><br>
+            1. Mở <code style="background:var(--bg2);padding:1px 5px;border-radius:3px;">https://labs.google</code> trên Chrome<br>
+            2. Nhấn <strong>F12</strong> → tab <strong>Network</strong><br>
+            3. Reload trang (F5) → click vào request đầu tiên<br>
+            4. Mục <strong>Request Headers</strong> → copy giá trị <strong>Cookie:</strong><br>
+            <em style="color:var(--text3);">Hoặc: F12 → Application → Cookies → labs.google → copy tất cả</em>
+          </div>
+
+          <div style="margin-bottom:12px;">
+            <label style="font-size:12px;font-weight:600;color:var(--text2);display:block;margin-bottom:6px;">Cookie String:</label>
+            <textarea id="cookie-input-${idx}" rows="5" placeholder="__Secure-1PSID=xxx; __Secure-3PSID=xxx; SAPISID=xxx; SID=xxx; HSID=xxx; ..." style="width:100%;font-family:monospace;font-size:11px;resize:vertical;border-radius:8px;padding:10px;background:var(--bg3);border:1px solid var(--border);color:var(--text);"></textarea>
+          </div>
+
+          <div id="cookie-log-${idx}" style="display:none;background:var(--bg3);border-radius:8px;padding:10px;margin-bottom:12px;font-size:11px;font-family:monospace;color:var(--text2);max-height:120px;overflow-y:auto;line-height:1.6;"></div>
+
+          <div style="display:flex;gap:8px;justify-content:flex-end;">
+            <button class="btn btn-secondary btn-sm" onclick="document.getElementById('cookie-modal').style.display='none'">Hủy</button>
+            <button class="btn btn-primary btn-sm" id="cookie-submit-${idx}" onclick="Settings.cookieToToken(${idx})" style="background:linear-gradient(135deg,#4f46e5,#7c3aed);border-color:transparent;min-width:140px;">
+              Lấy Token từ Cookie
+            </button>
+          </div>
+        </div>`;
+      modal.style.display = 'flex';
+      modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
+      setTimeout(() => document.getElementById(`cookie-input-${idx}`)?.focus(), 100);
+    },
+
+    cookieToToken: async function (idx) {
+      const cookieInput = document.getElementById(`cookie-input-${idx}`);
+      const logEl = document.getElementById(`cookie-log-${idx}`);
+      const submitBtn = document.getElementById(`cookie-submit-${idx}`);
+      const cookie = cookieInput?.value.trim();
+
+      if (!cookie) return toast('Vui lòng dán cookie vào ô trên', 'error');
+
+      // Show log area
+      logEl.style.display = 'block';
+      logEl.textContent = 'Đang kết nối labs.google...\n';
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Đang lấy token...';
+
+      const appendLog = (msg) => {
+        logEl.textContent += msg + '\n';
+        logEl.scrollTop = logEl.scrollHeight;
+      };
+
+      try {
+        const res = await API.post('/api/settings/cookie-to-token', {
+          account_index: idx,
+          cookie_string: cookie,
+        });
+
+        // Hiển thị server logs
+        if (res.logs?.length) res.logs.forEach(appendLog);
+
+        if (res.ok) {
+          appendLog('✅ Thành công!');
+          toast(`Tài khoản #${idx + 1}: Lấy token thành công${res.email ? ' — ' + res.email : ''}`, 'success', 5000);
+          await loadSettings();
+          setTimeout(() => {
+            document.getElementById('cookie-modal').style.display = 'none';
+          }, 1500);
+        } else {
+          appendLog('❌ Lỗi: ' + (res.message || 'Không xác định'));
+          const isDie = res.status === 'die';
+          toast(
+            isDie
+              ? `Cookie die — ${res.message || 'Vui lòng thay cookie mới'}`
+              : `Lỗi: ${res.message || 'Thử lại sau'}`,
+            'error',
+            6000
+          );
+        }
+      } catch (err) {
+        appendLog('❌ Network error: ' + err.message);
+        toast('Lỗi kết nối server', 'error');
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = 'Lấy Token từ Cookie';
       }
     },
 

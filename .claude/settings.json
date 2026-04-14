@@ -6,7 +6,11 @@
       "Bash(echo \"EXIT:$?\")",
       "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}\" \"http://localhost:8000/static/css/app.css\")",
       "Bash(node -e ':*)",
-      "Bash(node --check \"c:/Users/PC/Desktop/Veo3Tool/static/js/tabs/other.js\")"
+      "Bash(node --check \"c:/Users/PC/Desktop/Veo3Tool/static/js/tabs/other.js\")",
+      "Bash(node --check \"c:/Users/PC/Desktop/Veo3Tool/static/js/tabs/settings.js\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('c:/Users/PC/Desktop/Veo3Tool/services/cookie_token_service.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c \"import ast; ast.parse\\(open\\('c:/Users/PC/Desktop/Veo3Tool/routers/settings.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
+      "Bash(python -c ':*)"
     ]
   }
 }
