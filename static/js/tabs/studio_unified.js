@@ -578,14 +578,15 @@
 
   async function addToCard() {
     if (!popup) return;
-    const card = cards.find(c => c.id === popup.cardId) || createCard(popup.prompt || '');
+    let card = cards.find(c => c.id === popup.cardId);
+    if (!card) return toast('Không tìm thấy cụm', 'error');
     let file = null;
     try { file = await urlToFile(popup.url, `studio_ref_${Date.now()}.png`); } catch (_) { }
     card.refs.unshift({ url: popup.url, file, label: 'Ảnh chèn từ preview' });
     card.refIndex = 0;
     renderCard(card, false);
     closePopup();
-    toast('Đã thêm ảnh vào card làm ảnh tham chiếu', 'success');
+    toast('Đã thêm ảnh vào cụm làm ảnh tham chiếu', 'success');
   }
 
   function importImages(files) {
@@ -634,9 +635,30 @@
       card.images = [];
       card.refs = [];
       card.refIndex = 0;
+      card.chars = [];
     });
     rerender();
-    toast('Đã xóa tất cả hình ảnh và ảnh tham chiếu khỏi tất cả cụm', 'success');
+    toast('Đã xóa tất cả hình ảnh, ảnh tham chiếu và nhân vật khỏi tất cả cụm', 'success');
+  }
+
+  async function autoCharactersAll() {
+    if (!cards.length) return toast('Không có cụm nào', 'info');
+    const res = await API.get('/api/character/list');
+    const list = Array.isArray(res.data) ? res.data : [];
+    if (!list.length) return toast('Chưa có nhân vật trong thư viện', 'info');
+    let total = 0;
+    cards.forEach(card => {
+      const p = norm(card.prompt);
+      const hints = Array.isArray(card.charHints) ? card.charHints.map(norm) : [];
+      card.chars = list.filter(ch => {
+        const nameNorm = norm(ch.name);
+        if (p.includes(nameNorm)) return true;
+        return hints.some(h => h && (h.includes(nameNorm) || nameNorm.includes(h)));
+      }).slice(0, 3).map(ch => ({ id: ch.id, name: ch.name, url: ch.url, media_id: ch.media_id || '' }));
+      total += card.chars.length;
+    });
+    rerender();
+    toast(`Auto nhân vật xong: ${total} lần gắn trên ${cards.length} cụm`, total ? 'success' : 'info');
   }
 
   async function genAllImages() {
@@ -750,11 +772,17 @@
     $('studio-prompts-file-txt').addEventListener('change', e => { const file = e.target.files?.[0]; if (file) importPrompts(file, 'txt'); e.target.value = ''; });
     $('studio-prompts-file-json').addEventListener('change', e => { const file = e.target.files?.[0]; if (file) importPrompts(file, 'json'); e.target.value = ''; });
 
-    // Clear all images + refs
+    // Clear all images + refs + chars
     $('studio-clear-images-btn')?.addEventListener('click', () => {
       if (!cards.length) return toast('Không có cụm nào', 'info');
-      if (!confirm('Xóa tất cả hình ảnh đã tạo và ảnh tham chiếu khỏi tất cả cụm?')) return;
+      if (!confirm('Xóa tất cả hình ảnh, ảnh tham chiếu và nhân vật khỏi tất cả cụm?')) return;
       clearAllImages();
+    });
+
+    // Auto nhân vật tất cả cụm
+    $('studio-auto-char-all-btn')?.addEventListener('click', () => {
+      if (!cards.length) return toast('Không có cụm nào', 'info');
+      autoCharactersAll();
     });
 
     $('studio-choose-folder').addEventListener('click', chooseFolder);
@@ -808,5 +836,6 @@
     saveCardOutputs: saveOutputs,
     closeLibraryPicker,
     pickLibraryItem,
+    autoCharactersAll,
   };
 })();
