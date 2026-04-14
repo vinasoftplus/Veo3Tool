@@ -65,6 +65,10 @@ def create_app() -> FastAPI:
         (APP_BASE / "data" / "jobs").mkdir(parents=True, exist_ok=True)
         (APP_BASE / "data" / "characters").mkdir(parents=True, exist_ok=True)
         (APP_BASE / "data" / "chrome_userdata").mkdir(parents=True, exist_ok=True)
+        (APP_BASE / "data" / "studio").mkdir(parents=True, exist_ok=True)
+
+        # Mount studio-images after startup so the directory exists
+        app.mount("/studio-images", StaticFiles(directory=str(APP_BASE / "data" / "studio"), html=False), name="studio-images")
 
     # --- Routers ---
     from routers import ui, settings, license_router, veo, image, subtitle, workflow, youtube, character, extension

@@ -39,6 +39,12 @@
   const cardsEl = () => $('t2v-cards');
   const emptyEl = () => $('t2v-empty');
 
+  function _reRenderAllCards() {
+    const container = cardsEl();
+    container.innerHTML = '';
+    cards.forEach(c => renderCard(c, true));
+  }
+
   function refreshEmpty() {
     const empty = cards.length === 0;
     emptyEl().style.display = empty ? '' : 'none';
@@ -116,6 +122,14 @@
         ${statusDot}
         <span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${card.prompt.slice(0, 80) || '(trống)'}</span>
         <button class="btn btn-secondary btn-sm" onclick="T2V.genCard('${card.id}')" ${card.status === 'running' ? 'disabled' : ''}>▶ Tạo Video</button>
+        <div class="card-action-group" style="position:relative;display:inline-flex;">
+          <button class="btn btn-secondary btn-sm card-insert-btn" title="Thêm card" onclick="T2V.toggleInsertMenu('${card.id}',this)">+ Card ▾</button>
+          <div class="card-insert-menu" id="insert-menu-${card.id}" style="display:none;">
+            <div onclick="T2V.insertCard('${card.id}','before')">Thêm trước</div>
+            <div onclick="T2V.insertCard('${card.id}','after')">Thêm sau</div>
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" title="Nhân bản card" onclick="T2V.cloneCard('${card.id}')">⧉</button>
         <button class="btn btn-secondary btn-sm" onclick="T2V.deleteCard('${card.id}')">🗑</button>
       </div>
       <div class="t2v-card-body">
@@ -378,7 +392,118 @@
     toast('Đã xóa toàn bộ card', 'success');
   }
 
-  /* ── Import prompt txt ───────────────────────────────────── */
+  /* ── Import unified (TXT / JSON / XLSX) ─────────────────── */
+
+  // Show unified import dialog — detect format from filename
+  function openImportDialog(file) {
+    const ext = (file.name || '').split('.').pop().toLowerCase();
+    if (ext === 'json') {
+      handleJsonImport(file);
+    } else if (ext === 'xlsx' || ext === 'xls') {
+      handleXlsxImport(file);
+    } else {
+      // TXT — existing flow
+      const reader = new FileReader();
+      reader.onload = e => importTxtContent(e.target.result || '');
+      reader.readAsText(file, 'utf-8');
+    }
+  }
+
+  // JSON import: array of strings or objects with prompt/text/content field
+  function handleJsonImport(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      let data;
+      try { data = JSON.parse(e.target.result); } catch {
+        toast('File JSON không hợp lệ', 'error'); return;
+      }
+      const prompts = [];
+      if (Array.isArray(data)) {
+        data.forEach(item => {
+          if (typeof item === 'string') prompts.push(item.trim());
+          else if (item && typeof item === 'object') {
+            const val = item.prompt || item.text || item.content || item.scene || Object.values(item)[0];
+            if (val) prompts.push(String(val).trim());
+          }
+        });
+      } else if (data && typeof data === 'object') {
+        // {scenes: [...]} or {prompts: [...]}
+        const arr = data.scenes || data.prompts || data.items || Object.values(data);
+        if (Array.isArray(arr)) {
+          arr.forEach(item => {
+            if (typeof item === 'string') prompts.push(item.trim());
+            else if (item && typeof item === 'object') {
+              const val = item.prompt || item.text || item.content || Object.values(item)[0];
+              if (val) prompts.push(String(val).trim());
+            }
+          });
+        }
+      }
+      const valid = prompts.filter(Boolean);
+      if (!valid.length) { toast('Không tìm thấy prompt nào trong file JSON', 'error'); return; }
+      valid.forEach(p => { const c = newCard(p); cards.push(c); renderCard(c, true); });
+      refreshEmpty();
+      toast(`Đã import ${valid.length} prompt từ JSON`, 'success');
+    };
+    reader.readAsText(file, 'utf-8');
+  }
+
+  // XLSX import: each non-empty row in first column = 1 prompt
+  function handleXlsxImport(file) {
+    if (typeof XLSX === 'undefined') {
+      toast('Đang tải thư viện XLSX...', 'info');
+      const s = document.createElement('script');
+      s.src = 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js';
+      s.onload = () => doXlsxRead(file);
+      s.onerror = () => toast('Không tải được thư viện XLSX', 'error');
+      document.head.appendChild(s);
+    } else {
+      doXlsxRead(file);
+    }
+  }
+
+  function doXlsxRead(file) {
+    const reader = new FileReader();
+    reader.onload = e => {
+      try {
+        const wb = XLSX.read(new Uint8Array(e.target.result), { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        const prompts = [];
+        rows.forEach((row, ri) => {
+          if (ri === 0 && typeof row[0] === 'string' && /^(prompt|text|nội dung|scene)/i.test(row[0])) return; // skip header
+          const val = (row[0] || '').toString().trim();
+          if (val) prompts.push(val);
+        });
+        if (!prompts.length) { toast('Không có dữ liệu trong file Excel', 'error'); return; }
+        prompts.forEach(p => { const c = newCard(p); cards.push(c); renderCard(c, true); });
+        refreshEmpty();
+        toast(`Đã import ${prompts.length} prompt từ Excel`, 'success');
+      } catch (err) {
+        toast('Lỗi đọc file Excel: ' + err.message, 'error');
+      }
+    };
+    reader.readAsArrayBuffer(file);
+  }
+
+  function importTxtContent(text) {
+    if (!text.trim()) { toast('File trống', 'error'); return; }
+    const hasScenes = /^SCENE\s+\d+[:\s]/im.test(text);
+    if (hasScenes) {
+      showImportModeDialog(text);
+    } else {
+      const lines = text.split('\n').map(l => l.trim()).filter(Boolean);
+      if (!lines.length) { toast('File trống hoặc không hợp lệ', 'error'); return; }
+      lines.forEach(line => { const card = newCard(line); cards.push(card); renderCard(card, true); });
+      refreshEmpty();
+      toast(`Đã import ${lines.length} prompt`, 'success');
+    }
+  }
+
+  // Keep old function name for compatibility
+  function importPromptFile(file) { openImportDialog(file); }
+
+  /* ── Import prompt txt (scene parser) ───────────────────── */
   function parseSceneFile(text) {
     // Extract header block [CHARACTERS Description]...[END CHARACTERS Description]
     let header = '';
@@ -626,9 +751,68 @@
       const c = cards.find(x => x.id === id);
       if (c) await upscaleCardByIdx(c, idx);
     },
+    // Expose cards array for Studio tab
+    _getCards: () => cards.map(c => ({ id: c.id, prompt: c.prompt })),
+    _setCardImage: (cardId, imgUrl) => {
+      const c = cards.find(x => x.id === cardId);
+      if (!c) return;
+      c.refImage = imgUrl;
+      // Show thumbnail in card header
+      const header = document.querySelector(`#card-${cardId} .t2v-card-num`);
+      if (header) {
+        const existing = document.querySelector(`#card-${cardId} .t2v-ref-img`);
+        if (!existing) {
+          const img = document.createElement('img');
+          img.className = 't2v-ref-img';
+          img.src = imgUrl;
+          img.style.cssText = 'width:24px;height:24px;border-radius:3px;object-fit:cover;flex-shrink:0;';
+          header.parentNode.insertBefore(img, header.nextSibling);
+        } else {
+          existing.src = imgUrl;
+        }
+      }
+    },
     openCharPicker,
     pickChar,
     removeChar,
+
+    toggleInsertMenu(cardId, _btn) {
+      // Close all other menus first
+      document.querySelectorAll('.card-insert-menu').forEach(m => {
+        if (m.id !== `insert-menu-${cardId}`) m.style.display = 'none';
+      });
+      const menu = document.getElementById(`insert-menu-${cardId}`);
+      if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    },
+
+    insertCard(refId, position) {
+      document.querySelectorAll('.card-insert-menu').forEach(m => m.style.display = 'none');
+      const refIdx = cards.findIndex(c => c.id === refId);
+      if (refIdx === -1) return;
+      const card = newCard('');
+      const insertAt = position === 'before' ? refIdx : refIdx + 1;
+      cards.splice(insertAt, 0, card);
+      // Re-render all cards
+      _reRenderAllCards();
+      refreshEmpty();
+      setTimeout(() => {
+        const ta = document.getElementById(`prompt-${card.id}`);
+        if (ta) { ta.focus(); ta.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
+      }, 50);
+    },
+
+    cloneCard(srcId) {
+      const src = cards.find(c => c.id === srcId);
+      if (!src) return;
+      const clone = newCard(src.prompt);
+      clone.chars = src.chars.map(ch => ({ ...ch }));
+      const srcIdx = cards.indexOf(src);
+      cards.splice(srcIdx + 1, 0, clone);
+      _reRenderAllCards();
+      refreshEmpty();
+      toast('Đã nhân bản card', 'success');
+    },
+
     _doImport() {
       const modal = document.getElementById('import-mode-modal');
       if (!modal) return;
@@ -715,6 +899,13 @@
         const ta = document.getElementById(`prompt-${card.id}`);
         if (ta) ta.focus();
       }, 50);
+    });
+
+    // Close insert menus when clicking outside
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.card-action-group')) {
+        document.querySelectorAll('.card-insert-menu').forEach(m => m.style.display = 'none');
+      }
     });
 
     refreshEmpty();

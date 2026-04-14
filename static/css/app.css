@@ -826,3 +826,146 @@ input[type=range]::-webkit-slider-thumb {
 }
 .toggle input:checked + .toggle-slider { background: var(--accent); }
 .toggle input:checked + .toggle-slider::before { transform: translateX(16px); }
+
+/* ── Card action group (Insert / Clone) ───────────────────── */
+.card-action-group { position: relative; display: inline-flex; }
+.card-insert-btn { font-size: 11px !important; padding: 3px 7px !important; }
+.card-insert-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  right: 0;
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  min-width: 120px;
+  z-index: 200;
+  overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0,0,0,.4);
+}
+.card-insert-menu div {
+  padding: 8px 14px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text);
+  transition: background var(--transition);
+}
+.card-insert-menu div:hover { background: var(--bg3); color: var(--accent); }
+
+/* ── Studio Tab ───────────────────────────────────────────── */
+.studio-layout { display: flex; gap: 16px; height: calc(100vh - var(--header-h) - 20px); overflow: hidden; }
+.studio-left { width: 300px; flex-shrink: 0; display: flex; flex-direction: column; gap: 12px; overflow-y: auto; }
+.studio-right { flex: 1; display: flex; flex-direction: column; gap: 12px; overflow: hidden; }
+
+.studio-subtabs { display: flex; gap: 4px; border-bottom: 1px solid var(--border); margin-bottom: 12px; }
+.studio-subtab {
+  padding: 7px 16px;
+  font-size: 12px;
+  font-weight: 500;
+  cursor: pointer;
+  color: var(--text2);
+  border-bottom: 2px solid transparent;
+  transition: color var(--transition), border-color var(--transition);
+}
+.studio-subtab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+.studio-gallery {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 10px;
+  overflow-y: auto;
+  flex: 1;
+}
+.studio-img-card {
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid var(--border);
+  cursor: pointer;
+  transition: border-color var(--transition), transform var(--transition);
+  aspect-ratio: 1;
+  background: var(--bg3);
+}
+.studio-img-card:hover { border-color: var(--accent); transform: scale(1.02); }
+.studio-img-card img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.studio-img-card .studio-img-status {
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  background: linear-gradient(transparent, rgba(0,0,0,.7));
+  padding: 6px 8px 5px;
+  font-size: 10px;
+  color: #fff;
+}
+
+/* Studio status filter */
+.studio-status-bar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.studio-status-btn {
+  padding: 3px 10px;
+  border-radius: 20px;
+  font-size: 11px;
+  border: 1px solid var(--border);
+  background: none;
+  color: var(--text2);
+  cursor: pointer;
+  transition: all var(--transition);
+}
+.studio-status-btn.active { background: var(--accent); border-color: var(--accent); color: #fff; }
+.studio-status-btn.status-pending.active  { background: var(--text3); border-color: var(--text3); }
+.studio-status-btn.status-running.active  { background: var(--accent); border-color: var(--accent); }
+.studio-status-btn.status-processing.active { background: var(--orange); border-color: var(--orange); }
+.studio-status-btn.status-completed.active { background: var(--green); border-color: var(--green); }
+.studio-status-btn.status-failed.active   { background: var(--red); border-color: var(--red); }
+
+.studio-split { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; overflow: hidden; }
+.studio-split-panel { display: flex; flex-direction: column; gap: 8px; overflow: hidden; }
+.studio-split-title { font-size: 11px; font-weight: 600; text-transform: uppercase; color: var(--text3); letter-spacing: .5px; }
+
+/* Studio image popup */
+.studio-popup-overlay {
+  position: fixed; inset: 0;
+  background: rgba(0,0,0,.75);
+  z-index: 3000;
+  display: flex; align-items: center; justify-content: center;
+}
+.studio-popup {
+  background: var(--bg2);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 0;
+  max-width: 560px;
+  width: 95vw;
+  overflow: hidden;
+}
+.studio-popup img { width: 100%; max-height: 380px; object-fit: contain; background: var(--bg3); display: block; }
+.studio-popup-actions {
+  display: flex;
+  gap: 8px;
+  padding: 14px 16px;
+  border-top: 1px solid var(--border);
+}
+.studio-popup-close {
+  position: absolute; top: 10px; right: 12px;
+  background: rgba(0,0,0,.5); border: none; color: #fff;
+  border-radius: 50%; width: 28px; height: 28px;
+  cursor: pointer; font-size: 16px; display: flex; align-items: center; justify-content: center;
+}
+
+/* Studio gen panel */
+.studio-gen-spinner {
+  display: flex; align-items: center; justify-content: center;
+  gap: 10px; padding: 20px;
+  color: var(--text2); font-size: 12px;
+}
+
+/* Job tracking table */
+.studio-job-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; }
+.studio-job-row {
+  display: flex; align-items: center; gap: 8px;
+  padding: 8px 10px;
+  background: var(--bg3);
+  border-radius: 6px;
+  font-size: 11px;
+}
+.studio-job-thumb { width: 36px; height: 36px; border-radius: 4px; object-fit: cover; background: var(--border); flex-shrink: 0; }
+.studio-job-info { flex: 1; min-width: 0; }
+.studio-job-prompt { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--text); }
+.studio-job-meta { color: var(--text3); margin-top: 2px; }

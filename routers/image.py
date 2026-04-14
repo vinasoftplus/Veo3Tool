@@ -113,6 +113,51 @@ async def save_image(req: SaveImageRequest):
 
 
 # ---------------------------------------------------------------------------
+# Studio: Save image to library (data/studio/)
+# ---------------------------------------------------------------------------
+
+class StudioSaveRequest(BaseModel):
+    url: str
+    prompt: str | None = None
+    filename: str | None = None
+
+
+@router.post("/studio/save")
+async def studio_save_image(req: StudioSaveRequest):
+    """Save a generated image into the Studio library folder (data/studio/)."""
+    import httpx
+    import json as _json
+    studio_dir = BASE_DIR / "data" / "studio"
+    studio_dir.mkdir(parents=True, exist_ok=True)
+
+    ext = "jpg"
+    url_clean = req.url.split("?")[0]
+    if "." in url_clean.split("/")[-1]:
+        ext = url_clean.split("/")[-1].rsplit(".", 1)[-1].lower()
+        if ext not in ("jpg", "jpeg", "png", "webp"):
+            ext = "jpg"
+
+    fname = req.filename or f"studio_{uuid.uuid4().hex[:12]}.{ext}"
+    out_path = studio_dir / fname
+
+    try:
+        async with httpx.AsyncClient(timeout=60) as client:
+            resp = await client.get(req.url)
+            resp.raise_for_status()
+            out_path.write_bytes(resp.content)
+    except Exception as e:
+        raise HTTPException(500, f"Lỗi lưu ảnh vào kho: {e}")
+
+    # Save metadata sidecar
+    meta = {"filename": fname, "prompt": req.prompt or "", "url": req.url}
+    (studio_dir / f"{fname}.meta.json").write_text(
+        _json.dumps(meta, ensure_ascii=False), encoding="utf-8"
+    )
+
+    return {"ok": True, "filename": fname, "local_path": f"/studio-images/{fname}"}
+
+
+# ---------------------------------------------------------------------------
 # Upscale Image
 # ---------------------------------------------------------------------------
 
