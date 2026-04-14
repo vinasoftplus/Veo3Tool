@@ -11,7 +11,8 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('c:/Users/PC/Desktop/Veo3Tool/services/cookie_token_service.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(python -c \"import ast; ast.parse\\(open\\('c:/Users/PC/Desktop/Veo3Tool/routers/settings.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(python -c ':*)",
-      "Bash(pip show:*)"
+      "Bash(pip show:*)",
+      "Bash(grep -n \"license\\\\|LICENSE\\\\|DOMContentLoaded\\\\|init_app\\\\|runtime\" \"c:/Users/PC/Desktop/Veo3Tool/NOVA FRAME/static/js/\"*.js)"
     ]
   }
 }
