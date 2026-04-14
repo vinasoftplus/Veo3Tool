@@ -29,8 +29,8 @@
     wrap.style.cssText = 'display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:14px;';
     wrap.innerHTML = `
       <select id="library-category-filter" class="t2v-select" style="min-width:220px;"></select>
-      <button id="library-create-category" class="btn btn-secondary" type="button">T?o danh m?c</button>
-      <span style="font-size:12px;color:var(--text2);">Kho hi?n th? ?nh ?? l?u v? nh?n v?t trong c?ng m?t n?i.</span>
+      <button id="library-create-category" class="btn btn-secondary" type="button">Tạo danh mục</button>
+      <span style="font-size:12px;color:var(--text2);">Kho hiển thị ảnh đã lưu về nhân vật trong cùng một nơi.</span>
     `;
     grid.parentElement.insertBefore(wrap, grid);
     $('library-category-filter').addEventListener('change', e => {
@@ -82,27 +82,27 @@
     if (!grid) return;
     const items = mergedItems();
     if (!items.length) {
-      grid.innerHTML = '<div style="color:var(--text3);font-size:12px;grid-column:1/-1;">Ch?a c? d? li?u trong danh m?c n?y.</div>';
+      grid.innerHTML = '<div style="color:var(--text3);font-size:12px;grid-column:1/-1;">Chưa có dữ liệu trong danh mục này.</div>';
       return;
     }
     grid.innerHTML = items.map(item => {
       const isChar = item.type === 'character';
       const checked = isChar && selectedIds.has(item.id) ? 'checked' : '';
-      const badge = isChar ? (item.synced ? '?? sync' : 'Ch?a sync') : item.category_name;
+      const badge = isChar ? (item.synced ? '✅ sync' : 'Chưa sync') : item.category_name;
       const badgeColor = isChar ? (item.synced ? 'var(--green)' : 'var(--text3)') : 'var(--accent)';
       return `
         <div class="char-card" data-id="${escapeHtml(item.id)}" style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;">
           <div style="position:relative;">
             <img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.name)}" style="width:100%;aspect-ratio:1;object-fit:cover;display:block;">
-            ${isChar ? `<label style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.55);border-radius:6px;padding:4px 6px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" class="char-select" data-id="${escapeHtml(item.id)}" ${checked}><span style="font-size:11px;color:#fff;">Ch?n</span></label>` : ''}
-            <span style="position:absolute;right:8px;top:8px;background:rgba(0,0,0,.62);border-radius:999px;padding:4px 8px;font-size:11px;color:#fff;">${isChar ? 'Nh?n v?t' : 'Kho'}</span>
+            ${isChar ? `<label style="position:absolute;top:8px;left:8px;background:rgba(0,0,0,.55);border-radius:6px;padding:4px 6px;display:flex;align-items:center;gap:6px;cursor:pointer;"><input type="checkbox" class="char-select" data-id="${escapeHtml(item.id)}" ${checked}><span style="font-size:11px;color:#fff;">Chọn</span></label>` : ''}
+            <span style="position:absolute;right:8px;top:8px;background:rgba(0,0,0,.62);border-radius:999px;padding:4px 8px;font-size:11px;color:#fff;">${isChar ? 'Nhân vật' : 'Kho'}</span>
           </div>
           <div style="padding:10px;">
             <div style="font-weight:600;font-size:13px;margin-bottom:6px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(item.name)}</div>
             <div style="font-size:11px;color:${badgeColor};margin-bottom:10px;">${escapeHtml(badge)}</div>
             <div style="display:flex;gap:6px;flex-wrap:wrap;">
               ${isChar ? `<button class="btn btn-secondary btn-sm char-sync-one" data-id="${escapeHtml(item.id)}" ${item.synced ? 'disabled' : ''}>Sync</button>
-              <button class="btn btn-secondary btn-sm char-delete" data-id="${escapeHtml(item.id)}">X?a</button>` : `<button class="btn btn-secondary btn-sm library-copy-prompt" data-prompt="${escapeHtml(item.prompt || '')}">Xem prompt</button>`}
+              <button class="btn btn-secondary btn-sm char-delete" data-id="${escapeHtml(item.id)}">Xóa</button>` : `<button class="btn btn-secondary btn-sm library-copy-prompt" data-prompt="${escapeHtml(item.prompt || '')}">Xem prompt</button>`}
             </div>
           </div>
         </div>
@@ -205,13 +205,13 @@
   }
 
   async function syncIds(ids) {
-    if (!ids.length) return toast('Ch?a ch?n nh?n v?t n?o', 'error');
+    if (!ids.length) return toast('Chưa chọn nhân vật nào', 'error');
     const res = await API.post('/api/character/sync', { ids });
     if (res.ok) {
-      toast(res.message || `?? sync ${ids.length} nh?n v?t`, 'success');
+      toast(res.message || `✅ sync ${ids.length} nhân vật`, 'success');
       await loadAll();
     } else {
-      toast(res.detail || res.message || 'Sync nh?n v?t th?t b?i', 'error');
+      toast(res.detail || res.message || 'Sync nhân vật thất bại', 'error');
     }
   }
 

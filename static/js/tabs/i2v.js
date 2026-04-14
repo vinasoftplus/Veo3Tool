@@ -53,12 +53,12 @@
   function resultHtml(card) {
     const out = card.outputs[card.currentIdx];
     const url = out?.video_url || out?.videoUri || out?.fifeUrl || '';
-    if (card.status === 'idle') return '<div class="t2v-video-preview"><span style="opacity:.4;">Ch?a t?o</span></div>';
+    if (card.status === 'idle') return '<div class="t2v-video-preview"><span style="opacity:.4;">Chưa tạo</span></div>';
     if (card.status === 'running') return '<div class="t2v-video-preview"><div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;width:28px;height:28px;border-width:3px;"></div><div class="pulse" style="font-size:11px;">\u0110ang t\u1ea1o video...</div></div></div>';
-    if (card.status === 'failed') return `<div class="t2v-video-preview" style="color:var(--red);padding:12px;font-size:12px;">${card.error || 'L?i t?o video'}</div>`;
-    if (!url) return '<div class="t2v-video-preview"><span style="opacity:.4;">Kh?ng c? video</span></div>';
+    if (card.status === 'failed') return `<div class="t2v-video-preview" style="color:var(--red);padding:12px;font-size:12px;">${card.error || 'Lỗi tạo video'}</div>`;
+    if (!url) return '<div class="t2v-video-preview"><span style="opacity:.4;">Không có video</span></div>';
     const nav = card.outputs.length > 1
-      ? `<div class="t2v-video-nav"><button class="btn btn-secondary btn-sm" onclick="I2V.prev('${card.id}')">?</button><span>${card.currentIdx + 1} / ${card.outputs.length}</span><button class="btn btn-secondary btn-sm" onclick="I2V.next('${card.id}')">?</button></div>`
+      ? `<div class="t2v-video-nav"><button class="btn btn-secondary btn-sm" onclick="I2V.prev('${card.id}')">◀</button><span>${card.currentIdx + 1} / ${card.outputs.length}</span><button class="btn btn-secondary btn-sm" onclick="I2V.next('${card.id}')">▶</button></div>`
       : '';
     return `<div class="t2v-video-preview"><video controls src="${url}" preload="metadata" style="width:100%;height:100%;object-fit:contain;"></video></div>${nav}<div style="display:flex;gap:6px;flex-wrap:wrap;"><button class="btn btn-primary btn-sm" onclick="I2V.download('${card.id}',${card.currentIdx})">T\u1ea3i v\u1ec1</button>${CFG.autoUpscale ? '' : `<button class="btn btn-secondary btn-sm" onclick="I2V.upscale('${card.id}',${card.currentIdx})" ${card.upscaling ? 'disabled' : ''}>${card.upscaling ? '\u0110ang upscale...' : 'Upscale 1080p'}</button>`}<button class="btn btn-secondary btn-sm" onclick="I2V.genOne('${card.id}')">T\u1ea1o l\u1ea1i</button></div>`;
   }
@@ -104,11 +104,11 @@
     const idx = cards.indexOf(card) + 1;
     const statusDot = {
       idle: '',
-      running: '<span style="color:var(--accent);" class="pulse">?</span>',
-      completed: '<span style="color:var(--green);">?</span>',
-      failed: '<span style="color:var(--red);">?</span>',
+      running: '<span style="color:var(--accent);" class="pulse">●</span>',
+      completed: '<span style="color:var(--green);">●</span>',
+      failed: '<span style="color:var(--red);">●</span>',
     }[card.status] || '';
-    el.innerHTML = `<div class="t2v-card-header"><span class="t2v-card-num">#${idx}</span>${statusDot}<span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(card.prompt || '').slice(0, 80) || '(tr?ng)'}</span><button class="btn btn-secondary btn-sm" onclick="I2V.genOne('${card.id}')" ${card.status === 'running' ? 'disabled' : ''}>T?o Video</button><div class="card-action-group" style="position:relative;display:inline-flex;"><button class="btn btn-secondary btn-sm card-insert-btn" title="Thêm card" onclick="I2V.toggleInsertMenu('${card.id}')">+ Card ▾</button><div class="card-insert-menu" id="insert-menu-${card.id}" style="display:none;"><div onclick="I2V.insertCard('${card.id}','before')">Thêm trước</div><div onclick="I2V.insertCard('${card.id}','after')">Thêm sau</div></div></div><button class="btn btn-secondary btn-sm" title="Nhân bản card" onclick="I2V.cloneCard('${card.id}')">⧉</button><button class="btn btn-secondary btn-sm" onclick="I2V.remove('${card.id}')">X</button></div><div class="t2v-card-body"><div class="t2v-card-left"><div class="form-group"><label class="form-label">Ch?n ?nh ??u v?o</label><div class="upload-zone"><input type="file" accept="image/*"><div>K?o th? ho?c click ?? ch?n ?nh</div><img style="display:${card.previewUrl ? 'block' : 'none'};" src="${card.previewUrl || ''}" alt="preview"></div></div><div class="form-group"><label class="form-label">Prompt (t?y ch?n)</label><textarea rows="4" placeholder="M? t? chuy?n ??ng...">${card.prompt || ''}</textarea></div></div><div class="t2v-card-right">${resultHtml(card)}</div></div>`;
+    el.innerHTML = `<div class="t2v-card-header"><span class="t2v-card-num">#${idx}</span>${statusDot}<span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(card.prompt || '').slice(0, 80) || '(trống)'}</span><button class="btn btn-secondary btn-sm" onclick="I2V.genOne('${card.id}')" ${card.status === 'running' ? 'disabled' : ''}>Tạo Video</button><div class="card-action-group" style="position:relative;display:inline-flex;"><button class="btn btn-secondary btn-sm card-insert-btn" title="Thêm card" onclick="I2V.toggleInsertMenu('${card.id}')">+ Card ▾</button><div class="card-insert-menu" id="insert-menu-${card.id}" style="display:none;"><div onclick="I2V.insertCard('${card.id}','before')">Thêm trước</div><div onclick="I2V.insertCard('${card.id}','after')">Thêm sau</div></div></div><button class="btn btn-secondary btn-sm" title="Nhân bản card" onclick="I2V.cloneCard('${card.id}')">⧉</button><button class="btn btn-secondary btn-sm" onclick="I2V.remove('${card.id}')">X</button></div><div class="t2v-card-body"><div class="t2v-card-left"><div class="form-group"><label class="form-label">Chọn ảnh đầu vào</label><div class="upload-zone"><input type="file" accept="image/*"><div>Kéo thả hoặc click để chọn ảnh</div><img style="display:${card.previewUrl ? 'block' : 'none'};" src="${card.previewUrl || ''}" alt="preview"></div></div><div class="form-group"><label class="form-label">Prompt (tùy chọn)</label><textarea rows="4" placeholder="Mô tả chuyển động...">${card.prompt || ''}</textarea></div></div><div class="t2v-card-right">${resultHtml(card)}</div></div>`;
     if (append) $('i2v-cards').appendChild(el);
     const ta = el.querySelector('textarea');
     ta.addEventListener('input', e => { card.prompt = e.target.value; refreshStats(); });

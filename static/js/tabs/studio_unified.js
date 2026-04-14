@@ -154,18 +154,18 @@
 
   function combinedRefs(card) {
     const chars = (card.chars || []).map((ch, i) => ({ kind: 'char', idx: i, url: ch.url, name: ch.name }));
-    const refs = (card.refs || []).map((ref, i) => ({ kind: 'ref', idx: i, url: ref.url, name: ref.label || `?nh ${i + 1}` }));
+    const refs = (card.refs || []).map((ref, i) => ({ kind: 'ref', idx: i, url: ref.url, name: ref.label || `Ảnh ${i + 1}` }));
     return [...chars, ...refs];
   }
 
   function renderCombinedRefThumbs(card) {
     const items = combinedRefs(card);
-    if (!items.length) return '<div class="studio-note">Ch?a c? ?nh tham chi?u n?o ???c g?n v?o c?m n?y.</div>';
+    if (!items.length) return '<div class="studio-note">Chưa có ảnh tham chiếu nào được gắn vào cụm này.</div>';
     return items.map(item => `
       <div class="studio-thumb ${item.kind === 'char' ? 'active' : ''}">
         <img src="${item.url}" alt="${item.name}" onclick="Studio.openPopup('${card.id}','${item.kind === 'char' ? 'char' : 'ref'}',${item.idx})">
-        <span style="position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,.62);padding:2px 6px;border-radius:999px;font-size:10px;color:#fff;">${item.kind === 'char' ? 'Nh?n v?t' : '?nh'}</span>
-        <button type="button" onclick="event.stopPropagation();${item.kind === 'char' ? `Studio.removeChar('${card.id}',${item.idx})` : `Studio.removeRef('${card.id}',${item.idx})`}">?</button>
+        <span style="position:absolute;left:6px;bottom:6px;background:rgba(0,0,0,.62);padding:2px 6px;border-radius:999px;font-size:10px;color:#fff;">${item.kind === 'char' ? 'Nhân vật' : 'Ảnh'}</span>
+        <button type="button" onclick="event.stopPropagation();${item.kind === 'char' ? `Studio.removeChar('${card.id}',${item.idx})` : `Studio.removeRef('${card.id}',${item.idx})`}">×</button>
       </div>
     `).join('');
   }
@@ -194,7 +194,7 @@
       ...libraryAssets.map(a => ({ type: 'asset', id: a.id, name: a.name, url: a.url, category_id: a.category_id || 'default' })),
     ].filter(item => filter === 'all' || item.category_id === filter);
     if (!items.length) {
-      grid.innerHTML = '<div class="studio-note" style="grid-column:1/-1;">Danh m?c n?y ch?a c? ?nh n?o.</div>';
+      grid.innerHTML = '<div class="studio-note" style="grid-column:1/-1;">Danh mục này chưa có ảnh nào.</div>';
       return;
     }
     grid.innerHTML = items.map(item => `
@@ -215,7 +215,7 @@
     } else {
       const asset = libraryAssets.find(x => x.id === id);
       if (!asset) return;
-      if (!card.refs.some(x => x.url === asset.url)) card.refs.unshift({ url: asset.url, file: null, label: asset.name || '?nh t? kho' });
+      if (!card.refs.some(x => x.url === asset.url)) card.refs.unshift({ url: asset.url, file: null, label: asset.name || 'Ảnh từ kho' });
       card.refIndex = 0;
     }
     renderCard(card, false);
@@ -263,14 +263,14 @@
           <textarea class="t2v-prompt-input studio-prompt-input" rows="7" placeholder="Nhập prompt cho cụm này...">${card.prompt || ''}</textarea>
         </div>
         <div class="studio-inline-tools">
-          <button class="btn btn-secondary btn-sm studio-open-library">Kho l?u tr?</button>
-          <button class="btn btn-secondary btn-sm studio-auto-char">AUTO Nh?n V?t</button>
-          <button class="btn btn-secondary btn-sm studio-add-ref">+ Th?m t? m?y</button>
-          <button class="btn btn-secondary btn-sm studio-clear-ref">X?a ?nh tham chi?u</button>
+          <button class="btn btn-secondary btn-sm studio-open-library">Kho lưu trữ</button>
+          <button class="btn btn-secondary btn-sm studio-auto-char">AUTO Nhân Vật</button>
+          <button class="btn btn-secondary btn-sm studio-add-ref">+ Thêm từ máy</button>
+          <button class="btn btn-secondary btn-sm studio-clear-ref">Xóa ảnh tham chiếu</button>
           <input type="file" class="studio-ref-input" accept="image/*" multiple style="display:none;">
         </div>
         <div class="studio-strip-block">
-          <div class="studio-strip-head"><span>?nh tham chi?u</span><span>${combinedRefs(card).length ? ('?? ch?n ' + combinedRefs(card).length) : 'Ch?a c? ?nh'}</span></div>
+          <div class="studio-strip-head"><span>Ảnh tham chiếu</span><span>${combinedRefs(card).length ? ('Đã chọn ' + combinedRefs(card).length) : 'Chưa có ảnh'}</span></div>
           <div class="studio-strip">
             ${renderCombinedRefThumbs(card)}
             <button type="button" class="studio-add-thumb studio-open-library">Kho</button>
