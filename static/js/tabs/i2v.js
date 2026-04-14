@@ -173,6 +173,25 @@
     reader.readAsText(file, 'utf-8');
   }
 
+  function importImages(files) {
+    const list = Array.from(files || []).filter(file => file && String(file.type || '').startsWith('image/'));
+    if (!list.length) {
+      toast('Kh?ng c? ?nh h?p l?', 'error');
+      return;
+    }
+
+    list.forEach(file => {
+      const card = newCard('');
+      card.file = file;
+      card.previewUrl = URL.createObjectURL(file);
+      cards.push(card);
+      renderCard(card, true);
+    });
+
+    refreshStats();
+    toast('?? n?p ' + list.length + ' ?nh v?o tool', 'success');
+  }
+
   async function autoDownloadCard(card) {
     for (let i = 0; i < card.outputs.length; i++) {
       const out = card.outputs[i];
@@ -302,6 +321,11 @@
     $('i2v-auto-upscale').addEventListener('change', e => { CFG.autoUpscale = e.target.checked; });
     $('i2v-auto-download').addEventListener('change', e => { CFG.autoDownload = e.target.checked; });
     $('i2v-choose-folder').addEventListener('click', chooseFolder);
+    $('i2v-import-images').addEventListener('click', () => $('i2v-images-file').click());
+    $('i2v-images-file').addEventListener('change', e => {
+      if (e.target.files?.length) importImages(e.target.files);
+      e.target.value = '';
+    });
     $('i2v-import-prompt').addEventListener('click', () => $('i2v-import-file').click());
     $('i2v-import-file').addEventListener('change', e => { const f = e.target.files[0]; if (f) importPromptFile(f); e.target.value = ''; });
     $('i2v-add-card').addEventListener('click', () => { const card = newCard(''); cards.push(card); renderCard(card, true); });
