@@ -137,9 +137,9 @@
         </div>
         <div class="nav-item" data-tab="studio">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2"/>
-            <path d="M3 9h18M9 21V9"/>
-            <circle cx="15.5" cy="15.5" r="2.5"/>
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M9 21V9" />
+            <circle cx="15.5" cy="15.5" r="2.5" />
           </svg>
           <span class="nav-label">Studio</span>
           <span class="nav-badge new">NEW</span>
@@ -938,91 +938,98 @@
           </div>
         </div>
 
-        <!-- ══════════════════════════════════ STUDIO ══════════════════════════════════ -->
+        <!-- STUDIO -->
         <div id="tab-studio" class="tab-panel">
-          <div class="studio-subtabs">
-            <div class="studio-subtab active" data-studio-tab="gen-image">🎨 Tạo hình</div>
-            <div class="studio-subtab" data-studio-tab="tracker">📊 Theo dõi Jobs</div>
-          </div>
+          <div class="studio-page">
+            <div class="studio-toolbar">
+              <button id="studio-gen-all-images" class="btn btn-primary">Tạo tất cả hình</button>
+              <button id="studio-gen-all-videos" class="btn btn-primary">Tạo tất cả video (<span
+                  id="studio-pending-count">0</span>)</button>
+              <button id="studio-stop-all" class="btn btn-danger" style="display:none;">Dừng toàn bộ</button>
+              <button id="studio-save-all" class="btn btn-secondary">Lưu (<span
+                  id="studio-saved-count">0</span>)</button>
+              <button id="studio-clear-all" class="btn btn-secondary">Xóa tất cả cụm</button>
+              <div class="studio-toolbar-spacer"></div>
+              <button id="studio-choose-folder" class="btn btn-secondary">Chọn folder</button>
+              <button id="studio-open-library-manager" class="btn btn-secondary">Kho l?u tr?</button>
+              <button id="studio-import-images" class="btn btn-secondary">Import Image</button>
+              <button id="studio-import-prompts" class="btn btn-secondary">Import Prompts</button>
+              <button id="studio-add-card" class="btn btn-secondary">Thêm cụm</button>
+              <input type="file" id="studio-images-file" accept="image/*" multiple style="display:none;">
+              <input type="file" id="studio-prompts-file-txt" accept=".txt" style="display:none;">
+              <input type="file" id="studio-prompts-file-json" accept=".json" style="display:none;">
+            </div>
 
-          <!-- Sub-panel: Tạo hình -->
-          <div id="studio-panel-gen-image" class="studio-layout">
-            <!-- Left: Controls -->
-            <div class="studio-left">
-              <div class="card">
-                <div class="card-title">Tạo hình từ Prompt</div>
-                <div class="form-group">
-                  <label class="form-label">Prompt mô tả hình ảnh</label>
-                  <textarea id="studio-prompt" class="form-control" rows="4" placeholder="Mô tả hình ảnh muốn tạo..."></textarea>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Nhân vật tham chiếu (tùy chọn)</label>
-                  <div id="studio-char-strip" style="display:flex;gap:8px;flex-wrap:wrap;min-height:36px;align-items:center;">
-                    <div class="t2v-char-add" onclick="Studio.openCharPicker()" title="Thêm nhân vật">+</div>
-                  </div>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Tỉ lệ ảnh</label>
-                  <select id="studio-aspect" class="form-control">
-                    <option value="IMAGE_ASPECT_RATIO_LANDSCAPE">16:9 Ngang</option>
-                    <option value="IMAGE_ASPECT_RATIO_PORTRAIT">9:16 Dọc</option>
-                    <option value="IMAGE_ASPECT_RATIO_SQUARE" selected>1:1 Vuông</option>
-                  </select>
-                </div>
-                <div class="form-group">
-                  <label class="form-label">Số lượng</label>
-                  <div style="display:flex;gap:6px;">
-                    <button class="t2v-count-btn studio-count-btn active" data-val="1">1</button>
-                    <button class="t2v-count-btn studio-count-btn" data-val="2">2</button>
-                    <button class="t2v-count-btn studio-count-btn" data-val="4">4</button>
-                  </div>
-                </div>
-                <button id="studio-gen-btn" class="btn btn-primary" style="width:100%;">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
-                  Tạo hình ảnh
-                </button>
+            <div class="studio-toolbar studio-toolbar--settings">
+              <button type="button" class="studio-aspect-btn active" data-val="VIDEO_ASPECT_RATIO_LANDSCAPE">Ngang
+                (16:9)</button>
+              <button type="button" class="studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_PORTRAIT">Dọc (9:16)</button>
+              <button type="button" class="studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_SQUARE">Vuông (1:1)</button>
+
+              <select id="studio-model" class="t2v-select" title="Model video">
+                <option value="auto">Model: Auto</option>
+                <option value="flow_fast_relaxed">Model: 3.1 Fast relaxed</option>
+                <option value="flow_fast_no_ultra">Model: 3.1 Fast (not ultra)</option>
+                <option value="flow_fast">Model: 3.1 Fast</option>
+              </select>
+
+              <select id="studio-image-model" class="t2v-select" title="Model tạo ảnh">
+                <option value="Nano Banana 2">ảnh: Nano Banana 2</option>
+                <option value="Nano Banana pro">ảnh: Nano Banana Pro</option>
+                <option value="Imagen 4">ảnh: Imagen 4</option>
+                <option value="Nano Banana">ảnh: Nano Banana</option>
+              </select>
+
+              <select id="studio-image-count" class="t2v-select" title="Số ảnh mỗi card">
+                <option value="1">Ảnh / cụm: 1 ảnh</option>
+                <option value="2">Ảnh / cụm: 2 ảnh</option>
+                <option value="4">Ảnh / cụm: 4 ảnh</option>
+              </select>
+
+              <select id="studio-video-count" class="t2v-select" title="Số video mỗi card">
+                <option value="1">Video / cụm: 1 video</option>
+                <option value="2">Video / cụm: 2 video</option>
+              </select>
+
+              <label class="t2v-toggle-label">
+                <input type="checkbox" id="studio-auto-upscale">
+                <span class="t2v-toggle-track"></span>
+                Bật Auto Save 1080p
+              </label>
+
+              <label class="t2v-toggle-label">
+                <input type="checkbox" id="studio-auto-download">
+                <span class="t2v-toggle-track"></span>
+                Bật Auto Save Video
+              </label>
+
+              <div class="studio-folder-pill">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="var(--orange)" stroke="none">
+                  <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+                </svg>
+                <span id="studio-folder-label">Chưa chọn folder</span>
               </div>
             </div>
 
-            <!-- Right: Gallery -->
-            <div class="studio-right">
-              <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
-                <span style="font-size:13px;font-weight:600;">Kết quả</span>
-                <button class="btn btn-secondary btn-sm" onclick="Studio.clearGallery()">Xóa tất cả</button>
+            <div class="studio-status-card">
+              <div>
+                <strong>Trạng thái Studio</strong>
+                <div id="studio-status-text">Chưa có batch đang theo dõi. Bấm import prompt hoặc thêm cụm để bắt đầu.
+                </div>
               </div>
-              <div id="studio-gen-status" style="display:none;" class="studio-gen-spinner">
-                <div class="spinner" style="width:20px;height:20px;border-width:2px;"></div>
-                <span class="pulse">Đang tạo hình ảnh...</span>
+              <div class="studio-status-metrics">
+                <span id="studio-metric-total">0 card</span>
+                <span id="studio-metric-running">0 đang chạy</span>
+                <span id="studio-metric-done">0 xong</span>
               </div>
-              <div id="studio-gallery" class="studio-gallery"></div>
             </div>
-          </div>
 
-          <!-- Sub-panel: Tracker -->
-          <div id="studio-panel-tracker" style="display:none;">
-            <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px;flex-wrap:wrap;">
-              <span style="font-size:13px;font-weight:600;">Bộ lọc trạng thái:</span>
-              <div class="studio-status-bar" id="studio-status-bar">
-                <button class="studio-status-btn active" data-status="all">Tất cả</button>
-                <button class="studio-status-btn status-pending" data-status="pending">Chờ</button>
-                <button class="studio-status-btn status-running" data-status="running">Đang chạy</button>
-                <button class="studio-status-btn status-processing" data-status="processing">Đang xử lý</button>
-                <button class="studio-status-btn status-completed" data-status="completed">Xong</button>
-                <button class="studio-status-btn status-failed" data-status="failed">Lỗi</button>
-              </div>
-              <button class="btn btn-secondary btn-sm" style="margin-left:auto;" onclick="Studio.refreshJobs()">↺ Làm mới</button>
-            </div>
-            <div class="studio-split">
-              <!-- Ảnh -->
-              <div class="studio-split-panel">
-                <div class="studio-split-title">🖼 Ảnh</div>
-                <div id="studio-img-jobs" class="studio-job-list"></div>
-              </div>
-              <!-- Video -->
-              <div class="studio-split-panel">
-                <div class="studio-split-title">🎬 Video</div>
-                <div id="studio-video-jobs" class="studio-job-list"></div>
-              </div>
+            <div id="studio-cards" class="studio-cards"></div>
+
+            <div id="studio-empty" class="studio-empty">
+              <div class="studio-empty-icon">+</div>
+              <div class="studio-empty-title">Studio đang trống</div>
+              <div class="studio-empty-text">Import prompt, import ảnh hoặc bấm “Thêm cụm” để tạo card thao tác.</div>
             </div>
           </div>
         </div>
@@ -1037,22 +1044,60 @@
 
   <!-- Studio image popup (shared) -->
   <div id="studio-img-popup" class="studio-popup-overlay" style="display:none;">
-    <div class="studio-popup" style="position:relative;">
-      <button class="studio-popup-close" onclick="Studio.closePopup()">✕</button>
+    <div class="studio-popup studio-popup--editor" style="position:relative;">
+      <button class="studio-popup-close" onclick="Studio.closePopup()">×</button>
+      <div class="studio-popup-topbar">
+        <div class="studio-popup-tools">
+          <button class="btn btn-secondary btn-sm">Bút</button>
+          <button class="btn btn-secondary btn-sm">Tẩy</button>
+          <button class="btn btn-secondary btn-sm">Text</button>
+          <button class="btn btn-secondary btn-sm">Cắt</button>
+        </div>
+        <div class="studio-popup-actions">
+          <button class="btn btn-primary btn-sm" onclick="Studio.addToCard()">Chèn vào cụm</button>
+          <button class="btn btn-secondary btn-sm" onclick="Studio.saveToLib()">Lưu vào kho</button>
+          <button class="btn btn-secondary btn-sm" onclick="Studio.downloadImg()">Lưu về máy</button>
+        </div>
+      </div>
       <img id="studio-popup-img" src="" alt="">
-      <div class="studio-popup-actions">
-        <button class="btn btn-primary btn-sm" onclick="Studio.saveToLib()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/></svg>
-          Lưu vào kho
-        </button>
-        <button class="btn btn-secondary btn-sm" onclick="Studio.downloadImg()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Lưu về máy
-        </button>
-        <button class="btn btn-secondary btn-sm" onclick="Studio.addToCard()">
-          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-          Thêm vào card
-        </button>
+      <div class="studio-popup-caption">
+        <span id="studio-popup-caption-text">Ảnh xem trước</span>
+      </div>
+      <div class="studio-popup-actions studio-popup-actions--mobile">
+        <button class="btn btn-primary btn-sm" onclick="Studio.addToCard()">Chèn vào cụm</button>
+        <button class="btn btn-secondary btn-sm" onclick="Studio.saveToLib()">Lưu vào kho</button>
+        <button class="btn btn-secondary btn-sm" onclick="Studio.downloadImg()">Lưu về máy</button>
+      </div>
+    </div>
+  </div>
+
+  <div id="studio-library-picker" class="studio-popup-overlay" style="display:none;">
+    <div class="studio-popup" style="max-width:920px;position:relative;">
+      <button class="studio-popup-close" onclick="Studio.closeLibraryPicker()">?</button>
+      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;">
+        <div>
+          <strong style="font-size:18px;">Kho l?u tr?</strong>
+          <div class="studio-note">Ch?n ?nh t? kho ho?c nh?n v?t ?? l?u ?? th?m v?o c?m.</div>
+        </div>
+        <select id="studio-library-category-filter" class="t2v-select" style="min-width:220px;"></select>
+      </div>
+      <div id="studio-library-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;"></div>
+    </div>
+  </div>
+
+  <div id="studio-import-popup" class="studio-popup-overlay" style="display:none;">
+    <div class="studio-popup" style="max-width:560px;position:relative;">
+      <button class="studio-popup-close"
+        onclick="document.getElementById('studio-import-popup').style.display='none'">?</button>
+      <div style="display:flex;flex-direction:column;gap:14px;">
+        <div>
+          <strong style="font-size:18px;">Import Prompt cho Studio</strong>
+          <div class="studio-note" style="margin-top:6px;">Lựa chọn định dàng file promt</div>
+        </div>
+        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
+          <button id="studio-import-text-btn" class="btn btn-secondary" type="button">Import TXT</button>
+          <button id="studio-import-json-btn" class="btn btn-primary" type="button">Import JSON Scene</button>
+        </div>
       </div>
     </div>
   </div>
@@ -1067,7 +1112,7 @@
   <script src="/static/js/tabs/consistent_video_ui.js"></script>
   <script src="/static/js/tabs/settings.js"></script>
   <script src="/static/js/tabs/other.js"></script>
-  <script src="/static/js/tabs/studio.js"></script>
+  <script src="/static/js/tabs/studio_unified.js"></script>
 </body>
 
 </html>

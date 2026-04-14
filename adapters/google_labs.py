@@ -26,6 +26,7 @@ URL_STATUS = "https://aisandbox-pa.googleapis.com/v1/video:batchCheckAsyncVideoG
 URL_UPSCALE_VIDEO = "https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoUpsampleVideo"
 URL_UPSCALE_IMAGE = "https://aisandbox-pa.googleapis.com/v1/flow/upsampleImage"
 URL_IMG_GEN_TPL = "https://aisandbox-pa.googleapis.com/v1/projects/{project_id}/flowMedia:batchGenerateImages"
+URL_FLOW_UPLOAD = "https://aisandbox-pa.googleapis.com/v1/flow/uploadImage"
 URL_WHISK = "https://aisandbox-pa.googleapis.com/v1/whisk:generateImage"
 URL_UPLOAD = "https://aisandbox-pa.googleapis.com/v1:uploadUserImage"
 
@@ -214,6 +215,66 @@ async def _async_send(url: str, payload: dict, token: str, cookie: str = "") -> 
 # ---------------------------------------------------------------------------
 
 class GoogleLabsAdapter:
+    def build_generate_images_payload(
+        self,
+        prompt: str,
+        account: dict,
+        aspect_ratio: str = "IMAGE_ASPECT_RATIO_LANDSCAPE",
+        output_count: int = 1,
+        model: str = "Imagen 4",
+        seed: int | None = None,
+        recaptcha_token: str = "",
+        reference_input_names: list[str] | None = None,
+    ) -> dict:
+        project_id = _project_id(account)
+        model_key = _IMG_MODEL_MAP.get(model, "IMAGEN_3_5")
+        eff_seed = seed if seed is not None else _random_seed()
+        ref_names = [str(x or "").strip() for x in list(reference_input_names or []) if str(x or "").strip()]
+        user_paygate_tier = _paygate(account)
+
+        def make_request(i: int) -> dict:
+            s = (eff_seed + i) % 294967296 if i > 0 and seed is not None else (_random_seed() if i > 0 else eff_seed)
+            ctx = {
+                "recaptchaContext": {"token": recaptcha_token, "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"},
+                "sessionId": str(uuid.uuid4()),
+                "projectId": project_id,
+                "tool": "PINHOLE",
+                "userPaygateTier": user_paygate_tier,
+            }
+            request_item = {
+                "clientContext": ctx,
+                "imageAspectRatio": aspect_ratio,
+                "seed": s,
+                "imageModelName": model_key,
+                "prompt": prompt,
+                "imageInputs": [],
+            }
+            if ref_names:
+                request_item.pop("prompt", None)
+                request_item["structuredPrompt"] = {"parts": [{"text": prompt}]}
+                request_item["imageInputs"] = [
+                    {
+                        "imageInputType": "IMAGE_INPUT_TYPE_REFERENCE",
+                        "name": ref_name,
+                    }
+                    for ref_name in ref_names
+                ]
+            return request_item
+
+        return {
+            "clientContext": {
+                "recaptchaContext": {"token": recaptcha_token, "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"},
+                "sessionId": str(uuid.uuid4()),
+                "projectId": project_id,
+                "tool": "PINHOLE",
+                "userPaygateTier": user_paygate_tier,
+            },
+            "mediaGenerationContext": {
+                "batchId": str(uuid.uuid4()),
+            },
+            "useNewMedia": True,
+            "requests": [make_request(i) for i in range(max(1, output_count))],
+        }
 
     def build_text_to_video_payload(
         self,
@@ -296,6 +357,26 @@ class GoogleLabsAdapter:
         }
         return await _async_send(URL_UPLOAD, payload, _token(account), _cookie(account))
 
+    async def upload_flow_image(
+        self,
+        base64_image: str,
+        mime_type: str,
+        account: dict,
+        file_name: str = "reference.jpg",
+    ) -> dict:
+        payload = {
+            "clientContext": {
+                "projectId": _project_id(account),
+                "tool": "PINHOLE",
+            },
+            "imageBytes": str(base64_image or ""),
+            "isUserUploaded": True,
+            "isHidden": False,
+            "mimeType": str(mime_type or "image/jpeg"),
+            "fileName": str(file_name or "reference.jpg"),
+        }
+        return await _async_send(URL_FLOW_UPLOAD, payload, _token(account), _cookie(account))
+
     def parse_upload_media_id(self, response_body: str) -> str | None:
         try:
             body = json.loads(response_body)
@@ -313,6 +394,51 @@ class GoogleLabsAdapter:
                             return str(val)
         except Exception:
             pass
+        return None
+
+    def parse_flow_input_name(self, response_body: str) -> str | None:
+        try:
+            body = json.loads(response_body)
+        except Exception:
+            return None
+        if not isinstance(body, dict):
+            return None
+
+        def _pick(value: Any) -> str:
+            text = str(value or "").strip()
+            if not text:
+                return ""
+            if "/" in text:
+                last = text.rsplit("/", 1)[-1].strip()
+                if last:
+                    return last
+            return text
+
+        mg = body.get("mediaGenerationId")
+        if isinstance(mg, dict):
+            picked = _pick(mg.get("mediaGenerationId") or mg.get("name"))
+            if picked:
+                return picked
+        if mg and not isinstance(mg, dict):
+            picked = _pick(mg)
+            if picked:
+                return picked
+        media = body.get("media")
+        if isinstance(media, dict):
+            picked = _pick(media.get("mediaId") or media.get("id") or media.get("name"))
+            if picked:
+                return picked
+        workflow = body.get("workflow")
+        if isinstance(workflow, dict):
+            metadata = workflow.get("metadata")
+            if isinstance(metadata, dict):
+                picked = _pick(metadata.get("primaryMediaId"))
+                if picked:
+                    return picked
+        for key in ("name", "id", "mediaId"):
+            picked = _pick(body.get(key))
+            if picked:
+                return picked
         return None
 
     # --- Text to Video ---
@@ -558,35 +684,15 @@ class GoogleLabsAdapter:
         project_id = _project_id(account)
         if not project_id:
             return {"ok": False, "status": 0, "body": "Missing PROJECT_ID"}
-        model_key = _IMG_MODEL_MAP.get(model, "IMAGEN_3_5")
-        eff_seed = seed if seed is not None else _random_seed()
-
-        def make_request(i: int) -> dict:
-            s = (eff_seed + i) % 294967296 if i > 0 and seed is not None else (_random_seed() if i > 0 else eff_seed)
-            ctx = {
-                "recaptchaContext": {"token": recaptcha_token, "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"},
-                "sessionId": str(uuid.uuid4()),
-                "projectId": project_id,
-                "tool": "PINHOLE",
-            }
-            return {
-                "clientContext": ctx,
-                "imageAspectRatio": aspect_ratio,
-                "seed": s,
-                "imageModelName": model_key,
-                "prompt": prompt,
-                "imageInputs": [],
-            }
-
-        payload = {
-            "clientContext": {
-                "recaptchaContext": {"token": recaptcha_token, "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"},
-                "sessionId": str(uuid.uuid4()),
-                "projectId": project_id,
-                "tool": "PINHOLE",
-            },
-            "requests": [make_request(i) for i in range(max(1, output_count))],
-        }
+        payload = self.build_generate_images_payload(
+            prompt=prompt,
+            account=account,
+            aspect_ratio=aspect_ratio,
+            output_count=output_count,
+            model=model,
+            seed=seed,
+            recaptcha_token=recaptcha_token,
+        )
         url = URL_IMG_GEN_TPL.format(project_id=quote(project_id, safe=""))
         return await _async_send(url, payload, _token(account), _cookie(account))
 

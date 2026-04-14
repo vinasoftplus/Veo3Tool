@@ -18,6 +18,17 @@
 
   const $ = id => document.getElementById(id);
 
+  function cardsEl() {
+    return $('i2v-cards');
+  }
+
+  function reRenderAllCards() {
+    const container = cardsEl();
+    container.innerHTML = '';
+    cards.forEach(card => renderCard(card, true));
+    refreshStats();
+  }
+
   function newCard(prompt = '') {
     return {
       id: 'i2v-' + (++seq),
@@ -97,7 +108,7 @@
       completed: '<span style="color:var(--green);">?</span>',
       failed: '<span style="color:var(--red);">?</span>',
     }[card.status] || '';
-    el.innerHTML = `<div class="t2v-card-header"><span class="t2v-card-num">#${idx}</span>${statusDot}<span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(card.prompt || '').slice(0, 80) || '(tr?ng)'}</span><button class="btn btn-secondary btn-sm" onclick="I2V.genOne('${card.id}')" ${card.status === 'running' ? 'disabled' : ''}>T?o Video</button><button class="btn btn-secondary btn-sm" onclick="I2V.remove('${card.id}')">X</button></div><div class="t2v-card-body"><div class="t2v-card-left"><div class="form-group"><label class="form-label">Ch?n ?nh ??u v?o</label><div class="upload-zone"><input type="file" accept="image/*"><div>K?o th? ho?c click ?? ch?n ?nh</div><img style="display:${card.previewUrl ? 'block' : 'none'};" src="${card.previewUrl || ''}" alt="preview"></div></div><div class="form-group"><label class="form-label">Prompt (t?y ch?n)</label><textarea rows="4" placeholder="M? t? chuy?n ??ng...">${card.prompt || ''}</textarea></div></div><div class="t2v-card-right">${resultHtml(card)}</div></div>`;
+    el.innerHTML = `<div class="t2v-card-header"><span class="t2v-card-num">#${idx}</span>${statusDot}<span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(card.prompt || '').slice(0, 80) || '(tr?ng)'}</span><button class="btn btn-secondary btn-sm" onclick="I2V.genOne('${card.id}')" ${card.status === 'running' ? 'disabled' : ''}>T?o Video</button><div class="card-action-group" style="position:relative;display:inline-flex;"><button class="btn btn-secondary btn-sm card-insert-btn" title="Thêm card" onclick="I2V.toggleInsertMenu('${card.id}')">+ Card ▾</button><div class="card-insert-menu" id="insert-menu-${card.id}" style="display:none;"><div onclick="I2V.insertCard('${card.id}','before')">Thêm trước</div><div onclick="I2V.insertCard('${card.id}','after')">Thêm sau</div></div></div><button class="btn btn-secondary btn-sm" title="Nhân bản card" onclick="I2V.cloneCard('${card.id}')">⧉</button><button class="btn btn-secondary btn-sm" onclick="I2V.remove('${card.id}')">X</button></div><div class="t2v-card-body"><div class="t2v-card-left"><div class="form-group"><label class="form-label">Ch?n ?nh ??u v?o</label><div class="upload-zone"><input type="file" accept="image/*"><div>K?o th? ho?c click ?? ch?n ?nh</div><img style="display:${card.previewUrl ? 'block' : 'none'};" src="${card.previewUrl || ''}" alt="preview"></div></div><div class="form-group"><label class="form-label">Prompt (t?y ch?n)</label><textarea rows="4" placeholder="M? t? chuy?n ??ng...">${card.prompt || ''}</textarea></div></div><div class="t2v-card-right">${resultHtml(card)}</div></div>`;
     if (append) $('i2v-cards').appendChild(el);
     const ta = el.querySelector('textarea');
     ta.addEventListener('input', e => { card.prompt = e.target.value; refreshStats(); });
@@ -304,6 +315,36 @@
     next: id => { const card = cards.find(c => c.id === id); if (card && card.currentIdx < card.outputs.length - 1) { card.currentIdx++; renderCard(card, false); } },
     download: async (id, idx) => { const card = cards.find(c => c.id === id); if (!card) return; const out = card.outputs[idx]; const url = out?.video_url || out?.videoUri || out?.fifeUrl; if (url) await downloadVideoFile(url, 'i2v_' + String(cards.indexOf(card) + 1).padStart(3, '0') + '_' + (idx + 1) + '.mp4'); },
     upscale: async (id, idx) => { const card = cards.find(c => c.id === id); if (card) await upscale(card, idx); },
+    toggleInsertMenu(cardId) {
+      document.querySelectorAll('.card-insert-menu').forEach(menu => {
+        if (menu.id !== `insert-menu-${cardId}`) menu.style.display = 'none';
+      });
+      const menu = document.getElementById(`insert-menu-${cardId}`);
+      if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    },
+    insertCard(refId, position) {
+      document.querySelectorAll('.card-insert-menu').forEach(menu => { menu.style.display = 'none'; });
+      const refIdx = cards.findIndex(card => card.id === refId);
+      if (refIdx === -1) return;
+      const card = newCard('');
+      cards.splice(position === 'before' ? refIdx : refIdx + 1, 0, card);
+      reRenderAllCards();
+      setTimeout(() => {
+        const ta = document.querySelector(`#card-${card.id} textarea`);
+        if (ta) ta.focus();
+      }, 50);
+    },
+    cloneCard(srcId) {
+      const src = cards.find(card => card.id === srcId);
+      if (!src) return;
+      const clone = newCard(src.prompt);
+      clone.file = src.file || null;
+      clone.previewUrl = src.previewUrl || (src.file ? URL.createObjectURL(src.file) : '');
+      const srcIdx = cards.indexOf(src);
+      cards.splice(srcIdx + 1, 0, clone);
+      reRenderAllCards();
+      toast('Đã nhân bản card', 'success');
+    },
   };
 
   window.init_image_to_video = function () {
@@ -333,6 +374,11 @@
     $('i2v-stop').addEventListener('click', () => { stopFlag = true; $('i2v-stop').textContent = '\u0110ang d\u1eebng...'; });
     $('i2v-save-all').addEventListener('click', saveAll);
     $('i2v-clear-all').addEventListener('click', clearAll);
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.card-action-group')) {
+        document.querySelectorAll('.card-insert-menu').forEach(menu => { menu.style.display = 'none'; });
+      }
+    });
     refreshStats();
   };
 })();

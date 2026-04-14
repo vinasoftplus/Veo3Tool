@@ -296,7 +296,7 @@ async function solveCaptcha(action = 'VIDEO_GENERATION') {
   return results[0]?.result ?? null;
 }
 
-async function executeBrowserPost(url, payload, accessToken) {
+async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GENERATION') {
   const tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
   if (!tabs.length) throw new Error('No labs.google flow tab open');
 
@@ -304,7 +304,7 @@ async function executeBrowserPost(url, payload, accessToken) {
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
-    func: async (targetUrl, targetPayload, token, siteKey) => {
+    func: async (targetUrl, targetPayload, token, siteKey, recaptchaAction) => {
       try {
         // Get fresh reCAPTCHA token in-browser right before sending — same execution context
         let recaptchaToken = '';
@@ -316,7 +316,7 @@ async function executeBrowserPost(url, payload, accessToken) {
               if (++tries > 30) { clearInterval(t); reject(new Error('timeout')); }
             }, 100);
           });
-          recaptchaToken = await gr.execute(siteKey, { action: 'VIDEO_GENERATION' }) || '';
+          recaptchaToken = await gr.execute(siteKey, { action: recaptchaAction }) || '';
         } catch (e) {}
 
         // Inject fresh token into payload's recaptchaContext
@@ -343,7 +343,7 @@ async function executeBrowserPost(url, payload, accessToken) {
         return { ok: false, status: 0, reason: 'BROWSER_FETCH_ERROR', body: String(error?.message || error || '') };
       }
     },
-    args: [url, payload, accessToken, RECAPTCHA_SITE_KEY],
+    args: [url, payload, accessToken, RECAPTCHA_SITE_KEY, action],
   });
   return results[0]?.result ?? { ok: false, status: 0, reason: 'NO_RESULT', body: '' };
 }
@@ -497,7 +497,8 @@ async function pollLoop() {
           log('Upload+submit completed for job:', data.jobId, 'status:', result.status);
         } else if (data.jobKind === 'browser_submit') {
           log('Submitting browser request for job:', data.jobId, 'type:', data.jobType, 'account:', accountIndex);
-          const result = await executeBrowserPost(data.url, data.payload || {}, data.accessToken || '');
+          const action = data.jobType === 'image' ? 'IMAGE_GENERATION' : 'VIDEO_GENERATION';
+          const result = await executeBrowserPost(data.url, data.payload || {}, data.accessToken || '', action);
           await fetch(`${APP_URL}/api/extension/submit-browser`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },

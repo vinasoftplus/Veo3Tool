@@ -60,15 +60,20 @@ def create_app() -> FastAPI:
     async def on_startup():
         await init_db()
         from services.character_service import init_characters_table
+        from services.library_service import init_library_tables, ensure_default_category
         await init_characters_table()
+        await init_library_tables()
+        await ensure_default_category()
         # Ensure data dirs exist
         (APP_BASE / "data" / "jobs").mkdir(parents=True, exist_ok=True)
         (APP_BASE / "data" / "characters").mkdir(parents=True, exist_ok=True)
+        (APP_BASE / "data" / "library").mkdir(parents=True, exist_ok=True)
         (APP_BASE / "data" / "chrome_userdata").mkdir(parents=True, exist_ok=True)
         (APP_BASE / "data" / "studio").mkdir(parents=True, exist_ok=True)
 
         # Mount studio-images after startup so the directory exists
         app.mount("/studio-images", StaticFiles(directory=str(APP_BASE / "data" / "studio"), html=False), name="studio-images")
+        app.mount("/library-images", StaticFiles(directory=str(APP_BASE / "data" / "library"), html=False), name="library-images")
 
     # --- Routers ---
     from routers import ui, settings, license_router, veo, image, subtitle, workflow, youtube, character, extension

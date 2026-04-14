@@ -48,6 +48,17 @@
     $('cv-empty').style.display = cards.length ? 'none' : '';
   }
 
+  function cardsEl() {
+    return $('cv-cards');
+  }
+
+  function reRenderAllCards() {
+    const container = cardsEl();
+    container.innerHTML = '';
+    cards.forEach(card => renderCard(card, true));
+    refreshStats();
+  }
+
   function renderDefaultChars() {
     const grid = $('cv-char-grid');
     if (!grid) return;
@@ -107,6 +118,14 @@
         <span class="t2v-card-num">#${idx}</span>${statusDot}
         <span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${(card.prompt || '').slice(0, 80) || '(trống)'}</span>
         <button class="btn btn-secondary btn-sm" onclick="CV.genOne('${card.id}')" ${card.status === 'running' ? 'disabled' : ''}>Tạo Video</button>
+        <div class="card-action-group" style="position:relative;display:inline-flex;">
+          <button class="btn btn-secondary btn-sm card-insert-btn" title="Thêm card" onclick="CV.toggleInsertMenu('${card.id}')">+ Card ▾</button>
+          <div class="card-insert-menu" id="cv-insert-menu-${card.id}" style="display:none;">
+            <div onclick="CV.insertCard('${card.id}','before')">Thêm trước</div>
+            <div onclick="CV.insertCard('${card.id}','after')">Thêm sau</div>
+          </div>
+        </div>
+        <button class="btn btn-secondary btn-sm" title="Nhân bản card" onclick="CV.cloneCard('${card.id}')">⧉</button>
         <button class="btn btn-secondary btn-sm" onclick="CV.remove('${card.id}')">X</button>
       </div>
       <div class="t2v-card-body">
@@ -483,6 +502,35 @@
     next: id => { const card = cards.find(c => c.id === id); if (card && card.currentIdx < card.outputs.length - 1) { card.currentIdx++; renderCard(card, false); } },
     download: async (id, idx) => { const card = cards.find(c => c.id === id); if (!card) return; const out = card.outputs[idx]; const url = out?.video_url || out?.videoUri || out?.fifeUrl; if (url) await downloadVideoFile(url, 'cv_' + String(cards.indexOf(card) + 1).padStart(3, '0') + '_' + (idx + 1) + '.mp4'); },
     upscale: async (id, idx) => { const card = cards.find(c => c.id === id); if (card) await upscale(card, idx); },
+    toggleInsertMenu(cardId) {
+      document.querySelectorAll('.card-insert-menu').forEach(menu => {
+        if (menu.id !== `cv-insert-menu-${cardId}`) menu.style.display = 'none';
+      });
+      const menu = document.getElementById(`cv-insert-menu-${cardId}`);
+      if (menu) menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+    },
+    insertCard(refId, position) {
+      document.querySelectorAll('.card-insert-menu').forEach(menu => { menu.style.display = 'none'; });
+      const refIdx = cards.findIndex(card => card.id === refId);
+      if (refIdx === -1) return;
+      const card = newCard('');
+      cards.splice(position === 'before' ? refIdx : refIdx + 1, 0, card);
+      reRenderAllCards();
+      setTimeout(() => {
+        const ta = document.querySelector(`#card-${card.id} textarea`);
+        if (ta) ta.focus();
+      }, 50);
+    },
+    cloneCard(srcId) {
+      const src = cards.find(card => card.id === srcId);
+      if (!src) return;
+      const clone = newCard(src.prompt);
+      clone.chars = src.chars.map(ch => ({ ...ch }));
+      const srcIdx = cards.indexOf(src);
+      cards.splice(srcIdx + 1, 0, clone);
+      reRenderAllCards();
+      toast('Đã nhân bản card', 'success');
+    },
   };
 
   window.init_consistent_video = function () {
@@ -508,6 +556,11 @@
     $('cv-save-all')?.addEventListener('click', saveAll);
     $('cv-clear-all')?.addEventListener('click', clearAll);
     $('cv-apply-chars')?.addEventListener('click', openApplyCharsModal);
+    document.addEventListener('click', e => {
+      if (!e.target.closest('.card-action-group')) {
+        document.querySelectorAll('.card-insert-menu').forEach(menu => { menu.style.display = 'none'; });
+      }
+    });
     window.CVUIEnhancer?.init?.();
     loadCharacters();
     renderDefaultChars();

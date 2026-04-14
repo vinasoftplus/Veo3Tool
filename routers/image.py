@@ -3,6 +3,8 @@ from __future__ import annotations
 
 import asyncio
 import base64
+import json
+import logging
 import uuid
 from pathlib import Path
 
@@ -10,9 +12,10 @@ from fastapi import APIRouter, File, Form, HTTPException, UploadFile
 from pydantic import BaseModel
 
 from services import job_store
-from services.config_service import get_active_accounts, BASE_DIR
+from services.config_service import get_active_accounts, BASE_DIR, load_config
 
 router = APIRouter(tags=["image"])
+logger = logging.getLogger("veo.image")
 
 
 def _get_account_or_raise():
@@ -20,6 +23,49 @@ def _get_account_or_raise():
     if not accounts:
         raise HTTPException(400, "Chưa có account nào có token.")
     return accounts[0]
+
+
+def _token_option() -> str:
+    cfg = load_config()
+    return str(cfg.get("TOKEN_OPTION", "Option 1") or "Option 1").strip()
+
+
+def _normalize_images(medias: list[dict]) -> list[dict]:
+    normalized: list[dict] = []
+    for item in medias or []:
+        if not isinstance(item, dict):
+            continue
+        url = item.get("url") or item.get("downloadUrl") or item.get("image_url") or item.get("imageUrl") or ""
+        media_id = item.get("media_id") or item.get("mediaId") or item.get("mediaGenerationId") or item.get("name") or ""
+        normalized.append(
+            {
+                **item,
+                "url": url,
+                "downloadUrl": item.get("downloadUrl") or url,
+                "image_url": item.get("image_url") or url,
+                "imageUrl": item.get("imageUrl") or url,
+                "media_id": media_id,
+                "mediaId": item.get("mediaId") or media_id,
+            }
+        )
+    return normalized
+
+
+def _augment_reference_prompt(prompt: str, character_names: list[str]) -> str:
+    base = str(prompt or "").strip()
+    names = [str(x or "").strip() for x in character_names if str(x or "").strip()]
+    identity_line = (
+        "Use the provided reference images as a hard identity lock for the main subject. "
+        "The action in the prompt must be performed by that exact referenced subject. "
+        "Keep the same species, face, fur pattern, body proportions, outfit, and overall design. "
+        "If the reference depicts a dog or an anthropomorphic dog, keep it as a dog and never turn it into a human, child, woman, man, or generic person. "
+        "Do not replace the referenced subject with any new character."
+    )
+    if names:
+        identity_line += " Focus on these exact referenced characters: " + ", ".join(names) + "."
+    if base:
+        return identity_line + "\n\nScene prompt:\n" + base + "\n\nReminder: the referenced character is the only main subject."
+    return identity_line
 
 
 # ---------------------------------------------------------------------------
@@ -37,22 +83,179 @@ class GenerateImageRequest(BaseModel):
 @router.post("/generate")
 async def generate_image(req: GenerateImageRequest):
     from adapters.google_labs import GoogleLabsAdapter
-    account = _get_account_or_raise()
-    adapter = GoogleLabsAdapter()
+    from adapters.google_labs import URL_IMG_GEN_TPL
+    from routers.extension import request_browser_submit
+    from urllib.parse import quote
 
-    result = await adapter.generate_images(
-        prompt=req.prompt,
-        account=account,
-        aspect_ratio=req.aspect_ratio,
-        output_count=req.output_count,
-        model=req.model,
-        seed=req.seed,
-    )
+    account = _get_account_or_raise()
+    account_index = int(account.get("_index") or 1)
+    adapter = GoogleLabsAdapter()
+    token_option = _token_option()
+
+    if token_option == "Option 2":
+        project_id = str(account.get("PROJECT_ID", "") or "").strip()
+        if not project_id:
+            raise HTTPException(400, "Thiếu PROJECT_ID cho tài khoản hiện tại.")
+
+        payload = adapter.build_generate_images_payload(
+            prompt=req.prompt,
+            account=account,
+            aspect_ratio=req.aspect_ratio,
+            output_count=req.output_count,
+            model=req.model,
+            seed=req.seed,
+            recaptcha_token="",
+        )
+        result = await request_browser_submit(
+            str(uuid.uuid4()),
+            job_type="image",
+            url=URL_IMG_GEN_TPL.format(project_id=quote(project_id, safe="")),
+            payload=payload,
+            access_token=account.get("ACCESS_TOKEN", ""),
+            account_index=account_index,
+        )
+    else:
+        result = await adapter.generate_images(
+            prompt=req.prompt,
+            account=account,
+            aspect_ratio=req.aspect_ratio,
+            output_count=req.output_count,
+            model=req.model,
+            seed=req.seed,
+        )
     if not result.get("ok"):
         raise HTTPException(400, f"API error: {result.get('body', '')}")
 
-    medias = adapter.parse_image_results(result.get("body", ""))
+    medias = _normalize_images(adapter.parse_image_results(result.get("body", "")))
     return {"ok": True, "images": medias}
+
+
+@router.post("/generate-studio")
+async def generate_image_studio(
+    prompt: str = Form(...),
+    aspect_ratio: str = Form("IMAGE_ASPECT_RATIO_LANDSCAPE"),
+    output_count: int = Form(1),
+    model: str = Form("Imagen 4"),
+    seed: int | None = Form(None),
+    character_ids_json: str = Form("[]"),
+    reference_images: list[UploadFile] = File([]),
+):
+    from adapters.google_labs import GoogleLabsAdapter
+    from adapters.google_labs import URL_IMG_GEN_TPL
+    from routers.extension import request_browser_submit
+    from services.character_service import get_character
+    from urllib.parse import quote
+
+    account = _get_account_or_raise()
+    account_index = int(account.get("_index") or 1)
+    adapter = GoogleLabsAdapter()
+    token_option = _token_option()
+    project_id = str(account.get("PROJECT_ID", "") or "").strip()
+    if not project_id:
+        raise HTTPException(400, "Thiếu PROJECT_ID cho tài khoản hiện tại.")
+
+    try:
+        character_ids = json.loads(character_ids_json or "[]")
+        if not isinstance(character_ids, list):
+            character_ids = []
+    except Exception:
+        character_ids = []
+
+    reference_input_names: list[str] = []
+    character_names: list[str] = []
+
+    async def _upload_reference_bytes(raw: bytes, mime_type: str, file_name: str) -> None:
+        if not raw:
+            return
+        upload = await adapter.upload_flow_image(
+            base64.b64encode(raw).decode(),
+            mime_type,
+            account,
+            file_name=file_name,
+        )
+        if not upload.get("ok"):
+            raise HTTPException(400, f"Upload ảnh tham chiếu thất bại: {upload.get('body', '')}")
+        ref_name = adapter.parse_flow_input_name(upload.get("body", ""))
+        if ref_name:
+            reference_input_names.append(ref_name)
+        else:
+            logger.warning(
+                "studio-image upload parsed empty ref | file=%s | body=%s",
+                file_name,
+                str(upload.get("body", "") or "")[:500].replace("\n", " "),
+            )
+
+    for char_id in character_ids[:3]:
+        char = await get_character(str(char_id))
+        if not char:
+            continue
+        if char.get("name"):
+            character_names.append(str(char["name"]))
+        char_path = BASE_DIR / "data" / "characters" / char["filename"]
+        if not char_path.exists():
+            continue
+        mime_type = "image/png" if char_path.suffix.lower() == ".png" else "image/jpeg"
+        await _upload_reference_bytes(char_path.read_bytes(), mime_type, char["filename"])
+
+    for ref in reference_images[:6]:
+        raw = await ref.read()
+        await _upload_reference_bytes(raw, ref.content_type or "image/jpeg", ref.filename or f"ref_{uuid.uuid4().hex[:8]}.jpg")
+
+    effective_prompt = _augment_reference_prompt(prompt, character_names) if reference_input_names else prompt
+    logger.warning(
+        "studio-image refs | model=%s | chars=%s | ref_count=%s | ref_names=%s | prompt=%s",
+        model,
+        character_names,
+        len(reference_input_names),
+        reference_input_names[:6],
+        effective_prompt[:220].replace("\n", " "),
+    )
+
+    payload = adapter.build_generate_images_payload(
+        prompt=effective_prompt,
+        account=account,
+        aspect_ratio=aspect_ratio,
+        output_count=output_count,
+        model=model,
+        seed=seed,
+        recaptcha_token="",
+        reference_input_names=reference_input_names,
+    )
+
+    if token_option == "Option 2":
+        result = await request_browser_submit(
+            str(uuid.uuid4()),
+            job_type="image",
+            url=URL_IMG_GEN_TPL.format(project_id=quote(project_id, safe="")),
+            payload=payload,
+            access_token=account.get("ACCESS_TOKEN", ""),
+            account_index=account_index,
+        )
+    else:
+        if reference_input_names:
+            from adapters.google_labs import _async_send
+            result = await _async_send(
+                URL_IMG_GEN_TPL.format(project_id=quote(project_id, safe="")),
+                payload,
+                account.get("ACCESS_TOKEN", ""),
+                account.get("COOKIE", ""),
+            )
+        else:
+            result = await adapter.generate_images(
+                prompt=effective_prompt,
+                account=account,
+                aspect_ratio=aspect_ratio,
+                output_count=output_count,
+                model=model,
+                seed=seed,
+                recaptcha_token="",
+            )
+
+    if not result.get("ok"):
+        raise HTTPException(400, f"API error: {result.get('body', '')}")
+
+    medias = _normalize_images(adapter.parse_image_results(result.get("body", "")))
+    return {"ok": True, "images": medias, "reference_count": len(reference_input_names)}
 
 
 # ---------------------------------------------------------------------------
@@ -120,15 +323,14 @@ class StudioSaveRequest(BaseModel):
     url: str
     prompt: str | None = None
     filename: str | None = None
+    category_id: str | None = None
 
 
 @router.post("/studio/save")
 async def studio_save_image(req: StudioSaveRequest):
-    """Save a generated image into the Studio library folder (data/studio/)."""
+    """Save a generated image into the shared library."""
     import httpx
-    import json as _json
-    studio_dir = BASE_DIR / "data" / "studio"
-    studio_dir.mkdir(parents=True, exist_ok=True)
+    from services.library_service import save_library_asset
 
     ext = "jpg"
     url_clean = req.url.split("?")[0]
@@ -138,23 +340,52 @@ async def studio_save_image(req: StudioSaveRequest):
             ext = "jpg"
 
     fname = req.filename or f"studio_{uuid.uuid4().hex[:12]}.{ext}"
-    out_path = studio_dir / fname
 
     try:
         async with httpx.AsyncClient(timeout=60) as client:
             resp = await client.get(req.url)
             resp.raise_for_status()
-            out_path.write_bytes(resp.content)
+            asset = await save_library_asset(
+                image_bytes=resp.content,
+                filename=fname,
+                prompt=req.prompt or "",
+                category_id=req.category_id or "default",
+                source_type="studio",
+                origin_url=req.url,
+            )
     except Exception as e:
-        raise HTTPException(500, f"Lỗi lưu ảnh vào kho: {e}")
+        raise HTTPException(500, f"L?i l?u ?nh v?o kho: {e}")
 
-    # Save metadata sidecar
-    meta = {"filename": fname, "prompt": req.prompt or "", "url": req.url}
-    (studio_dir / f"{fname}.meta.json").write_text(
-        _json.dumps(meta, ensure_ascii=False), encoding="utf-8"
-    )
+    return {"ok": True, "filename": asset["filename"], "local_path": asset["url"], "asset": asset}
 
-    return {"ok": True, "filename": fname, "local_path": f"/studio-images/{fname}"}
+
+class LibraryCategoryRequest(BaseModel):
+    name: str
+
+
+@router.get("/library/categories")
+async def library_categories():
+    from services.library_service import list_categories
+
+    return {"ok": True, "items": await list_categories()}
+
+
+@router.post("/library/categories")
+async def library_create_category(req: LibraryCategoryRequest):
+    from services.library_service import create_category
+
+    try:
+        item = await create_category(req.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "item": item}
+
+
+@router.get("/library/assets")
+async def library_assets():
+    from services.library_service import list_assets
+
+    return {"ok": True, "items": await list_assets()}
 
 
 # ---------------------------------------------------------------------------
