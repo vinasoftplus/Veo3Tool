@@ -114,8 +114,8 @@
       <div class="t2v-card-header">
         <span class="t2v-card-num">#${idx}</span>
         ${statusDot}
-        <span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${card.prompt.slice(0,80) || '(trống)'}</span>
-        <button class="btn btn-secondary btn-sm" onclick="T2V.genCard('${card.id}')" ${card.status==='running'?'disabled':''}>▶ Tạo Video</button>
+        <span style="flex:1;font-size:11px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${card.prompt.slice(0, 80) || '(trống)'}</span>
+        <button class="btn btn-secondary btn-sm" onclick="T2V.genCard('${card.id}')" ${card.status === 'running' ? 'disabled' : ''}>▶ Tạo Video</button>
         <button class="btn btn-secondary btn-sm" onclick="T2V.deleteCard('${card.id}')">🗑</button>
       </div>
       <div class="t2v-card-body">
@@ -320,7 +320,7 @@
       const url = card.outputs[i].video_url;
       if (!url) continue;
       const idx = cards.indexOf(card) + 1;
-      const filename = `veo_${String(idx).padStart(3,'0')}_${i+1}.mp4`;
+      const filename = `veo_${String(idx).padStart(3, '0')}_${i + 1}.mp4`;
       await downloadVideoFile(url, filename);
     }
   }
@@ -375,7 +375,7 @@
     cards = [];
     cardsEl().innerHTML = '';
     refreshEmpty();
-    toast('?? x?a to?n b? card', 'success');
+    toast('Đã xóa toàn bộ card', 'success');
   }
 
   /* ── Import prompt txt ───────────────────────────────────── */
@@ -467,7 +467,7 @@
             <input type="radio" name="im-mode" value="line" style="margin-top:2px;">
             <div>
               <div style="font-weight:500;margin-bottom:3px;">Mỗi dòng = 1 card</div>
-              <div style="font-size:11px;color:var(--text2);">Import từng dòng không trống tr?ng file</div>
+              <div style="font-size:11px;color:var(--text2);">Import từng dòng không trống trong file</div>
             </div>
           </label>
         </div>
@@ -558,8 +558,8 @@
       const grid = $('char-picker-grid');
       if (!chars.length) { grid.innerHTML = '<div style="color:var(--text3);font-size:12px;grid-column:1/-1;">Chưa có nhân vật. Vào Thư viện nhân vật để thêm.</div>'; return; }
       grid.innerHTML = chars.map(ch => `
-        <div onclick="T2V.pickChar('${ch.id}','${ch.name}','${ch.url}','${ch.media_id||''}')"
-          style="cursor:pointer;border:2px solid ${existingIds.has(ch.id)?'var(--accent)':'var(--border)'};border-radius:8px;overflow:hidden;text-align:center;transition:border-color .15s;">
+        <div onclick="T2V.pickChar('${ch.id}','${ch.name}','${ch.url}','${ch.media_id || ''}')"
+          style="cursor:pointer;border:2px solid ${existingIds.has(ch.id) ? 'var(--accent)' : 'var(--border)'};border-radius:8px;overflow:hidden;text-align:center;transition:border-color .15s;">
           <img src="${ch.url}" alt="${ch.name}" style="width:100%;aspect-ratio:1;object-fit:cover;">
           <div style="font-size:10px;padding:4px;color:var(--text2);">${ch.name}</div>
         </div>`).join('');
@@ -595,7 +595,7 @@
       // Renumber
       cards.forEach((c, i) => {
         const numEl = document.querySelector(`#card-${c.id} .t2v-card-num`);
-        if (numEl) numEl.textContent = `#${i+1}`;
+        if (numEl) numEl.textContent = `#${i + 1}`;
       });
       refreshEmpty();
     },
