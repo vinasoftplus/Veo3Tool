@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(node --check \"c:/Users/PC/Desktop/Veo3Tool/static/js/tabs/character.js\")",
+      "Bash(node --check \"c:/Users/PC/Desktop/Veo3Tool/static/js/tabs/studio_unified.js\")",
+      "Bash(echo \"EXIT:$?\")",
+      "Bash(curl -s -o /dev/null -w \"%{http_code} %{size_download}\" \"http://localhost:8000/static/css/app.css\")",
+      "Bash(node -e ':*)",
+      "Bash(node --check \"c:/Users/PC/Desktop/Veo3Tool/static/js/tabs/other.js\")"
+    ]
+  }
+}

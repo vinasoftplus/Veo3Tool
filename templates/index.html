@@ -5,7 +5,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NOVA FRAME</title>
-  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/app.css?v=2">
 </head>
 
 <body>
@@ -528,26 +528,88 @@
 
         <!-- CHARACTER LIBRARY ══════════════════════════ -->
         <div id="tab-character" class="tab-panel">
-          <div class="card">
-            <div class="card-title">Thư viện nhân vật</div>
-            <div style="display:flex;gap:12px;align-items:center;margin-bottom:16px;flex-wrap:wrap;">
-              <div class="upload-zone" style="width:220px;padding:14px;" id="char-upload-zone">
-                <input type="file" id="char-file" accept="image/*">
-                <div style="font-size:12px;">+ Thêm nhân vật</div>
-                <img id="char-upload-preview" alt="preview"
-                  style="display:none;width:100%;max-width:180px;aspect-ratio:1;object-fit:cover;border-radius:10px;margin-top:10px;">
-              </div>
-              <div class="form-group" style="margin:0;flex:1;">
-                <label class="form-label">Tên nhân vật</label>
-                <input type="text" id="char-name" placeholder="Nhập tên..." value="Character">
-              </div>
-              <button id="char-upload-btn" class="btn btn-primary">Upload</button>
-              <button id="char-sync-selected-btn" class="btn btn-secondary">Sync đã chọn</button>
-              <button id="char-sync-all-btn" class="btn btn-secondary">Sync tất cả chưa sync</button>
+          <!-- Toolbar -->
+          <div class="lib-toolbar">
+            <!-- Loại filter tabs -->
+            <div class="lib-type-tabs" id="lib-type-tabs">
+              <button class="lib-type-btn active" data-type="all">Tất cả</button>
+              <button class="lib-type-btn" data-type="character">Nhân vật</button>
+              <button class="lib-type-btn" data-type="asset">Vật phẩm</button>
+              <button class="lib-type-btn" data-type="style">Style</button>
+              <button class="lib-type-btn" data-type="background">Background</button>
+              <button class="lib-type-btn" data-type="phoi">Phối</button>
             </div>
-            <div id="char-grid" class="char-grid">
-              <div class="loading">
-                <div class="spinner"></div>
+            <div class="lib-toolbar-sep"></div>
+            <!-- Nhóm dropdown -->
+            <select id="lib-group-filter" class="t2v-select" style="min-width:140px;">
+              <option value="all">Nhóm: Tất cả</option>
+            </select>
+            <!-- Action buttons -->
+            <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
+              <button id="lib-load-sel-btn" class="btn btn-secondary btn-sm">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                Load tải về
+              </button>
+              <button id="lib-add-btn" class="btn btn-primary btn-sm">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Thêm nhiều hình
+              </button>
+              <button id="char-sync-selected-btn" class="btn btn-secondary btn-sm">Sync đã chọn</button>
+              <button id="char-sync-all-btn" class="btn btn-secondary btn-sm">Load nhanh</button>
+              <button id="lib-delete-all-btn" class="btn btn-danger btn-sm">Xóa ALL</button>
+            </div>
+          </div>
+
+          <!-- Body: sidebar + grid -->
+          <div class="lib-body">
+            <!-- Sidebar nhóm -->
+            <div class="lib-sidebar">
+              <div class="lib-sidebar-head">Nhóm</div>
+              <div id="lib-group-list" class="lib-group-list">
+                <!-- rendered by JS -->
+              </div>
+              <button id="lib-add-group-btn" class="lib-add-group-btn">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+                Tạo nhóm
+              </button>
+            </div>
+
+            <!-- Grid ảnh -->
+            <div class="lib-grid-wrap">
+              <!-- Upload bar nhỏ -->
+              <div class="lib-upload-bar" id="lib-upload-bar" style="display:none;">
+                <div class="upload-zone lib-upload-zone" id="char-upload-zone">
+                  <input type="file" id="char-file" accept="image/*" multiple>
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  <span>Kéo thả hoặc click để thêm ảnh</span>
+                </div>
+                <!-- Preview strip nhiều ảnh -->
+                <div id="lib-preview-strip" class="lib-preview-strip"></div>
+                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                  <input type="text" id="char-name" placeholder="Tên (1 ảnh) hoặc tự động theo tên file..." value="" style="flex:1;min-width:150px;">
+                  <select id="char-upload-category" class="t2v-select">
+                    <option value="">Nhân vật (mặc định)</option>
+                  </select>
+                  <button id="char-upload-btn" class="btn btn-primary btn-sm">Upload</button>
+                  <button id="lib-upload-cancel" class="btn btn-secondary btn-sm">Hủy</button>
+                </div>
+              </div>
+
+              <!-- Info bar -->
+              <div class="lib-info-bar">
+                <span id="lib-count-label" style="font-size:12px;color:var(--text2);">0 mục</span>
+                <span style="flex:1;"></span>
+                <button id="lib-delete-selected-btn" class="btn btn-danger btn-sm" style="display:none;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                  Xóa đã chọn (<span id="lib-selected-count">0</span>)
+                </button>
+                <label style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);cursor:pointer;">
+                  <input type="checkbox" id="lib-select-all"> Chọn tất cả
+                </label>
+              </div>
+
+              <div id="char-grid" class="lib-grid">
+                <div class="loading"><div class="spinner"></div></div>
               </div>
             </div>
           </div>
@@ -939,98 +1001,130 @@
         </div>
 
         <!-- STUDIO -->
-        <div id="tab-studio" class="tab-panel">
-          <div class="studio-page">
-            <div class="studio-toolbar">
-              <button id="studio-gen-all-images" class="btn btn-primary">Tạo tất cả hình</button>
-              <button id="studio-gen-all-videos" class="btn btn-primary">Tạo tất cả video (<span
-                  id="studio-pending-count">0</span>)</button>
-              <button id="studio-stop-all" class="btn btn-danger" style="display:none;">Dừng toàn bộ</button>
-              <button id="studio-save-all" class="btn btn-secondary">Lưu (<span
-                  id="studio-saved-count">0</span>)</button>
-              <button id="studio-clear-all" class="btn btn-secondary">Xóa tất cả cụm</button>
-              <div class="studio-toolbar-spacer"></div>
-              <button id="studio-choose-folder" class="btn btn-secondary">Chọn folder</button>
-              <button id="studio-open-library-manager" class="btn btn-secondary">Kho lưu trữ</button>
-              <button id="studio-import-images" class="btn btn-secondary">Import Image</button>
-              <button id="studio-import-prompts" class="btn btn-secondary">Import Prompts</button>
-              <button id="studio-add-card" class="btn btn-secondary">Thêm cụm</button>
-              <input type="file" id="studio-images-file" accept="image/*" multiple style="display:none;">
-              <input type="file" id="studio-prompts-file-txt" accept=".txt" style="display:none;">
-              <input type="file" id="studio-prompts-file-json" accept=".json" style="display:none;">
-            </div>
+        <div id=”tab-studio” class=”tab-panel”>
+          <div class=”studio-page”>
 
-            <div class="studio-toolbar studio-toolbar--settings">
-              <button type="button" class="studio-aspect-btn active" data-val="VIDEO_ASPECT_RATIO_LANDSCAPE">Ngang
-                (16:9)</button>
-              <button type="button" class="studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_PORTRAIT">Dọc (9:16)</button>
-              <button type="button" class="studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_SQUARE">Vuông (1:1)</button>
+            <!-- ══ STICKY TOOLBAR ══ -->
+            <div id=”studio-sticky-bar” class=”studio-sticky-bar”>
+              <!-- Row 1: Actions -->
+              <div class=”studio-bar-row”>
+                <!-- Tạo / Dừng -->
+                <button id=”studio-gen-all-images” class=”btn btn-primary btn-sm”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><rect x=”3” y=”3” width=”18” height=”18” rx=”2”/><circle cx=”8.5” cy=”8.5” r=”1.5”/><polyline points=”21 15 16 10 5 21”/></svg>
+                  Tạo tất cả hình
+                </button>
+                <button id=”studio-gen-all-videos” class=”btn btn-primary btn-sm”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><polygon points=”23 7 16 12 23 17 23 7”/><rect x=”1” y=”5” width=”15” height=”14” rx=”2”/></svg>
+                  Tạo tất cả video (<span id=”studio-pending-count”>0</span>)
+                </button>
+                <button id=”studio-stop-all” class=”btn btn-danger btn-sm” style=”display:none;”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><rect x=”3” y=”3” width=”18” height=”18” rx=”2”/></svg>
+                  Dừng
+                </button>
+                <button id=”studio-save-all” class=”btn btn-secondary btn-sm”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><path d=”M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4”/><polyline points=”7 10 12 15 17 10”/><line x1=”12” y1=”15” x2=”12” y2=”3”/></svg>
+                  Lưu (<span id=”studio-saved-count”>0</span>)
+                </button>
+                <button id=”studio-clear-all” class=”btn btn-secondary btn-sm”>Xóa tất cả cụm</button>
+                <button id=”studio-clear-images-btn” class=”btn btn-secondary btn-sm” title=”Xóa tất cả ảnh đã tạo và ảnh tham chiếu khỏi mọi cụm”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><rect x=”3” y=”3” width=”18” height=”18” rx=”2”/><circle cx=”8.5” cy=”8.5” r=”1.5”/><line x1=”3” y1=”21” x2=”21” y2=”3” stroke-width=”2.5”/></svg>
+                  Xóa hình ảnh
+                </button>
 
-              <select id="studio-model" class="t2v-select" title="Model video">
-                <option value="auto">Model: Auto</option>
-                <option value="flow_fast_relaxed">Model: 3.1 Fast relaxed</option>
-                <option value="flow_fast_no_ultra">Model: 3.1 Fast (not ultra)</option>
-                <option value="flow_fast">Model: 3.1 Fast</option>
-              </select>
+                <div class=”studio-bar-sep”></div>
 
-              <select id="studio-image-model" class="t2v-select" title="Model tạo ảnh">
-                <option value="Nano Banana 2">ảnh: Nano Banana 2</option>
-                <option value="Nano Banana pro">ảnh: Nano Banana Pro</option>
-                <option value="Imagen 4">ảnh: Imagen 4</option>
-                <option value="Nano Banana">ảnh: Nano Banana</option>
-              </select>
+                <!-- Settings inline -->
+                <div class=”studio-aspect-group”>
+                  <button type=”button” class=”studio-aspect-btn active” data-val=”VIDEO_ASPECT_RATIO_LANDSCAPE” title=”Ngang 16:9”>16:9</button>
+                  <button type=”button” class=”studio-aspect-btn” data-val=”VIDEO_ASPECT_RATIO_PORTRAIT” title=”Dọc 9:16”>9:16</button>
+                  <button type=”button” class=”studio-aspect-btn” data-val=”VIDEO_ASPECT_RATIO_SQUARE” title=”Vuông 1:1”>1:1</button>
+                </div>
 
-              <select id="studio-image-count" class="t2v-select" title="Số ảnh mỗi card">
-                <option value="1">Ảnh / cụm: 1 ảnh</option>
-                <option value="2">Ảnh / cụm: 2 ảnh</option>
-                <option value="4">Ảnh / cụm: 4 ảnh</option>
-              </select>
+                <select id=”studio-model” class=”studio-bar-select” title=”Model video”>
+                  <option value=”auto”>Video: Auto</option>
+                  <option value=”flow_fast_relaxed”>3.1 Fast relaxed</option>
+                  <option value=”flow_fast_no_ultra”>3.1 Fast (no ultra)</option>
+                  <option value=”flow_fast”>3.1 Fast</option>
+                </select>
 
-              <select id="studio-video-count" class="t2v-select" title="Số video mỗi card">
-                <option value="1">Video / cụm: 1 video</option>
-                <option value="2">Video / cụm: 2 video</option>
-              </select>
+                <select id=”studio-image-model” class=”studio-bar-select” title=”Model tạo ảnh”>
+                  <option value=”Nano Banana 2”>Ảnh: Banana 2</option>
+                  <option value=”Nano Banana pro”>Ảnh: Banana Pro</option>
+                  <option value=”Imagen 4”>Ảnh: Imagen 4</option>
+                  <option value=”Nano Banana”>Ảnh: Banana</option>
+                </select>
 
-              <label class="t2v-toggle-label">
-                <input type="checkbox" id="studio-auto-upscale">
-                <span class="t2v-toggle-track"></span>
-                Bật Auto Save 1080p
-              </label>
+                <select id=”studio-image-count” class=”studio-bar-select” title=”Số ảnh / cụm”>
+                  <option value=”1”>Ảnh/cụm: 1</option>
+                  <option value=”2”>Ảnh/cụm: 2</option>
+                  <option value=”4”>Ảnh/cụm: 4</option>
+                </select>
 
-              <label class="t2v-toggle-label">
-                <input type="checkbox" id="studio-auto-download">
-                <span class="t2v-toggle-track"></span>
-                Bật Auto Save Video
-              </label>
+                <select id=”studio-video-count” class=”studio-bar-select” title=”Số video / cụm”>
+                  <option value=”1”>Video/cụm: 1</option>
+                  <option value=”2”>Video/cụm: 2</option>
+                </select>
 
-              <div class="studio-folder-pill">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="var(--orange)" stroke="none">
-                  <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
-                </svg>
-                <span id="studio-folder-label">Chưa chọn folder</span>
+                <label class=”studio-bar-toggle” title=”Auto upscale 1080p khi xong”>
+                  <input type=”checkbox” id=”studio-auto-upscale”>
+                  <span class=”t2v-toggle-track”></span>
+                  1080p
+                </label>
+                <label class=”studio-bar-toggle” title=”Tự lưu video khi xong”>
+                  <input type=”checkbox” id=”studio-auto-download”>
+                  <span class=”t2v-toggle-track”></span>
+                  Tự lưu
+                </label>
+
+                <div class=”studio-bar-sep”></div>
+
+                <!-- Công cụ -->
+                <button id=”studio-choose-folder” class=”btn btn-secondary btn-sm studio-folder-btn” title=”Chọn folder lưu video”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”var(--orange)” stroke=”none”><path d=”M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z”/></svg>
+                  <span id=”studio-folder-label”>Folder</span>
+                </button>
+                <button id=”studio-open-library-manager” class=”btn btn-secondary btn-sm”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><rect x=”3” y=”3” width=”18” height=”18” rx=”2”/><circle cx=”8.5” cy=”8.5” r=”1.5”/><polyline points=”21 15 16 10 5 21”/></svg>
+                  Kho ảnh
+                </button>
+                <button id=”studio-import-images” class=”btn btn-secondary btn-sm”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><path d=”M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4”/><polyline points=”17 8 12 3 7 8”/><line x1=”12” y1=”3” x2=”12” y2=”15”/></svg>
+                  Import ảnh
+                </button>
+                <button id=”studio-import-prompts” class=”btn btn-secondary btn-sm”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2”><path d=”M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z”/><polyline points=”14 2 14 8 20 8”/><line x1=”16” y1=”13” x2=”8” y2=”13”/><line x1=”16” y1=”17” x2=”8” y2=”17”/><polyline points=”10 9 9 9 8 9”/></svg>
+                  Import Prompt
+                </button>
+                <button id=”studio-add-card” class=”btn btn-primary btn-sm”>
+                  <svg width=”13” height=”13” viewBox=”0 0 24 24” fill=”none” stroke=”currentColor” stroke-width=”2.5”><line x1=”12” y1=”5” x2=”12” y2=”19”/><line x1=”5” y1=”12” x2=”19” y2=”12”/></svg>
+                  Thêm cụm
+                </button>
+
+                <!-- Hidden file inputs -->
+                <input type=”file” id=”studio-images-file” accept=”image/*” multiple style=”display:none;”>
+                <input type=”file” id=”studio-prompts-file-txt” accept=”.txt” style=”display:none;”>
+                <input type=”file” id=”studio-prompts-file-json” accept=”.json” style=”display:none;”>
               </div>
-            </div>
 
-            <div class="studio-status-card">
-              <div>
-                <strong>Trạng thái Studio</strong>
-                <div id="studio-status-text">Chưa có batch đang theo dõi. Bấm import prompt hoặc thêm cụm để bắt đầu.
+              <!-- Row 2: Status pill -->
+              <div class=”studio-bar-status”>
+                <span class=”studio-bar-status-text” id=”studio-status-text”>Chưa có batch. Import prompt hoặc thêm cụm.</span>
+                <div class=”studio-bar-metrics”>
+                  <span id=”studio-metric-total”>0 card</span>
+                  <span id=”studio-metric-running”>0 đang chạy</span>
+                  <span id=”studio-metric-done”>0 xong</span>
                 </div>
               </div>
-              <div class="studio-status-metrics">
-                <span id="studio-metric-total">0 card</span>
-                <span id="studio-metric-running">0 đang chạy</span>
-                <span id="studio-metric-done">0 xong</span>
-              </div>
+            </div>
+            <!-- /STICKY TOOLBAR -->
+
+            <div id=”studio-empty” class=”studio-empty”>
+              <div class=”studio-empty-icon”>+</div>
+              <div class=”studio-empty-title”>Studio đang trống</div>
+              <div class=”studio-empty-text”>Import prompt, import ảnh hoặc bấm “Thêm cụm” để tạo card thao tác.</div>
             </div>
 
-            <div id="studio-cards" class="studio-cards"></div>
-
-            <div id="studio-empty" class="studio-empty">
-              <div class="studio-empty-icon">+</div>
-              <div class="studio-empty-title">Studio đang trống</div>
-              <div class="studio-empty-text">Import prompt, import ảnh hoặc bấm “Thêm cụm” để tạo card thao tác.</div>
-            </div>
+            <div id=”studio-cards” class=”studio-cards”></div>
           </div>
         </div>
         <!-- /STUDIO -->
@@ -1071,48 +1165,90 @@
     </div>
   </div>
 
+  <!-- Library Picker -->
   <div id="studio-library-picker" class="studio-popup-overlay" style="display:none;">
-    <div class="studio-popup" style="max-width:920px;position:relative;">
-      <button class="studio-popup-close" onclick="Studio.closeLibraryPicker()">×</button>
-      <div style="display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:14px;">
+    <div class="studio-modal">
+      <div class="studio-modal-header">
         <div>
-          <strong style="font-size:18px;">Kho lưu trữ</strong>
-          <div class="studio-note">Chọn ảnh từ kho hoặc nhân vật đã lưu để thêm vào cụm.</div>
+          <div class="studio-modal-title">Kho lưu trữ</div>
+          <div class="studio-modal-subtitle">Chọn ảnh từ kho hoặc nhân vật để thêm vào cụm</div>
         </div>
-        <select id="studio-library-category-filter" class="t2v-select" style="min-width:220px;"></select>
+        <div style="display:flex;align-items:center;gap:10px;">
+          <select id="studio-library-category-filter" class="t2v-select" style="min-width:160px;"></select>
+          <button class="studio-modal-close" onclick="Studio.closeLibraryPicker()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+          </button>
+        </div>
       </div>
-      <div id="studio-library-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:12px;"></div>
+      <div class="studio-modal-body">
+        <div id="studio-library-grid" class="studio-library-grid"></div>
+      </div>
     </div>
   </div>
 
+  <!-- Import Prompt Popup -->
   <div id="studio-import-popup" class="studio-popup-overlay" style="display:none;">
-    <div class="studio-popup" style="max-width:560px;position:relative;">
-      <button class="studio-popup-close"
-        onclick="document.getElementById('studio-import-popup').style.display='none'">?</button>
-      <div style="display:flex;flex-direction:column;gap:14px;">
+    <div class="studio-modal" style="max-width:480px;">
+      <div class="studio-modal-header">
         <div>
-          <strong style="font-size:18px;">Import Prompt cho Studio</strong>
-          <div class="studio-note" style="margin-top:6px;">Lựa chọn định dàng file promt</div>
+          <div class="studio-modal-title">Import Prompt</div>
+          <div class="studio-modal-subtitle">Chọn định dạng file để import vào Studio</div>
         </div>
-        <div style="display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;">
-          <button id="studio-import-text-btn" class="btn btn-secondary" type="button">Import TXT</button>
-          <button id="studio-import-json-btn" class="btn btn-primary" type="button">Import JSON Scene</button>
+        <button class="studio-modal-close" onclick="document.getElementById('studio-import-popup').style.display='none'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="studio-modal-body">
+        <div class="studio-import-modes">
+          <button id="studio-import-text-btn" class="studio-import-mode-btn" type="button">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            <span class="studio-import-mode-name">TXT</span>
+            <span class="studio-import-mode-desc">Mỗi dòng trắng = 1 cụm<br>hoặc theo SCENE 1, SCENE 2...</span>
+          </button>
+          <button id="studio-import-json-btn" class="studio-import-mode-btn studio-import-mode-btn--active" type="button">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>
+            <span class="studio-import-mode-name">JSON Scene</span>
+            <span class="studio-import-mode-desc">Mảng scene với prompt,<br>characters, attachments...</span>
+          </button>
         </div>
+        <div class="studio-import-replace-hint" id="studio-import-replace-hint" style="display:none;">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          Đang có <strong id="studio-import-card-count">0</strong> cụm. Import sẽ <strong>thay thế prompt</strong> giữ nguyên ảnh/video — số prompt phải khớp số cụm.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Add Card Dialog -->
+  <div id="studio-add-card-dialog" class="studio-popup-overlay" style="display:none;">
+    <div class="studio-modal" style="max-width:380px;">
+      <div class="studio-modal-header">
+        <div class="studio-modal-title">Thêm cụm</div>
+        <button class="studio-modal-close" onclick="document.getElementById('studio-add-card-dialog').style.display='none'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="studio-modal-body">
+        <div class="form-group">
+          <label class="form-label">Số cụm muốn thêm</label>
+          <input type="number" id="studio-add-card-count" value="1" min="1" max="100" style="width:100%;">
+        </div>
+        <button id="studio-add-card-confirm" class="btn btn-primary" style="width:100%;">Thêm cụm</button>
       </div>
     </div>
   </div>
 
   <!-- Scripts -->
-  <script src="/static/js/api.js"></script>
-  <script src="/static/js/app.js"></script>
-  <script src="/static/js/tabs/t2v.js"></script>
-  <script src="/static/js/tabs/i2v.js"></script>
-  <script src="/static/js/tabs/consistent_video.js"></script>
-  <script src="/static/js/tabs/character.js"></script>
-  <script src="/static/js/tabs/consistent_video_ui.js"></script>
-  <script src="/static/js/tabs/settings.js"></script>
-  <script src="/static/js/tabs/other.js"></script>
-  <script src="/static/js/tabs/studio_unified.js"></script>
+  <script src="/static/js/api.js?v=2"></script>
+  <script src="/static/js/app.js?v=2"></script>
+  <script src="/static/js/tabs/t2v.js?v=2"></script>
+  <script src="/static/js/tabs/i2v.js?v=2"></script>
+  <script src="/static/js/tabs/consistent_video.js?v=2"></script>
+  <script src="/static/js/tabs/character.js?v=2"></script>
+  <script src="/static/js/tabs/consistent_video_ui.js?v=2"></script>
+  <script src="/static/js/tabs/settings.js?v=2"></script>
+  <script src="/static/js/tabs/other.js?v=2"></script>
+  <script src="/static/js/tabs/studio_unified.js?v=2"></script>
 </body>
 
 </html>

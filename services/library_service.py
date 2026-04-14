@@ -132,6 +132,21 @@ async def save_library_asset(
     return asset
 
 
+async def delete_asset(asset_id: str) -> bool:
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        async with db.execute("SELECT filename FROM library_assets WHERE id = ?", (asset_id,)) as cur:
+            row = await cur.fetchone()
+        if not row:
+            return False
+        filename = row[0]
+        await db.execute("DELETE FROM library_assets WHERE id = ?", (asset_id,))
+        await db.commit()
+    file_path = LIBRARY_DIR / filename
+    if file_path.exists():
+        file_path.unlink(missing_ok=True)
+    return True
+
+
 async def list_assets() -> list[dict[str, Any]]:
     await ensure_default_category()
     async with aiosqlite.connect(str(DB_PATH)) as db:

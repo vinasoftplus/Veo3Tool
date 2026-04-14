@@ -94,7 +94,7 @@
         cfg.saveFolder = cfg.saveHandle.name;
         $('studio-folder-label').textContent = cfg.saveFolder;
         return;
-      } catch (_) {}
+      } catch (_) { }
     }
     const path = prompt('Nhập đường dẫn folder lưu video:', cfg.saveFolder || 'D:\\Downloads\\Videos');
     if (path) {
@@ -114,7 +114,7 @@
         await writable.close();
         toast('Đã lưu ' + filename, 'success');
         return;
-      } catch (_) {}
+      } catch (_) { }
     }
     downloadUrl(url, filename);
   }
@@ -140,7 +140,7 @@
   function populateLibraryCategoryFilters() {
     const saveSel = $('studio-save-category');
     const pickerSel = $('studio-library-category-filter');
-    const options = [{ id: 'all', name: 'T?t c?' }, { id: '__characters__', name: 'Nh?n v?t' }, ...libraryCategories];
+    const options = [{ id: 'all', name: 'Tất cả' }, { id: '__characters__', name: 'Nhân vật' }, ...libraryCategories];
     if (saveSel) {
       saveSel.innerHTML = libraryCategories.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
       if (!saveSel.value && libraryCategories[0]) saveSel.value = libraryCategories[0].id;
@@ -292,9 +292,9 @@
           <div class="studio-strip-head"><span>Video đã tạo (${card.outputs.length})</span><span class="studio-note">${card.outputs.length ? 'Chọn thumbnail để đổi preview' : 'Chưa có video nào'}</span></div>
           <div class="studio-strip">
             ${card.outputs.length ? card.outputs.map((out, i) => {
-              const url = out.video_url || out.videoUri || out.fifeUrl || '';
-              return `<div class="studio-video-thumb ${i === card.outputIndex ? 'active' : ''}" onclick="Studio.selectOutput('${card.id}',${i})">${url ? `<video src="${url}" muted preload="metadata"></video>` : '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--text3);font-size:10px;">Video</div>'}</div>`;
-            }).join('') : '<div class="studio-note">Chưa có video nào được tạo.</div>'}
+      const url = out.video_url || out.videoUri || out.fifeUrl || '';
+      return `<div class="studio-video-thumb ${i === card.outputIndex ? 'active' : ''}" onclick="Studio.selectOutput('${card.id}',${i})">${url ? `<video src="${url}" muted preload="metadata"></video>` : '<div style="display:flex;align-items:center;justify-content:center;width:100%;height:100%;color:var(--text3);font-size:10px;">Video</div>'}</div>`;
+    }).join('') : '<div class="studio-note">Chưa có video nào được tạo.</div>'}
           </div>
         </div>
       </div>
@@ -397,7 +397,7 @@
     }).slice(0, 3).map(ch => ({ id: ch.id, name: ch.name, url: ch.url, media_id: ch.media_id || '' }));
     renderCard(card, false);
     if ($('studio-char-picker-modal') && $('studio-char-picker-modal').style.display !== 'none') openCharPicker(cardId);
-    toast(card.chars.length ? ('?? t? g?n ' + card.chars.length + ' nh?n v?t') : 'Kh?ng nh?n ra nh?n v?t n?o trong prompt', card.chars.length ? 'success' : 'info');
+    toast(card.chars.length ? ('Tự gắn ' + card.chars.length + ' Nhân vật') : 'Không nhận ra Nhân vật nào trong prompt', card.chars.length ? 'success' : 'info');
   }
 
   function removeChar(cardId, idx) {
@@ -418,7 +418,7 @@
   async function genImages(cardId) {
     const card = cards.find(c => c.id === cardId);
     if (!card) return;
-    if (!String(card.prompt || '').trim()) return toast('Nh?p prompt tr??c khi t?o h?nh', 'error');
+    if (!String(card.prompt || '').trim()) return toast('Nhập prompt trước khi tạo hình', 'error');
     card.busyImage = true;
     renderCard(card, false);
     try {
@@ -435,13 +435,13 @@
         if (file) fd.append('reference_images', file, file.name || `${card.id}_ref_${i + 1}.png`);
       }
       const res = await API.postForm('/api/image/generate-studio', fd);
-      if (!res.ok) throw new Error(res.detail || 'T?o h?nh th?t b?i');
+      if (!res.ok) throw new Error(res.detail || 'Tạo hình thất bại');
       (res.images || []).forEach(img => {
         const url = img.url || img.downloadUrl || img.image_url || img.imageUrl || '';
-        if (url) card.images.unshift({ url, media_id: img.media_id || img.mediaId || '', prompt: card.prompt, label: '?nh ?? t?o' });
+        if (url) card.images.unshift({ url, media_id: img.media_id || img.mediaId || '', prompt: card.prompt, label: 'Ảnh đã tạo' });
       });
       renderCard(card, false);
-      toast('?? t?o ' + (res.images || []).length + ' ?nh cho card', 'success');
+      toast('Đã tạo ' + (res.images || []).length + ' ảnh cho card', 'success');
     } catch (err) {
       toast('L?i t?o h?nh: ' + err.message, 'error');
     } finally {
@@ -580,7 +580,7 @@
     if (!popup) return;
     const card = cards.find(c => c.id === popup.cardId) || createCard(popup.prompt || '');
     let file = null;
-    try { file = await urlToFile(popup.url, `studio_ref_${Date.now()}.png`); } catch (_) {}
+    try { file = await urlToFile(popup.url, `studio_ref_${Date.now()}.png`); } catch (_) { }
     card.refs.unshift({ url: popup.url, file, label: 'Ảnh chèn từ preview' });
     card.refIndex = 0;
     renderCard(card, false);
@@ -605,21 +605,47 @@
     reader.onload = e => {
       const raw = e.target.result;
       const promptItems = mode === 'json' ? parseJsonPromptCards(raw) : parsePrompts(raw).map(prompt => ({ prompt }));
-      if (!promptItems.length) return toast('File prompt tr?ng ho?c kh?ng ??ng ??nh d?ng', 'error');
-      promptItems.forEach(item => createCard(item.prompt, item));
-      updateStats();
-      toast('?? import ' + promptItems.length + ' c?m prompt', 'success');
+      if (!promptItems.length) return toast('File prompt trống hoặc không đúng định dạng', 'error');
+
+      // Replace mode: cards already exist → only replace prompts, keep images/refs/outputs
+      if (cards.length > 0) {
+        if (promptItems.length !== cards.length) {
+          return toast(
+            `Prompt không khớp số cụm: file có ${promptItems.length} prompt nhưng Studio đang có ${cards.length} cụm. Vui lòng kiểm tra lại.`,
+            'error'
+          );
+        }
+        cards.forEach((card, i) => { card.prompt = promptItems[i].prompt; });
+        rerender();
+        toast('Đã thay thế ' + promptItems.length + ' prompt (giữ nguyên ảnh/video)', 'success');
+      } else {
+        // Create mode: no cards yet → create new cards
+        promptItems.forEach(item => createCard(item.prompt, item));
+        updateStats();
+        toast('Đã import ' + promptItems.length + ' cụm prompt', 'success');
+      }
     };
     reader.readAsText(file, 'utf-8');
   }
 
+  function clearAllImages() {
+    if (!cards.length) return toast('Không có cụm nào', 'info');
+    cards.forEach(card => {
+      card.images = [];
+      card.refs = [];
+      card.refIndex = 0;
+    });
+    rerender();
+    toast('Đã xóa tất cả hình ảnh và ảnh tham chiếu khỏi tất cả cụm', 'success');
+  }
+
   async function genAllImages() {
     const pending = cards.filter(c => !c.busyImage && String(c.prompt || '').trim());
-    if (!pending.length) return toast('Kh?ng c? card n?o s?n s?ng t?o h?nh', 'error');
+    if (!pending.length) return toast('Không có card nào sẵn sàng tạo hình', 'error');
     stopAll = false;
     $('studio-gen-all-images').style.display = 'none';
     $('studio-stop-all').style.display = '';
-    $('studio-stop-all').textContent = 'D?ng to?n b?';
+    $('studio-stop-all').textContent = 'Dừng toàn bộ';
     for (let i = 0; i < pending.length; i += 3) {
       if (stopAll) break;
       const batch = pending.slice(i, i + 3);
@@ -627,7 +653,7 @@
     }
     $('studio-gen-all-images').style.display = '';
     $('studio-stop-all').style.display = 'none';
-    $('studio-stop-all').textContent = '?ang d?ng...';
+    $('studio-stop-all').textContent = 'Đang dừng...';
     stopAll = false;
   }
 
@@ -685,17 +711,52 @@
   window.init_studio = function () {
     if (ready) return;
     ready = true;
-    $('studio-add-card').addEventListener('click', () => createCard(''));
+
+    // Add card → open dialog
+    $('studio-add-card').addEventListener('click', () => {
+      const dialog = $('studio-add-card-dialog');
+      if (dialog) { dialog.style.display = 'flex'; $('studio-add-card-count').value = '1'; }
+      else createCard('');
+    });
+    // Add card dialog confirm
+    $('studio-add-card-confirm')?.addEventListener('click', () => {
+      const n = Math.max(1, Math.min(200, parseInt($('studio-add-card-count')?.value || '1', 10) || 1));
+      for (let i = 0; i < n; i++) createCard('');
+      $('studio-add-card-dialog').style.display = 'none';
+      toast('Đã thêm ' + n + ' cụm', 'success');
+    });
+    // Add card dialog cancel + overlay close
+    $('studio-add-card-cancel')?.addEventListener('click', () => { $('studio-add-card-dialog').style.display = 'none'; });
+    $('studio-add-card-dialog')?.addEventListener('click', e => { if (e.target === $('studio-add-card-dialog')) $('studio-add-card-dialog').style.display = 'none'; });
+
     $('studio-open-library-manager')?.addEventListener('click', () => {
       if (typeof window.switchTab === 'function') window.switchTab('character');
     });
     $('studio-import-images').addEventListener('click', () => $('studio-images-file').click());
     $('studio-images-file').addEventListener('change', e => { if (e.target.files?.length) importImages(e.target.files); e.target.value = ''; });
-    $('studio-import-prompts').addEventListener('click', () => { $('studio-import-popup').style.display = 'flex'; });
+
+    // Import prompts → open popup and show current card count + hint
+    $('studio-import-prompts').addEventListener('click', () => {
+      const popup = $('studio-import-popup');
+      if (!popup) return;
+      const countEl = $('studio-import-card-count');
+      if (countEl) countEl.textContent = cards.length;
+      const hint = $('studio-import-replace-hint');
+      if (hint) hint.style.display = cards.length > 0 ? '' : 'none';
+      popup.style.display = 'flex';
+    });
     $('studio-import-text-btn').addEventListener('click', () => { $('studio-import-popup').style.display = 'none'; $('studio-prompts-file-txt').click(); });
     $('studio-import-json-btn').addEventListener('click', () => { $('studio-import-popup').style.display = 'none'; $('studio-prompts-file-json').click(); });
     $('studio-prompts-file-txt').addEventListener('change', e => { const file = e.target.files?.[0]; if (file) importPrompts(file, 'txt'); e.target.value = ''; });
     $('studio-prompts-file-json').addEventListener('change', e => { const file = e.target.files?.[0]; if (file) importPrompts(file, 'json'); e.target.value = ''; });
+
+    // Clear all images + refs
+    $('studio-clear-images-btn')?.addEventListener('click', () => {
+      if (!cards.length) return toast('Không có cụm nào', 'info');
+      if (!confirm('Xóa tất cả hình ảnh đã tạo và ảnh tham chiếu khỏi tất cả cụm?')) return;
+      clearAllImages();
+    });
+
     $('studio-choose-folder').addEventListener('click', chooseFolder);
     $('studio-gen-all-images').addEventListener('click', genAllImages);
     $('studio-gen-all-videos').addEventListener('click', genAllVideos);
@@ -722,7 +783,7 @@
     $('studio-import-popup').addEventListener('click', e => { if (e.target === $('studio-import-popup')) $('studio-import-popup').style.display = 'none'; });
     $('studio-library-picker').addEventListener('click', e => { if (e.target === $('studio-library-picker')) closeLibraryPicker(); });
     $('studio-library-category-filter').addEventListener('change', renderLibraryPicker);
-    loadLibrarySources().catch(() => {});
+    loadLibrarySources().catch(() => { });
     updateStats();
   };
 

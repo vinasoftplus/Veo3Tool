@@ -388,6 +388,41 @@ async def library_assets():
     return {"ok": True, "items": await list_assets()}
 
 
+@router.post("/library/upload")
+async def library_upload_asset(
+    image: UploadFile = File(...),
+    name: str = Form(""),
+    category_id: str = Form("default"),
+):
+    """Upload a file directly into library assets."""
+    from services.library_service import save_library_asset
+
+    image_bytes = await image.read()
+    if not image_bytes:
+        raise HTTPException(400, "File rỗng")
+    ext = Path(image.filename or "img.jpg").suffix or ".jpg"
+    safe_name = (name or Path(image.filename or "image").stem).strip() or "image"
+    asset = await save_library_asset(
+        image_bytes=image_bytes,
+        filename=f"{safe_name}{ext}",
+        prompt="",
+        category_id=category_id or "default",
+        source_type="upload",
+        origin_url="",
+    )
+    return {"ok": True, "item": asset}
+
+
+@router.delete("/library/assets/{asset_id}")
+async def library_delete_asset(asset_id: str):
+    from services.library_service import delete_asset
+
+    deleted = await delete_asset(asset_id)
+    if not deleted:
+        raise HTTPException(404, "Asset not found")
+    return {"ok": True}
+
+
 # ---------------------------------------------------------------------------
 # Upscale Image
 # ---------------------------------------------------------------------------
