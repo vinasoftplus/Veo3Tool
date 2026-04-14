@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  body { width: 320px; font-family: sans-serif; font-size: 13px; background: #1a1a2e; color: #e0e0e0; margin: 0; padding: 16px; }
+  h3 { margin: 0 0 12px; color: #7c9eff; font-size: 14px; }
+  .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+  .label { color: #aaa; }
+  .badge { padding: 2px 8px; border-radius: 10px; font-size: 11px; }
+  .badge.ok { background: #1e4d2b; color: #4ade80; }
+  .badge.err { background: #4d1e1e; color: #f87171; }
+  .token-box { background: #0d0d1f; border: 1px solid #333; border-radius: 6px; padding: 8px; font-size: 10px; font-family: monospace; word-break: break-all; max-height: 60px; overflow: hidden; margin-bottom: 10px; color: #7c9eff; }
+  button { width: 100%; padding: 7px; border: none; border-radius: 6px; cursor: pointer; font-size: 12px; margin-top: 4px; }
+  .btn-copy { background: #2a3a6e; color: #fff; }
+  .btn-copy:hover { background: #3a4e8e; }
+  .btn-reload { background: #2a2a2a; color: #aaa; }
+  .ts { font-size: 10px; color: #666; margin-bottom: 8px; }
+</style>
+</head>
+<body>
+<h3>Veo3Hao Extension</h3>
+<div class="row">
+  <span class="label">App kết nối</span>
+  <span id="app-status" class="badge err">Chưa kết nối</span>
+</div>
+<div class="row">
+  <span class="label">Bearer token</span>
+  <span id="token-status" class="badge err">Chưa có</span>
+</div>
+<div class="ts" id="token-ts">—</div>
+<div class="token-box" id="token-preview">Chưa bắt được token. Mở labs.google/fx/tools/flow và thực hiện 1 thao tác bất kỳ.</div>
+<button class="btn-copy" id="btn-copy">Copy token</button>
+<button class="btn-reload" id="btn-refresh">Làm mới</button>
+<script src="popup.js"></script>
+</body>
+</html>

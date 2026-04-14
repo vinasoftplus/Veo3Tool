@@ -1,0 +1,15 @@
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite
+
+.venv/
+venv/
+
+chrome_user_data/
+data/
+
+config/config.json
+
+*.log
+Thumbs.db
