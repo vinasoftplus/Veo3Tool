@@ -166,3 +166,71 @@ async def check_cookie(body: dict):
         return {"ok": False, "live": False, "error": "Cookie trống"}
     result = await check_cookie_status(cookie)
     return {"ok": True, **result}
+
+
+@router.get("/account-credits")
+async def get_account_credits(account_index: int = 0):
+    """Lấy credits từ aisandbox API bằng access_token của account."""
+    import httpx
+    cfg = load_config()
+    acc_key = f"account{account_index + 1}"
+    acc = cfg.get(acc_key, {})
+    token = acc.get("ACCESS_TOKEN", "").strip()
+    if not token:
+        return {"ok": False, "credits": None, "error": "Chưa có token"}
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
+            resp = await client.get(
+                "https://aisandbox-pa.googleapis.com/v1/credits",
+                headers={"Authorization": f"Bearer {token}"},
+            )
+        if resp.status_code == 200:
+            data = resp.json()
+            # Response dạng {"videoGenerationCredits": 16000} hoặc {"credits": 16000}
+            credits = (
+                data.get("videoGenerationCredits")
+                or data.get("credits")
+                or data.get("remainingCredits")
+            )
+            return {"ok": True, "credits": credits, "raw": data}
+        else:
+            return {"ok": False, "credits": None, "error": f"HTTP {resp.status_code}"}
+    except Exception as e:
+        return {"ok": False, "credits": None, "error": str(e)}
+
+
+@router.get("/account-credits")
+async def get_account_credits(account_index: int = 0):
+    """Lấy số credits còn lại của một account."""
+    import httpx
+    from fastapi import HTTPException
+
+    accounts = get_all_accounts()
+    if account_index < 0 or account_index >= len(accounts):
+        raise HTTPException(400, "account_index không hợp lệ")
+
+    account = accounts[account_index]
+    access_token = account.get("ACCESS_TOKEN", "").strip()
+    if not access_token:
+        return {"ok": False, "credits": None, "error": "Account không có ACCESS_TOKEN"}
+
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            resp = await client.get(
+                "https://aisandbox-pa.googleapis.com/v1/credits",
+                headers={"Authorization": f"Bearer {access_token}"},
+            )
+            resp.raise_for_status()
+            data = resp.json()
+            # API có thể trả về field tên khác nhau, thử các key phổ biến
+            credits = (
+                data.get("credits")
+                or data.get("remainingCredits")
+                or data.get("balance")
+                or data.get("total")
+            )
+            return {"ok": True, "credits": credits}
+    except httpx.HTTPStatusError as e:
+        return {"ok": False, "credits": None, "error": f"HTTP {e.response.status_code}: {e.response.text[:200]}"}
+    except Exception as e:
+        return {"ok": False, "credits": None, "error": str(e)}

@@ -8,6 +8,7 @@ google-api-python-client==2.165.0
 Pillow==11.2.1
 opencv-python-headless==4.11.0.86
 httpx==0.28.1
+requests==2.32.3
 aiofiles==24.1.0
 PyJWT[crypto]==2.10.1
 cryptography==44.0.2

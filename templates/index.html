@@ -983,18 +983,13 @@
             <div>
               <div class="card">
                 <div class="settings-section">
-                  <h3>Google Labs Accounts</h3>
-                  <p style="color:var(--text2);font-size:12px;margin-bottom:12px;">
-                    Nhập <strong>Labs Project ID</strong> và <strong>Labs Token</strong> (<code>ya29.xxx</code>).<br>
-                    Token hết hạn nhanh, nên dùng extension Chrome để tự động làm mới.
-                  </p>
-                  <div id="ext-status-bar"
-                    style="display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:6px;background:var(--bg3);margin-bottom:12px;font-size:12px;">
-                    <span id="ext-dot"
-                      style="width:8px;height:8px;border-radius:50%;background:var(--text3);flex-shrink:0;"></span>
-                    <span id="ext-label" style="color:var(--text2);">&#272;ang ki&#7875;m tra extension...</span>
-                    <button class="btn btn-secondary btn-sm" style="margin-left:auto;"
-                      onclick="Settings.checkExt()">L&#224;m m&#7899;i</button>
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                    <h3 style="margin:0;">Google Labs Accounts</h3>
+                    <div style="display:flex;gap:8px;">
+                      <button class="btn btn-secondary btn-sm" onclick="Settings.openManualTokenModal('new')" style="white-space:nowrap;">&#x270F;&#xFE0F; Nh&#7853;p Token</button>
+                      <button class="btn btn-sm" onclick="Settings.openCookieModal('new')"
+                        style="background:linear-gradient(135deg,#ec4899,#f43f5e);color:#fff;border:none;white-space:nowrap;">&#x1F36A; Load Cookie</button>
+                    </div>
                   </div>
                   <div id="accounts-container"></div>
                 </div>
@@ -1319,7 +1314,7 @@
   <script src="/static/js/tabs/consistent_video.js?v=2"></script>
   <script src="/static/js/tabs/character.js?v=2"></script>
   <script src="/static/js/tabs/consistent_video_ui.js?v=2"></script>
-  <script src="/static/js/tabs/settings.js?v=3"></script>
+  <script src="/static/js/tabs/settings.js?v=4"></script>
   <script src="/static/js/tabs/other.js?v=2"></script>
   <script src="/static/js/tabs/studio_unified.js?v=2"></script>
   <script>
