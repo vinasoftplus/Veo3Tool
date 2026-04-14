@@ -6,7 +6,7 @@ Flow (bám sát test_cookie_chrome.py):
   1. Parse cookie string → list {name, value}
   2. Tạo requests.Session, set cookie cho cả .google.com và labs.google
   3. GET /fx/api/auth/csrf → lấy csrfToken
-  4. POST /fx/api/auth/signin/google (form data, không phải JSON) → nhận {"url":"https://accounts.google.com/..."}
+  4. POST /fx/api/auth/signin/google (form data) → nhận {"url":"https://accounts.google.com/..."}
   5. GET google OAuth URL với cookie google.com → redirect về labs.google/fx/tools/flow
   6. Extract access_token từ page source
   7. POST /fx/api/trpc/project.createProject → lấy email, project_id
@@ -14,7 +14,6 @@ Flow (bám sát test_cookie_chrome.py):
 from __future__ import annotations
 
 import re
-import json
 import asyncio
 from typing import Any
 
@@ -37,7 +36,6 @@ def _parse_cookies(cookie_string: str) -> list[dict[str, str]]:
 
 def _set_cookies_for_domain(session: Session, cookies: list[dict], domain: str):
     """Set cookies vào session cho một domain cụ thể."""
-    from requests.cookies import RequestsCookieJar
     count = 0
     for c in cookies:
         try:
@@ -143,13 +141,11 @@ def get_token_from_cookie_sync(cookie_string: str, log=None) -> dict[str, Any]:
         pass
 
     if not google_oauth_url:
-        # Thử regex
         m = re.search(r'"url"\s*:\s*"(https://accounts\.google\.com[^"]+)"', r2.text)
         if m:
             google_oauth_url = m.group(1).replace("\\u0026", "&").replace("\\/", "/")
 
     if not google_oauth_url:
-        # Thử Location header
         google_oauth_url = r2.headers.get("location", "")
 
     if not google_oauth_url:
@@ -157,7 +153,6 @@ def get_token_from_cookie_sync(cookie_string: str, log=None) -> dict[str, Any]:
             "Không lấy được Google OAuth URL — cookie die hoặc chưa liên kết labs.google"
         )
 
-    # Unescape
     google_oauth_url = google_oauth_url.replace("\\u0026", "&").replace("\\/", "/")
     _log(f"[2/4] Google OAuth URL: {google_oauth_url[:80]}...")
 
@@ -185,7 +180,7 @@ def get_token_from_cookie_sync(cookie_string: str, log=None) -> dict[str, Any]:
         access_token = m.group(1)
         _log("[3/4] Token tìm thấy trong URL")
 
-    # 2. Trong page source (JSON embedded)
+    # 2. Trong page source
     if not access_token:
         for pattern in [
             r'"access_token"\s*:\s*"(ya29\.[^"]+)"',
@@ -195,7 +190,7 @@ def get_token_from_cookie_sync(cookie_string: str, log=None) -> dict[str, Any]:
             m = re.search(pattern, r3.text)
             if m:
                 access_token = m.group(1)
-                _log(f"[3/4] Token tìm thấy trong page source")
+                _log("[3/4] Token tìm thấy trong page source")
                 break
 
     # 3. Check redirect history
@@ -205,7 +200,7 @@ def get_token_from_cookie_sync(cookie_string: str, log=None) -> dict[str, Any]:
             m = re.search(r'[?&#]access_token=(ya29\.[^&"\'<\s]+)', loc)
             if m:
                 access_token = m.group(1)
-                _log(f"[3/4] Token tìm thấy trong redirect history: {loc[:80]}")
+                _log(f"[3/4] Token tìm thấy trong redirect history")
                 break
 
     if not access_token:
