@@ -1,12 +1,12 @@
 """
-Cookie → Token Service
-Tự động lấy access_token từ Google cookie string theo flow labs.google
+Cookie -> Token Service
+Tu dong lay access_token tu Google cookie string theo flow labs.google
 """
 from __future__ import annotations
 
 import re
-import asyncio
 from typing import Any
+from urllib.parse import urljoin
 
 import httpx
 
@@ -22,7 +22,7 @@ HEADERS_BASE = {
 
 
 def _parse_cookie_string(cookie_string: str) -> dict[str, str]:
-    """Parse cookie string 'k1=v1; k2=v2' thành dict."""
+    """Parse cookie string 'k1=v1; k2=v2' thanh dict."""
     cookies: dict[str, str] = {}
     for part in cookie_string.split(";"):
         part = part.strip()
@@ -34,18 +34,15 @@ def _parse_cookie_string(cookie_string: str) -> dict[str, str]:
 
 async def get_token_from_cookie(cookie_string: str, log=None) -> dict[str, Any]:
     """
-    4-bước lấy access_token từ cookie Google.
+    4-buoc lay access_token tu cookie Google.
 
     Returns:
         {
             "access_token": str,
             "email": str | None,
             "project_id": str | None,
-            "cookie_string": str,   # raw cookie (giữ lại để reuse)
+            "cookie_string": str,
         }
-
-    Raises:
-        Exception với message mô tả lỗi cụ thể.
     """
     def _log(msg: str):
         if log:
@@ -53,9 +50,8 @@ async def get_token_from_cookie(cookie_string: str, log=None) -> dict[str, Any]:
 
     cookies = _parse_cookie_string(cookie_string)
     if not cookies:
-        raise ValueError("Cookie string trống hoặc không hợp lệ")
+        raise ValueError("Cookie string trong hoac khong hop le")
 
-        # Cookie header string để gửi thủ công (tránh same-site restriction)
     cookie_header = "; ".join(f"{k}={v}" for k, v in cookies.items())
 
     async with httpx.AsyncClient(
@@ -63,102 +59,107 @@ async def get_token_from_cookie(cookie_string: str, log=None) -> dict[str, Any]:
         follow_redirects=False,
         headers={**HEADERS_BASE, "Cookie": cookie_header},
     ) as client:
+        client.cookies.update(cookies)
 
-        # ── Bước 1: Lấy CSRF token ──────────────────────────────
-        _log("[1/4] Lấy CSRF token...")
+        _log("[1/4] Lay CSRF token...")
         try:
-            resp1 = await client.get("https://labs.google/fx/api/auth/csrf")
+            resp1 = await client.get(
+                "https://labs.google/fx/api/auth/csrf",
+                headers={**HEADERS_BASE, "Cookie": cookie_header},
+            )
         except Exception as e:
-            raise ConnectionError(f"Không kết nối được labs.google: {e}")
+            raise ConnectionError(f"Khong ket noi duoc labs.google: {e}")
 
         if resp1.status_code == 401:
-            raise PermissionError("Cookie die — bị từ chối (401)")
+            raise PermissionError("Cookie die - bi tu choi (401)")
 
         try:
             data1 = resp1.json()
         except Exception:
-            raise ValueError("Phản hồi CSRF không phải JSON — cookie có thể die")
+            raise ValueError("Phan hoi CSRF khong phai JSON - cookie co the die")
 
         csrf_token = data1.get("csrfToken")
         if not csrf_token:
-            raise ValueError("CSRF token not found — cookie die hoặc chưa đăng nhập Google")
+            raise ValueError("CSRF token not found - cookie die hoac chua dang nhap Google")
 
         _log(f"[1/4] CSRF OK: {csrf_token[:16]}...")
 
-        # ── Bước 2: Sign in với Google OAuth ────────────────────
-        _log("[2/4] Đang sign in Google OAuth...")
+        _log("[2/4] Dang sign in Google OAuth...")
         headers2 = {
             **HEADERS_BASE,
-            "X-CSRF-Token": csrf_token,
-            "Content-Type": "application/json",
+            "Cookie": cookie_header,
+            "Content-Type": "application/x-www-form-urlencoded",
         }
         resp2 = await client.post(
             "https://labs.google/fx/api/auth/signin/google",
-            json={"callbackUrl": "https://labs.google/fx/tools/flow"},
+            data={
+                "csrfToken": csrf_token,
+                "callbackUrl": "https://labs.google/fx/tools/flow",
+                "json": "true",
+            },
             headers=headers2,
         )
 
-        # Lấy redirect URL từ Location header hoặc body JSON
         redirect_url = ""
         location = resp2.headers.get("location", "")
         if location:
-            redirect_url = location
+            redirect_url = urljoin("https://labs.google", location)
         else:
             try:
                 body2 = resp2.json()
-                redirect_url = body2.get("url", "")
+                redirect_url = urljoin("https://labs.google", body2.get("url", "")) if body2.get("url") else ""
             except Exception:
                 pass
 
         if "Cookie die" in resp2.text:
-            raise PermissionError("Cookie die — server báo lỗi")
+            raise PermissionError("Cookie die - server bao loi")
 
         if not redirect_url:
+            _log(f"[2/4] Signin status: {resp2.status_code}")
+            _log(f"[2/4] Headers: {dict(resp2.headers)}")
+            _log(f"[2/4] Body preview: {resp2.text[:300]}")
             raise PermissionError(
-                "Google auth URL not found — cookie die hoặc tài khoản chưa liên kết labs.google"
+                "Google auth URL not found - cookie die hoac tai khoan chua lien ket labs.google"
             )
 
-        _log(f"[2/4] Redirect → {redirect_url[:80]}...")
+        _log(f"[2/4] Signin status: {resp2.status_code}")
+        _log(f"[2/4] Location: {location[:200] if location else '(none)'}")
+        _log(f"[2/4] Redirect -> {redirect_url[:120]}...")
 
-        # ── Bước 3: Follow toàn bộ redirect chain → extract access_token ──
-        _log("[3/4] Đang follow redirect chain lấy access_token...")
-
-        # Dùng client mới với follow_redirects=True để follow hết chain
-        # Gửi cookie dưới dạng header để bypass same-site restriction của httpx
+        _log("[3/4] Dang follow redirect chain lay access_token...")
         async with httpx.AsyncClient(
             timeout=30,
             follow_redirects=True,
             headers={**HEADERS_BASE, "Cookie": cookie_header},
         ) as follow_client:
-            resp3 = await follow_client.get(redirect_url)
+            follow_client.cookies.update(cookies)
+            resp3 = await follow_client.get(
+                redirect_url,
+                headers={**HEADERS_BASE, "Cookie": cookie_header},
+            )
 
-        _log(f"[3/4] Final URL: {str(resp3.url)[:80]}...")
+        _log(f"[3/4] Final URL: {str(resp3.url)[:120]}...")
 
         if "Cookie die" in resp3.text:
-            raise PermissionError("Cookie die — phát hiện ở bước callback")
+            raise PermissionError("Cookie die - phat hien o buoc callback")
 
-        # Tìm access_token trong response body (JSON embedded)
         match = re.search(r'"access_token"\s*:\s*"([^"]+)"', resp3.text)
         if not match:
-            # Thử tìm dạng URL param
-            match = re.search(r'[?&#]access_token=([^&"\'<\s]+)', resp3.text)
+            match = re.search(r"[?&#]access_token=([^&\"'<>\\s]+)", resp3.text)
         if not match:
-            # Thử tìm trong URL hiện tại
-            match = re.search(r'[?&#]access_token=([^&"\'<\s]+)', str(resp3.url))
+            match = re.search(r"[?&#]access_token=([^&\"'<>\\s]+)", str(resp3.url))
 
         if not match:
-            # Log thêm để debug
             _log(f"[3/4] Response status: {resp3.status_code}, length: {len(resp3.text)}")
-            _log(f"[3/4] Body preview: {resp3.text[:200]}")
+            _log(f"[3/4] Body preview: {resp3.text[:300]}")
             raise ValueError(
-                "Không lấy được access_token — thử truy cập labs.google trên trình duyệt rồi thử lại"
+                "Khong lay duoc access_token - thu truy cap labs.google tren trinh duyet roi thu lai"
             )
 
         access_token = match.group(1)
         _log(f"[3/4] Access token: {access_token[:30]}...")
 
-        # ── Bước 4: Verify account + lấy project_id ─────────────
-        _log("[4/4] Xác nhận tài khoản và lấy project...")
+        _log("[4/4] Xac nhan tai khoan va lay project...")
         headers4 = {
             **HEADERS_BASE,
             "Cookie": cookie_header,
@@ -180,12 +181,13 @@ async def get_token_from_cookie(cookie_string: str, log=None) -> dict[str, Any]:
             email = email_match.group(1)
 
         pid_match = re.search(r'"project_id"\s*:\s*"([^"]+)"', resp4.text)
+        if not pid_match:
+            pid_match = re.search(r'"projectId"\s*:\s*"([^"]+)"', resp4.text)
         if pid_match:
             project_id = pid_match.group(1)
 
         if not email:
-            # Vẫn OK nếu có access_token, project_id là bonus
-            _log("[4/4] Không lấy được email nhưng token hợp lệ")
+            _log("[4/4] Khong lay duoc email nhung token hop le")
         else:
             _log(f"[4/4] Email: {email}, Project: {project_id}")
 
