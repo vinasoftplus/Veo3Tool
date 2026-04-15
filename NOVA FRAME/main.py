@@ -19,6 +19,27 @@ PORT = 8765
 HOST = "127.0.0.1"
 
 
+def kill_port(port: int):
+    """Kill bất kỳ process nào đang giữ port — Windows only."""
+    try:
+        import subprocess
+        result = subprocess.run(
+            ["netstat", "-ano"],
+            capture_output=True, text=True, timeout=5, creationflags=0x08000000
+        )
+        for line in result.stdout.splitlines():
+            if f":{port}" in line and "LISTENING" in line:
+                parts = line.strip().split()
+                pid = parts[-1]
+                if pid.isdigit() and int(pid) != 0:
+                    subprocess.run(
+                        ["taskkill", "/F", "/PID", pid],
+                        capture_output=True, timeout=5, creationflags=0x08000000
+                    )
+    except Exception:
+        pass
+
+
 def start_api_server():
     import uvicorn
     from app import create_app
@@ -39,6 +60,10 @@ def wait_for_server(timeout: float = 15.0):
 
 
 def main():
+    # Kill process cũ còn giữ port (nếu có)
+    kill_port(PORT)
+    time.sleep(0.5)  # Chờ OS release port
+
     # Start API in background thread
     server_thread = threading.Thread(target=start_api_server, daemon=True)
     server_thread.start()

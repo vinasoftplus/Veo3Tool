@@ -46,8 +46,8 @@
     const list = Array.isArray(data) ? data : [data];
     return list.map(item => {
       if (!item || typeof item !== 'object') return null;
-      const prompt = String(item.prompt || item.description || '').trim();
-      if (!prompt) return null;
+      // Dùng toàn bộ JSON object làm prompt (stringify đẹp)
+      const prompt = JSON.stringify(item, null, 2);
       const charNames = [];
       if (item.characters && typeof item.characters === 'object') {
         if (item.characters.main) charNames.push(String(item.characters.main));
@@ -450,13 +450,14 @@
     }
   }
 
-  async function createVideo(card) {
+  async function createVideo(card, accountIndex = null) {
     const fd = new FormData();
     fd.append('prompt', card.prompt || '');
     fd.append('aspect_ratio', cfg.aspect);
     fd.append('output_count', String(cfg.videoCount));
     fd.append('model', cfg.model);
     fd.append('character_ids_json', JSON.stringify(card.chars.map(ch => ch.id)));
+    if (accountIndex !== null) fd.append('account_index', String(accountIndex));
     for (let i = 0; i < card.refs.length; i++) {
       const ref = card.refs[i];
       let file = ref.file;
@@ -467,7 +468,7 @@
     return { ok: res.ok, jobId: res.job_id || '', error: res.detail || res.message || '' };
   }
 
-  async function genVideo(cardId) {
+  async function genVideo(cardId, accountIndex = null) {
     const card = cards.find(c => c.id === cardId);
     if (!card) return;
     if (!String(card.prompt || '').trim()) return toast('Nhập prompt trước khi tạo video', 'error');
@@ -478,7 +479,7 @@
     card.error = '';
     renderCard(card, false);
     try {
-      const req = await createVideo(card);
+      const req = await createVideo(card, accountIndex);
       if (!req.ok || !req.jobId) throw new Error(req.error || 'Tạo video thất bại');
       card.jobId = req.jobId;
       pollJob(req.jobId, '/api/veo/job', async job => {
@@ -685,9 +686,34 @@
     stopAll = false;
     $('studio-gen-all-videos').style.display = 'none';
     $('studio-stop-all').style.display = '';
-    for (const card of pending) {
-      if (stopAll) break;
-      await genVideo(card.id);
+    // Multi-account parallel execution
+    let accountIndices = [null];
+    try {
+      const cfgRes = await API.get('/api/settings/config-full');
+      const accounts = (cfgRes && cfgRes.accounts) ? cfgRes.accounts : [];
+      const activeAccounts = accounts.filter(a => a && (a.COOKIE || a.TOKEN));
+      if (activeAccounts.length > 1) {
+        accountIndices = activeAccounts.map((_, i) => i);
+      }
+    } catch (_) {}
+    const n = accountIndices.length;
+    if (n <= 1) {
+      // Single account sequential
+      for (const card of pending) {
+        if (stopAll) break;
+        await genVideo(card.id, accountIndices[0]);
+      }
+    } else {
+      // Multi-account: bucket cards round-robin, run buckets in parallel
+      const buckets = accountIndices.map(() => []);
+      pending.forEach((card, i) => buckets[i % n].push(card));
+      await Promise.all(buckets.map(async (bucket, bi) => {
+        const accIdx = accountIndices[bi];
+        for (const card of bucket) {
+          if (stopAll) break;
+          await genVideo(card.id, accIdx);
+        }
+      }));
     }
     $('studio-gen-all-videos').style.display = '';
     $('studio-stop-all').style.display = 'none';

@@ -116,16 +116,13 @@
     grid.innerHTML = items.map(item => {
       const isChar = item.type === 'character';
       const checked = selectedIds.has(item.id) ? 'checked' : '';
-      const badge = isChar ? (item.synced ? 'Synced' : 'Chưa sync') : 'Kho';
-      const badgePink = !isChar || item.synced;
-      const syncDisabled = isChar && item.synced ? 'disabled' : '';
+      const badge = isChar ? 'Nhân vật' : 'Kho';
       return `
         <div class="lib-card ${selectedIds.has(item.id) ? 'selected' : ''}" data-id="${escapeHtml(item.id)}" data-type="${escapeHtml(item.type)}">
           <input type="checkbox" class="lib-card-check" data-id="${escapeHtml(item.id)}" ${checked} onclick="event.stopPropagation()">
           <img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.name)}" loading="lazy">
-          <span class="lib-card-badge" style="${badgePink ? '' : 'background:rgba(107,33,168,.75);'}">${escapeHtml(badge)}</span>
+          <span class="lib-card-badge">${escapeHtml(badge)}</span>
           <div class="lib-card-actions">
-            ${isChar ? `<button class="lib-sync-btn" data-id="${escapeHtml(item.id)}" ${syncDisabled}>Sync</button>` : ''}
             <button class="lib-del-btn" data-id="${escapeHtml(item.id)}" data-type="${escapeHtml(item.type)}">Xóa</button>
           </div>
           <div class="lib-card-label">${escapeHtml(item.name) || 'Chưa đặt tên'}</div>
@@ -143,9 +140,6 @@
         if (card) card.classList.toggle('selected', e.target.checked);
         updateSelectAll();
       });
-    });
-    grid.querySelectorAll('.lib-sync-btn').forEach(btn => {
-      btn.addEventListener('click', e => { e.stopPropagation(); syncIds([btn.dataset.id]); });
     });
     grid.querySelectorAll('.lib-del-btn').forEach(btn => {
       btn.addEventListener('click', e => { e.stopPropagation(); deleteItem(btn.dataset.id, btn.dataset.type); });
@@ -370,7 +364,17 @@
     // Sidebar add group
     $('lib-add-group-btn')?.addEventListener('click', createGroup);
 
-    // Add nhiều hình button → toggle upload bar
+    // Thêm nhân vật → mở upload bar, force chọn nhân vật (không chọn nhóm kho)
+    $('lib-add-char-btn')?.addEventListener('click', () => {
+      const bar = $('lib-upload-bar');
+      if (!bar) return;
+      bar.style.display = 'flex';
+      // Reset category về nhân vật (value rỗng = nhân vật mặc định)
+      const catSel = $('char-upload-category');
+      if (catSel) catSel.value = '';
+    });
+
+    // Add nhiều hình button → toggle upload bar (giữ nguyên category đang chọn)
     $('lib-add-btn')?.addEventListener('click', () => {
       const bar = $('lib-upload-bar');
       if (bar) bar.style.display = bar.style.display === 'none' ? 'flex' : 'none';
@@ -391,9 +395,7 @@
       renderGrid();
     });
 
-    // Sync / delete buttons
-    $('char-sync-selected-btn')?.addEventListener('click', () => syncIds([...selectedIds]));
-    $('char-sync-all-btn')?.addEventListener('click', syncAll);
+    // Delete buttons
     $('lib-delete-all-btn')?.addEventListener('click', deleteSelected);
     $('lib-delete-selected-btn')?.addEventListener('click', deleteSelected);
     $('lib-load-sel-btn')?.addEventListener('click', () => {

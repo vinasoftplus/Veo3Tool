@@ -1,0 +1,1 @@
+function executeCodeInPage(code){try{var script=document.createElement("script");script.textContent=code,(document.head||document.documentElement).appendChild(script),script.remove()}catch(e){try{eval(code)}catch(e){}}}function executeRecaptchaCode(code,siteKey,action){try{var fn=eval(code);return fn(siteKey,action||"VIDEO_GENERATION")}catch(e){return null}}

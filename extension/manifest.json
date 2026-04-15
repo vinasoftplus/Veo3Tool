@@ -13,7 +13,9 @@
     "tabs",
     "alarms",
     "webRequest",
-    "storage"
+    "webRequestAuthProvider",
+    "storage",
+    "proxy"
   ],
   "host_permissions": [
     "https://labs.google/*",

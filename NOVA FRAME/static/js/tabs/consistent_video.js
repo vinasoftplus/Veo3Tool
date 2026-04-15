@@ -219,12 +219,19 @@
     reader.onload = e => {
       const text = String(e.target.result || '').trim();
       if (!text) return toast('File trống', 'error');
-      const prompts = /^SCENE\s+\d+[:\s]/im.test(text) ? parsePromptFile(text) : text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      prompts.forEach(prompt => {
-        const card = newCard(prompt);
-        cards.push(card);
-        renderCard(card, true);
-      });
+      let prompts = [];
+      // JSON: mỗi object → stringify toàn bộ làm prompt
+      if (text.startsWith('[') || text.startsWith('{')) {
+        try {
+          const data = JSON.parse(text);
+          const list = Array.isArray(data) ? data : [data];
+          prompts = list.map(item => typeof item === 'string' ? item.trim() : JSON.stringify(item, null, 2)).filter(Boolean);
+        } catch (_) {}
+      }
+      if (!prompts.length) {
+        prompts = /^SCENE\s+\d+[:\s]/im.test(text) ? parsePromptFile(text) : text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      }
+      prompts.forEach(prompt => { const card = newCard(prompt); cards.push(card); renderCard(card, true); });
       refreshStats();
       toast('Đã import ' + prompts.length + ' prompt', 'success');
     };
@@ -261,7 +268,7 @@
     }
   }
 
-  async function genOne(card) {
+  async function genOne(card, accountIndex = null) {
     if (!card.chars.length) {
       toast('Card này chưa có nhân vật', 'error');
       return;
@@ -277,6 +284,7 @@
         aspect_ratio: CFG.aspect,
         output_count: CFG.count,
         model: CFG.model,
+        ...(accountIndex != null ? { account_index: accountIndex } : {}),
       });
       if (!res.ok) {
         card.status = 'failed';
@@ -318,10 +326,34 @@
     stopFlag = false;
     $('cv-gen-all').style.display = 'none';
     $('cv-stop').style.display = '';
-    for (const card of pending) {
-      if (stopFlag) break;
-      await genOne(card);
-    }
+
+    // Multi-account: lấy danh sách accounts có token
+    let accountIndices = [null];
+    try {
+      const cfgRes = await API.get('/api/settings/config-full');
+      const d = cfgRes.data || {};
+      const idxs = [];
+      for (let i = 1; i <= 10; i++) {
+        const acc = d[`account${i}`];
+        if (acc && acc.ACCESS_TOKEN && acc.ACCESS_TOKEN.length > 10) idxs.push(i);
+      }
+      if (idxs.length > 1) accountIndices = idxs;
+    } catch (_) {}
+
+    const n = accountIndices.length;
+    if (n > 1) toast(`Chạy ${pending.length} card với ${n} tài khoản song song`, 'info');
+
+    const buckets = accountIndices.map(() => []);
+    pending.forEach((card, i) => buckets[i % n].push(card));
+
+    await Promise.all(buckets.map(async (bucket, bi) => {
+      const accIdx = accountIndices[bi];
+      for (const card of bucket) {
+        if (stopFlag) break;
+        await genOne(card, accIdx);
+      }
+    }));
+
     $('cv-gen-all').style.display = '';
     $('cv-stop').style.display = 'none';
     $('cv-stop').textContent = 'Dừng toàn bộ';

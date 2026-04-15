@@ -3,7 +3,12 @@
 <head>
 <meta charset="utf-8">
 <style>
-  body { width: 320px; font-family: sans-serif; font-size: 13px; background: #1a1a2e; color: #e0e0e0; margin: 0; padding: 16px; }
+  body { width: 340px; font-family: sans-serif; font-size: 13px; background: #1a1a2e; color: #e0e0e0; margin: 0; padding: 0; }
+  .tabs { display: flex; border-bottom: 1px solid #333; }
+  .tab { flex: 1; padding: 8px; text-align: center; cursor: pointer; font-size: 12px; color: #aaa; background: transparent; border: none; border-bottom: 2px solid transparent; }
+  .tab.active { color: #7c9eff; border-bottom-color: #7c9eff; }
+  .tab-content { display: none; padding: 14px; }
+  .tab-content.active { display: block; }
   h3 { margin: 0 0 12px; color: #7c9eff; font-size: 14px; }
   .row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
   .label { color: #aaa; }
@@ -16,22 +21,119 @@
   .btn-copy:hover { background: #3a4e8e; }
   .btn-reload { background: #2a2a2a; color: #aaa; }
   .ts { font-size: 10px; color: #666; margin-bottom: 8px; }
+  /* Proxy tab styles */
+  .proxy-status-bar { display: flex; gap: 8px; margin-bottom: 12px; }
+  .proxy-stat { flex: 1; background: #0d0d1f; border: 1px solid #333; border-radius: 6px; padding: 6px 8px; text-align: center; }
+  .proxy-stat-label { font-size: 10px; color: #666; }
+  .proxy-stat-value { font-size: 14px; font-weight: 700; color: #7c9eff; }
+  .input-row { margin-bottom: 8px; }
+  .input-row label { display: block; font-size: 11px; color: #888; margin-bottom: 3px; }
+  input[type="text"], input[type="number"], textarea { width: 100%; box-sizing: border-box; padding: 6px 8px; background: #0d0d1f; border: 1px solid #444; border-radius: 5px; color: #e0e0e0; font-size: 12px; font-family: monospace; }
+  textarea { min-height: 60px; resize: vertical; }
+  .btn-row { display: flex; gap: 6px; margin-top: 6px; }
+  .btn-row button { margin-top: 0; }
+  .btn-green { background: #1e4d2b; color: #4ade80; }
+  .btn-green:hover { background: #2a6b3d; }
+  .btn-red { background: #4d1e1e; color: #f87171; }
+  .btn-red:hover { background: #6b2a2a; }
+  .btn-gray { background: #2a2a2a; color: #aaa; }
+  .proxy-list { max-height: 180px; overflow-y: auto; margin-top: 8px; }
+  .proxy-item { background: #0d0d1f; border: 1px solid #333; border-radius: 5px; padding: 7px 8px; margin-bottom: 5px; display: flex; justify-content: space-between; align-items: center; }
+  .proxy-item.active { border-color: #4ade80; }
+  .proxy-host { font-size: 11px; font-family: monospace; color: #c4b5fd; }
+  .proxy-meta { font-size: 10px; color: #666; }
+  .proxy-actions { display: flex; gap: 4px; }
+  .icon-btn { width: 26px; height: 26px; border: 1px solid #444; background: #1a1a2e; color: #aaa; border-radius: 4px; cursor: pointer; font-size: 12px; }
+  .toggle-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 12px; }
+  .toggle { position: relative; width: 40px; height: 22px; display: inline-block; }
+  .toggle input { opacity: 0; width: 0; height: 0; }
+  .slider { position: absolute; cursor: pointer; inset: 0; background: #333; border-radius: 22px; transition: 0.2s; }
+  .slider:before { content: ''; position: absolute; width: 16px; height: 16px; left: 3px; bottom: 3px; background: #aaa; border-radius: 50%; transition: 0.2s; }
+  input:checked + .slider { background: #1e4d2b; }
+  input:checked + .slider:before { transform: translateX(18px); background: #4ade80; }
+  .section-title { font-size: 12px; font-weight: 700; color: #7c9eff; margin: 10px 0 6px; }
 </style>
 </head>
 <body>
-<h3>Veo3Hao Extension</h3>
-<div class="row">
-  <span class="label">App kết nối</span>
-  <span id="app-status" class="badge err">Chưa kết nối</span>
+<div class="tabs">
+  <button class="tab active" data-tab="token">Token</button>
+  <button class="tab" data-tab="proxy">Proxy</button>
 </div>
-<div class="row">
-  <span class="label">Bearer token</span>
-  <span id="token-status" class="badge err">Chưa có</span>
+
+<!-- Token Tab -->
+<div class="tab-content active" id="tab-token">
+  <h3>Veo3Hao Extension</h3>
+  <div class="row">
+    <span class="label">App kết nối</span>
+    <span id="app-status" class="badge err">Chưa kết nối</span>
+  </div>
+  <div class="row">
+    <span class="label">Bearer token</span>
+    <span id="token-status" class="badge err">Chưa có</span>
+  </div>
+  <div class="ts" id="token-ts">—</div>
+  <div class="token-box" id="token-preview">Chưa bắt được token. Mở labs.google/fx/tools/flow và thực hiện 1 thao tác bất kỳ.</div>
+  <button class="btn-copy" id="btn-copy">Copy token</button>
+  <button class="btn-reload" id="btn-refresh">Làm mới</button>
 </div>
-<div class="ts" id="token-ts">—</div>
-<div class="token-box" id="token-preview">Chưa bắt được token. Mở labs.google/fx/tools/flow và thực hiện 1 thao tác bất kỳ.</div>
-<button class="btn-copy" id="btn-copy">Copy token</button>
-<button class="btn-reload" id="btn-refresh">Làm mới</button>
+
+<!-- Proxy Tab -->
+<div class="tab-content" id="tab-proxy">
+  <div class="proxy-status-bar">
+    <div class="proxy-stat">
+      <div class="proxy-stat-label">Trạng thái</div>
+      <div class="proxy-stat-value" id="px-status">Tắt</div>
+    </div>
+    <div class="proxy-stat">
+      <div class="proxy-stat-label">Proxy</div>
+      <div class="proxy-stat-value" id="px-count">0</div>
+    </div>
+    <div class="proxy-stat">
+      <div class="proxy-stat-label">Hiện tại</div>
+      <div class="proxy-stat-value" id="px-current" style="font-size:10px;">-</div>
+    </div>
+  </div>
+
+  <div class="section-title">Thêm proxy</div>
+  <div class="input-row">
+    <label>Proxy (host:port hoặc user:pass@host:port hoặc host:port:user:pass)</label>
+    <textarea id="px-bulk-input" placeholder="1.2.3.4:8080&#10;user:pass@1.2.3.5:8080&#10;socks5://1.2.3.6:1080"></textarea>
+  </div>
+  <div class="btn-row">
+    <button class="btn-green" id="px-add-btn">Thêm</button>
+    <button class="btn-gray" id="px-export-btn">Export</button>
+  </div>
+
+  <div class="section-title">Điều khiển</div>
+  <div class="toggle-row">
+    <span>Bật proxy</span>
+    <label class="toggle"><input type="checkbox" id="px-enable-toggle"><span class="slider"></span></label>
+  </div>
+  <div class="toggle-row">
+    <span>Tự động xoay (phút)</span>
+    <label class="toggle"><input type="checkbox" id="px-autorotate-toggle"><span class="slider"></span></label>
+  </div>
+  <div class="input-row">
+    <input type="number" id="px-rotate-interval" min="1" value="5" placeholder="Phút">
+  </div>
+  <div class="toggle-row">
+    <span>Xoay theo prompt (mỗi N cái)</span>
+    <label class="toggle"><input type="checkbox" id="px-prompt-rotate-toggle"><span class="slider"></span></label>
+  </div>
+  <div class="input-row">
+    <input type="number" id="px-prompt-interval" min="1" value="3" placeholder="N prompts">
+  </div>
+  <div class="btn-row">
+    <button class="btn-gray" id="px-rotate-now-btn">Xoay ngay</button>
+    <button class="btn-red" id="px-clear-btn">Xóa tất cả</button>
+  </div>
+
+  <div class="section-title">Danh sách proxy</div>
+  <div class="proxy-list" id="px-list">
+    <div style="color:#666;font-size:11px;text-align:center;padding:16px;">Chưa có proxy</div>
+  </div>
+</div>
+
 <script src="popup.js"></script>
 </body>
 </html>

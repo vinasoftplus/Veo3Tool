@@ -12,9 +12,23 @@ from typing import Any
 
 
 def _resolve_base_dir() -> Path:
+    # Nuitka onefile set env var NUITKA_ONEFILE_PARENT trỏ đúng về exe gốc
+    nuitka_parent = os.environ.get("NUITKA_ONEFILE_PARENT", "")
+    if nuitka_parent:
+        base = Path(nuitka_parent).resolve().parent
+        print(f"[config] Nuitka onefile → BASE_DIR={base!r}", flush=True)
+        return base
+
+    # PyInstaller
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent.parent
+        base = Path(sys.executable).resolve().parent
+        print(f"[config] PyInstaller frozen → BASE_DIR={base!r}", flush=True)
+        return base
+
+    # Dev mode
+    base = Path(__file__).resolve().parent.parent
+    print(f"[config] Dev mode → BASE_DIR={base!r}", flush=True)
+    return base
 
 
 BASE_DIR = _resolve_base_dir()

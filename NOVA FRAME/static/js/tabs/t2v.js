@@ -222,7 +222,7 @@
   }
 
   /* ── Generate a single card ──────────────────────────────── */
-  async function genCard(card) {
+  async function genCard(card, accountIndex = null) {
     if (card.status === 'running') return;
     card.status = 'running';
     card.outputs = [];
@@ -234,12 +234,12 @@
       let res;
       if (card.chars.length > 0) {
         // Consistent video
-        const mediaIds = card.chars.map(c => c.media_id).filter(Boolean);
         res = await API.post('/api/veo/consistent-video', {
           prompt: card.prompt,
           character_ids: card.chars.map(c => c.id),
           aspect_ratio: CFG.aspect,
           output_count: CFG.count,
+          ...(accountIndex != null ? { account_index: accountIndex } : {}),
         });
       } else {
         res = await API.post('/api/veo/text-to-video', {
@@ -247,6 +247,7 @@
           aspect_ratio: CFG.aspect,
           output_count: CFG.count,
           model: CFG.model,
+          ...(accountIndex != null ? { account_index: accountIndex } : {}),
         });
       }
 
@@ -357,18 +358,43 @@
     downloadUrl(url, filename);
   }
 
-  /* ── Gen All ─────────────────────────────────────────────── */
+  /* ── Gen All (multi-account parallel) ───────────────────── */
   async function genAll() {
     const pending = cards.filter(c => c.status === 'idle');
     if (!pending.length) { toast('Không có card nào chờ tạo', 'error'); return; }
     _stopFlag = false;
     $('t2v-gen-all').style.display = 'none';
     $('t2v-stop').style.display = '';
-    toast(`Bắt đầu tạo ${pending.length} video...`, 'info');
-    for (const card of pending) {
-      if (_stopFlag) break;
-      await genCard(card);
-    }
+
+    // Lấy danh sách accounts có token
+    let accountIndices = [null];
+    try {
+      const cfgRes = await API.get('/api/settings/config-full');
+      const d = cfgRes.data || {};
+      const idxs = [];
+      for (let i = 1; i <= 10; i++) {
+        const acc = d[`account${i}`];
+        if (acc && acc.ACCESS_TOKEN && acc.ACCESS_TOKEN.length > 10) idxs.push(i);
+      }
+      if (idxs.length > 1) accountIndices = idxs;
+    } catch (_) {}
+
+    const n = accountIndices.length;
+    if (n > 1) toast(`Chạy ${pending.length} card với ${n} tài khoản song song`, 'info');
+    else toast(`Bắt đầu tạo ${pending.length} video...`, 'info');
+
+    // Chia cards đều cho từng account rồi chạy song song
+    const buckets = accountIndices.map(() => []);
+    pending.forEach((card, i) => buckets[i % n].push(card));
+
+    await Promise.all(buckets.map(async (bucket, bi) => {
+      const accIdx = accountIndices[bi];
+      for (const card of bucket) {
+        if (_stopFlag) break;
+        await genCard(card, accIdx);
+      }
+    }));
+
     $('t2v-gen-all').style.display = '';
     $('t2v-stop').style.display = 'none';
     _stopFlag = false;
@@ -409,7 +435,7 @@
     }
   }
 
-  // JSON import: array of strings or objects with prompt/text/content field
+  // JSON import: mỗi object trong array → stringify toàn bộ làm prompt
   function handleJsonImport(file) {
     const reader = new FileReader();
     reader.onload = e => {
@@ -417,33 +443,16 @@
       try { data = JSON.parse(e.target.result); } catch {
         toast('File JSON không hợp lệ', 'error'); return;
       }
-      const prompts = [];
-      if (Array.isArray(data)) {
-        data.forEach(item => {
-          if (typeof item === 'string') prompts.push(item.trim());
-          else if (item && typeof item === 'object') {
-            const val = item.prompt || item.text || item.content || item.scene || Object.values(item)[0];
-            if (val) prompts.push(String(val).trim());
-          }
-        });
-      } else if (data && typeof data === 'object') {
-        // {scenes: [...]} or {prompts: [...]}
-        const arr = data.scenes || data.prompts || data.items || Object.values(data);
-        if (Array.isArray(arr)) {
-          arr.forEach(item => {
-            if (typeof item === 'string') prompts.push(item.trim());
-            else if (item && typeof item === 'object') {
-              const val = item.prompt || item.text || item.content || Object.values(item)[0];
-              if (val) prompts.push(String(val).trim());
-            }
-          });
-        }
-      }
-      const valid = prompts.filter(Boolean);
-      if (!valid.length) { toast('Không tìm thấy prompt nào trong file JSON', 'error'); return; }
-      valid.forEach(p => { const c = newCard(p); cards.push(c); renderCard(c, true); });
+      const list = Array.isArray(data) ? data : [data];
+      const prompts = list.map(item => {
+        if (typeof item === 'string') return item.trim();
+        if (item && typeof item === 'object') return JSON.stringify(item, null, 2);
+        return null;
+      }).filter(Boolean);
+      if (!prompts.length) { toast('Không tìm thấy prompt nào trong file JSON', 'error'); return; }
+      prompts.forEach(p => { const c = newCard(p); cards.push(c); renderCard(c, true); });
       refreshEmpty();
-      toast(`Đã import ${valid.length} prompt từ JSON`, 'success');
+      toast(`Đã import ${prompts.length} prompt từ JSON`, 'success');
     };
     reader.readAsText(file, 'utf-8');
   }

@@ -83,7 +83,7 @@
           <div class="account-index" style="width:28px;height:28px;border-radius:50%;background:var(--pink-light);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">${acc._index + 1}</div>
           <div style="flex:1;min-width:0;">
             <div style="font-weight:700;font-size:13px;">${email || 'Tài khoản #' + (acc._index + 1)}</div>
-            ${email ? `<div style="font-size:11px;color:var(--text3);font-family:monospace;">${acc.ACCESS_TOKEN?.slice(0,20)}...</div>` : ''}
+            ${email ? `<div style="font-size:11px;color:var(--text3);font-family:monospace;">${acc.ACCESS_TOKEN?.slice(0, 20)}...</div>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
             ${statusDot}
@@ -130,6 +130,19 @@
       if (acc.COOKIE) {
         const checkRes = await API.post('/api/settings/check-cookie', { cookie_string: acc.COOKIE });
         accounts[idx]._live = checkRes.live;
+
+        // Nếu token hết hạn → tự refresh từ cookie đã lưu
+        if (!checkRes.live) {
+          try {
+            const refreshRes = await API.post('/api/settings/refresh-token', { account_index: acc._index });
+            if (refreshRes.ok) {
+              accounts[idx]._live = true;
+              toast(`Đã refresh token${refreshRes.email ? ' — ' + refreshRes.email : ''}`, 'success', 4000);
+              await loadSettings();
+              return;
+            }
+          } catch (re) { /* cookie chết thật */ }
+        }
       } else if (acc.ACCESS_TOKEN) {
         accounts[idx]._live = true;
       }
@@ -195,7 +208,7 @@
     modal.innerHTML = `
       <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px;width:520px;max-width:95vw;">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-          <div style="font-size:16px;font-weight:700;">✏️ Nhập Token thủ công — Tài khoản #${(acc._index||idx) + 1}</div>
+          <div style="font-size:16px;font-weight:700;">✏️ Nhập Token thủ công — Tài khoản #${(acc._index || idx) + 1}</div>
           <button onclick="document.getElementById('manual-token-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);">×</button>
         </div>
         <p style="color:var(--text2);font-size:12px;margin-bottom:16px;line-height:1.6;">
@@ -279,11 +292,8 @@
         </p>
 
         <div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.9;">
-          <strong style="color:var(--text);">Cách lấy cookie accounts.google.com:</strong><br>
-          1. Mở Chrome → vào <code style="background:var(--bg2);padding:1px 6px;border-radius:3px;">accounts.google.com</code><br>
-          2. Nhấn <strong>F12</strong> → tab <strong>Application</strong> → <strong>Cookies</strong> → chọn <code>https://accounts.google.com</code><br>
-          3. Bấm chuột phải vào bất kỳ cookie nào → <strong>Copy all</strong><br>
-          <em style="color:var(--text3);">Hoặc: F12 → Network → request đến accounts.google.com → Request Headers → copy giá trị Cookie:</em>
+          <strong style="color:var(--text);">Cách lấy cookie chuẩn:</strong><br>
+          Dùng tiện ích <strong>Get Cookie Google</strong> để lấy cookie chuẩn nhất
         </div>
 
         <div style="margin-bottom:12px;">

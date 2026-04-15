@@ -12,7 +12,13 @@
       "Bash(python -c \"import ast; ast.parse\\(open\\('c:/Users/PC/Desktop/Veo3Tool/routers/settings.py'\\).read\\(\\)\\); print\\('OK'\\)\")",
       "Bash(python -c ':*)",
       "Bash(pip show:*)",
-      "Bash(grep -n \"license\\\\|LICENSE\\\\|DOMContentLoaded\\\\|init_app\\\\|runtime\" \"c:/Users/PC/Desktop/Veo3Tool/NOVA FRAME/static/js/\"*.js)"
+      "Bash(grep -n \"license\\\\|LICENSE\\\\|DOMContentLoaded\\\\|init_app\\\\|runtime\" \"c:/Users/PC/Desktop/Veo3Tool/NOVA FRAME/static/js/\"*.js)",
+      "Bash(py -3.10 -m nuitka --version)",
+      "Bash(cat)",
+      "Read(//tmp/**)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1"
     ]
   }
 }

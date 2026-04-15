@@ -48,3 +48,12 @@ document.getElementById('license-submit-btn')?.addEventListener('click', async (
 });
 
 checkLicense();
+
+// Auto-refresh tất cả token từ cookie đã lưu (chạy nền, không block UI)
+(async () => {
+  try {
+    await API.post('/api/settings/auto-refresh-all', {});
+  } catch (e) {
+    // silent
+  }
+})();

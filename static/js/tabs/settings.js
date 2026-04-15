@@ -130,6 +130,20 @@
       if (acc.COOKIE) {
         const checkRes = await API.post('/api/settings/check-cookie', { cookie_string: acc.COOKIE });
         accounts[idx]._live = checkRes.live;
+
+        // Nếu token hết hạn → tự refresh từ cookie
+        if (!checkRes.live) {
+          try {
+            const refreshRes = await API.post('/api/settings/refresh-token', { account_index: acc._index });
+            if (refreshRes.ok) {
+              accounts[idx]._live = true;
+              toast(`Đã refresh token${refreshRes.email ? ' — ' + refreshRes.email : ''}`, 'success', 4000);
+              // Reload lại settings để có token mới
+              await loadSettings();
+              return;
+            }
+          } catch (re) { /* cookie chết thật */ }
+        }
       } else if (acc.ACCESS_TOKEN) {
         accounts[idx]._live = true;
       }

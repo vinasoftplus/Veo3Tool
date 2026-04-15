@@ -171,15 +171,22 @@
     const reader = new FileReader();
     reader.onload = e => {
       const text = String(e.target.result || '').trim();
-      if (!text) return toast('File tr?ng', 'error');
-      const prompts = /^SCENE\s+\d+[:\s]/im.test(text) ? parsePromptFile(text) : text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      prompts.forEach(prompt => {
-        const card = newCard(prompt);
-        cards.push(card);
-        renderCard(card, true);
-      });
+      if (!text) return toast('File trống', 'error');
+      let prompts = [];
+      // JSON: mỗi object → stringify toàn bộ làm prompt
+      if (text.startsWith('[') || text.startsWith('{')) {
+        try {
+          const data = JSON.parse(text);
+          const list = Array.isArray(data) ? data : [data];
+          prompts = list.map(item => typeof item === 'string' ? item.trim() : JSON.stringify(item, null, 2)).filter(Boolean);
+        } catch (_) {}
+      }
+      if (!prompts.length) {
+        prompts = /^SCENE\s+\d+[:\s]/im.test(text) ? parsePromptFile(text) : text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      }
+      prompts.forEach(prompt => { const card = newCard(prompt); cards.push(card); renderCard(card, true); });
       refreshStats();
-      toast('?? import ' + prompts.length + ' prompt', 'success');
+      toast('Đã import ' + prompts.length + ' prompt', 'success');
     };
     reader.readAsText(file, 'utf-8');
   }

@@ -130,3 +130,12 @@ document.addEventListener('click', e => {
 
 // Chạy ngay khi load
 checkLicense();
+
+// Auto-refresh tất cả token từ cookie đã lưu (chạy nền, không block UI)
+(async () => {
+  try {
+    await API.post('/api/settings/auto-refresh-all', {});
+  } catch (e) {
+    // silent
+  }
+})();

@@ -5,7 +5,11 @@
    - Falls back to grecaptcha.enterprise.execute() if no cached token
    - Polls /api/extension/poll-job for captcha/browser tasks
    - Submits tokens to /api/extension/submit-job
+   - Proxy management: rotate proxy per N prompts to avoid IP bans
 */
+
+// Import proxy manager
+importScripts('proxy-manager.js');
 
 const APP_URL = 'http://127.0.0.1:8765';
 const URL_UPLOAD_IMAGE = 'https://aisandbox-pa.googleapis.com/v1:uploadUserImage';
@@ -300,40 +304,54 @@ async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GEN
   const tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
   if (!tabs.length) throw new Error('No labs.google flow tab open');
 
+  // Always use the freshest token captured from this session
+  const stored = await chrome.storage.local.get(['lastBearer']);
+  const freshToken = stored?.lastBearer?.token || accessToken;
+
   const tabId = tabs[0].id;
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
     func: async (targetUrl, targetPayload, token, siteKey, recaptchaAction) => {
-      try {
-        // Get fresh reCAPTCHA token in-browser right before sending — same execution context
-        let recaptchaToken = '';
-        try {
-          const gr = await new Promise((resolve, reject) => {
-            let tries = 0;
-            const t = setInterval(() => {
-              if (window.grecaptcha && window.grecaptcha.enterprise) { clearInterval(t); resolve(window.grecaptcha.enterprise); }
-              if (++tries > 30) { clearInterval(t); reject(new Error('timeout')); }
-            }, 100);
-          });
-          recaptchaToken = await gr.execute(siteKey, { action: recaptchaAction }) || '';
-        } catch (e) {}
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-        // Inject fresh token into payload's recaptchaContext
-        if (recaptchaToken && targetPayload && targetPayload.clientContext) {
-          targetPayload.clientContext.recaptchaContext = {
+      // Small jitter 500-1500ms to avoid exact-simultaneous requests
+      await sleep(500 + Math.random() * 1000);
+
+      // Get fresh reCAPTCHA token
+      let recaptchaToken = '';
+      try {
+        const gr = await new Promise((resolve, reject) => {
+          let tries = 0;
+          const t = setInterval(() => {
+            if (window.grecaptcha && window.grecaptcha.enterprise) { clearInterval(t); resolve(window.grecaptcha.enterprise); }
+            if (++tries > 30) { clearInterval(t); reject(new Error('timeout')); }
+          }, 100);
+        });
+        recaptchaToken = await gr.execute(siteKey, { action: recaptchaAction }) || '';
+      } catch (e) {}
+
+      // Fresh sessionId + inject recaptcha
+      const p = JSON.parse(JSON.stringify(targetPayload));
+      if (p.clientContext) {
+        p.clientContext.sessionId = crypto.randomUUID();
+        if (recaptchaToken) {
+          p.clientContext.recaptchaContext = {
             token: recaptchaToken,
             applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB',
           };
         }
+      }
 
+      try {
         const response = await fetch(targetUrl, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
             'Authorization': `Bearer ${token}`,
+            'X-Goog-Encode-Response-If-Executable': 'base64',
           },
-          body: JSON.stringify(targetPayload),
+          body: JSON.stringify(p),
           credentials: 'include',
           mode: 'cors',
         });
@@ -343,7 +361,7 @@ async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GEN
         return { ok: false, status: 0, reason: 'BROWSER_FETCH_ERROR', body: String(error?.message || error || '') };
       }
     },
-    args: [url, payload, accessToken, RECAPTCHA_SITE_KEY, action],
+    args: [url, payload, freshToken, RECAPTCHA_SITE_KEY, action],
   });
   return results[0]?.result ?? { ok: false, status: 0, reason: 'NO_RESULT', body: '' };
 }
@@ -353,6 +371,10 @@ async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GEN
 async function executeBrowserUploadAndPost(url, payload, accessToken) {
   const tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
   if (!tabs.length) throw new Error('No labs.google flow tab open');
+
+  // Always use the freshest token captured from this session
+  const stored = await chrome.storage.local.get(['lastBearer']);
+  const freshToken = stored?.lastBearer?.token || accessToken;
 
   const tabId = tabs[0].id;
   const uploads = payload.__uploads__ || [];
@@ -410,15 +432,28 @@ async function executeBrowserUploadAndPost(url, payload, accessToken) {
         );
       }
 
+      const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+      async function getRecaptcha() {
+        try {
+          const gr = await new Promise((resolve, reject) => {
+            let tries = 0;
+            const t = setInterval(() => {
+              if (window.grecaptcha && window.grecaptcha.enterprise) { clearInterval(t); resolve(window.grecaptcha.enterprise); }
+              if (++tries > 30) { clearInterval(t); reject(new Error('timeout')); }
+            }, 100);
+          });
+          return await gr.execute(siteKey, { action: 'VIDEO_GENERATION' }) || '';
+        } catch (e) { return ''; }
+      }
+
       try {
-        // Ensure __uploads__ is not sent to the API
         delete targetPayload.__uploads__;
 
         // Upload all images and inject mediaIds into payload
         for (const up of uploadsList) {
           const mediaId = await uploadImage(up.base64, up.mimeType);
           if (!mediaId) return { ok: false, status: 0, reason: 'UPLOAD_NO_MEDIA_ID', body: '' };
-          // Navigate nested path: e.g. "requests[0].startImage.mediaId"
           const parts = up.payloadPath.split('.');
           let obj = targetPayload;
           for (let i = 0; i < parts.length - 1; i++) {
@@ -435,30 +470,28 @@ async function executeBrowserUploadAndPost(url, payload, accessToken) {
           }
         }
 
-        // Get fresh reCAPTCHA token right before POST
-        let recaptchaToken = '';
-        try {
-          const gr = await new Promise((resolve, reject) => {
-            let tries = 0;
-            const t = setInterval(() => {
-              if (window.grecaptcha && window.grecaptcha.enterprise) { clearInterval(t); resolve(window.grecaptcha.enterprise); }
-              if (++tries > 30) { clearInterval(t); reject(new Error('timeout')); }
-            }, 100);
-          });
-          recaptchaToken = await gr.execute(siteKey, { action: 'VIDEO_GENERATION' }) || '';
-        } catch (e) {}
+        // Small jitter 500-1500ms before POST
+        await sleep(500 + Math.random() * 1000);
 
-        if (recaptchaToken && targetPayload.clientContext) {
-          targetPayload.clientContext.recaptchaContext = {
-            token: recaptchaToken,
-            applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB',
-          };
+        const recaptchaToken = await getRecaptcha();
+        const p = JSON.parse(JSON.stringify(targetPayload));
+        if (p.clientContext) {
+          p.clientContext.sessionId = crypto.randomUUID();
+          if (recaptchaToken) {
+            p.clientContext.recaptchaContext = {
+              token: recaptchaToken,
+              applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB',
+            };
+          }
         }
-
         const response = await fetch(targetUrl, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-          body: JSON.stringify(targetPayload),
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'X-Goog-Encode-Response-If-Executable': 'base64',
+          },
+          body: JSON.stringify(p),
           credentials: 'include',
           mode: 'cors',
         });
@@ -468,7 +501,7 @@ async function executeBrowserUploadAndPost(url, payload, accessToken) {
         return { ok: false, status: 0, reason: 'BROWSER_ERROR', body: String(error?.message || error || '') };
       }
     },
-    args: [URL_UPLOAD_IMAGE, url, cleanPayload, accessToken, uploads, RECAPTCHA_SITE_KEY],
+    args: [URL_UPLOAD_IMAGE, url, cleanPayload, freshToken, uploads, RECAPTCHA_SITE_KEY],
   });
   return results[0]?.result ?? { ok: false, status: 0, reason: 'NO_RESULT', body: '' };
 }
@@ -495,6 +528,7 @@ async function pollLoop() {
             body: JSON.stringify({ jobId: data.jobId, accountIndex, ok: !!result.ok, status: result.status || 0, reason: result.reason || '', body: result.body || '' }),
           });
           log('Upload+submit completed for job:', data.jobId, 'status:', result.status);
+          await maybeRotateProxy();
         } else if (data.jobKind === 'browser_submit') {
           log('Submitting browser request for job:', data.jobId, 'type:', data.jobType, 'account:', accountIndex);
           const action = data.jobType === 'image' ? 'IMAGE_GENERATION' : 'VIDEO_GENERATION';
@@ -512,6 +546,7 @@ async function pollLoop() {
             }),
           });
           log('Browser submit completed for job:', data.jobId, 'status:', result.status);
+          await maybeRotateProxy();
         } else {
           log('Solving captcha for job:', data.jobId, 'type:', data.jobType, 'account:', accountIndex);
           const action = data.jobType === 'image' ? 'IMAGE_GENERATION' : 'VIDEO_GENERATION';
@@ -526,6 +561,7 @@ async function pollLoop() {
             body: JSON.stringify({ jobId: data.jobId, token, accountIndex }),
           });
           log('Captcha submitted for job:', data.jobId, 'account:', accountIndex);
+          await maybeRotateProxy();
         }
       }
     } catch (e) {
@@ -534,6 +570,163 @@ async function pollLoop() {
     await new Promise((r) => setTimeout(r, POLL_INTERVAL));
   }
 }
+
+// =============================================
+// PROXY: Auth handler + prompt-based rotation
+// =============================================
+
+let promptsSentSinceRotate = 0;
+let promptRotateEnabled = false;
+let promptRotateInterval = 3; // rotate after every N prompts
+
+// Load proxy rotation settings
+chrome.storage.local.get(['promptBasedRotateEnabled', 'promptRotateInterval'], (data) => {
+  promptRotateEnabled = data.promptBasedRotateEnabled || false;
+  promptRotateInterval = parseInt(data.promptRotateInterval) || 3;
+});
+
+// Auto-provide credentials for proxy auth
+if (chrome.webRequest && chrome.webRequest.onAuthRequired) {
+  chrome.webRequest.onAuthRequired.addListener(
+    (details, callback) => {
+      const proxy = proxyManager.getCurrentProxy();
+      if (proxy && proxy.username && proxy.password) {
+        callback({ authCredentials: { username: proxy.username, password: proxy.password } });
+      } else {
+        callback({ cancel: false });
+      }
+    },
+    { urls: ['<all_urls>'] },
+    ['asyncBlocking']
+  );
+}
+
+// Rotate proxy after N prompts (call this each time a job is submitted)
+async function maybeRotateProxy() {
+  if (!promptRotateEnabled) return;
+  if (!proxyManager.isProxyEnabled || proxyManager.proxies.length < 2) return;
+  promptsSentSinceRotate++;
+  if (promptsSentSinceRotate >= promptRotateInterval) {
+    promptsSentSinceRotate = 0;
+    try {
+      await proxyManager.rotateProxy();
+      log('Proxy rotated after', promptRotateInterval, 'prompts');
+    } catch (e) {
+      log('Proxy rotate failed:', e.message);
+    }
+  }
+}
+
+// Handle proxy messages from popup UI
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (!message.action || !message.action.startsWith('proxy_')) return false;
+
+  (async () => {
+    try {
+      switch (message.action) {
+        case 'proxy_getStatus': {
+          const status = proxyManager.getStatus();
+          status.promptBasedRotate = promptRotateEnabled;
+          status.promptRotateInterval = promptRotateInterval;
+          sendResponse({ success: true, data: status });
+          break;
+        }
+        case 'proxy_getProxies':
+          sendResponse({ success: true, data: proxyManager.getProxiesWithStats() });
+          break;
+        case 'proxy_add':
+          await proxyManager.addProxy(message.proxy);
+          sendResponse({ success: true });
+          break;
+        case 'proxy_addBulk': {
+          const results = await proxyManager.addProxiesFromText(message.text);
+          sendResponse({ success: true, data: { added: results.added.length, failed: results.failed.length, errors: results.failed } });
+          break;
+        }
+        case 'proxy_remove':
+          await proxyManager.removeProxy(message.proxyId);
+          sendResponse({ success: true });
+          break;
+        case 'proxy_toggle': {
+          const enabled = await proxyManager.toggleProxy(message.proxyId);
+          sendResponse({ success: true, data: enabled });
+          break;
+        }
+        case 'proxy_select': {
+          const idx = proxyManager.proxies.findIndex(p => p.id === message.proxyId);
+          if (idx >= 0) {
+            proxyManager.currentProxyIndex = idx;
+            await proxyManager.applyCurrentProxy();
+            await proxyManager.saveConfig();
+            sendResponse({ success: true });
+          } else {
+            sendResponse({ success: false, error: 'Proxy not found' });
+          }
+          break;
+        }
+        case 'proxy_setEnabled':
+          if (message.enabled) {
+            if (proxyManager.proxies.length === 0) { sendResponse({ success: false, error: 'No proxies' }); break; }
+            if (proxyManager.currentProxyIndex < 0) proxyManager.currentProxyIndex = 0;
+            await proxyManager.applyCurrentProxy();
+          } else {
+            await proxyManager.disableProxy();
+          }
+          sendResponse({ success: true });
+          break;
+        case 'proxy_setAutoRotate':
+          if (message.enabled) proxyManager.startAutoRotate();
+          else proxyManager.stopAutoRotate();
+          sendResponse({ success: true });
+          break;
+        case 'proxy_setRotateInterval':
+          await proxyManager.setRotateInterval(message.minutes);
+          sendResponse({ success: true });
+          break;
+        case 'proxy_setPromptBasedRotate':
+          promptRotateEnabled = !!message.enabled;
+          await chrome.storage.local.set({ promptBasedRotateEnabled: promptRotateEnabled });
+          sendResponse({ success: true });
+          break;
+        case 'proxy_setPromptRotateInterval':
+          promptRotateInterval = Math.max(1, parseInt(message.prompts) || 3);
+          await chrome.storage.local.set({ promptRotateInterval });
+          sendResponse({ success: true });
+          break;
+        case 'proxy_rotate': {
+          const next = await proxyManager.rotateProxy();
+          sendResponse({ success: true, data: next });
+          break;
+        }
+        case 'proxy_test': {
+          const p = proxyManager.proxies.find(x => x.id === message.proxyId);
+          if (p) { const r = await proxyManager.testProxy(p); sendResponse({ success: true, data: r }); }
+          else sendResponse({ success: false, error: 'Proxy not found' });
+          break;
+        }
+        case 'proxy_testReal': {
+          const p = proxyManager.proxies.find(x => x.id === message.proxyId);
+          if (p) { const r = await proxyManager.testProxyWithRealConnection(p); sendResponse({ success: true, data: r }); }
+          else sendResponse({ success: false, error: 'Proxy not found' });
+          break;
+        }
+        case 'proxy_clearAll':
+          await proxyManager.clearAllProxies();
+          sendResponse({ success: true });
+          break;
+        case 'proxy_export':
+          sendResponse({ success: true, data: proxyManager.exportProxies() });
+          break;
+        default:
+          sendResponse({ success: false, error: 'Unknown proxy action' });
+      }
+    } catch (err) {
+      sendResponse({ success: false, error: err.message });
+    }
+  })();
+
+  return true; // keep channel open for async
+});
 
 pollLoop();
 chrome.runtime.onStartup.addListener(() => pollLoop());

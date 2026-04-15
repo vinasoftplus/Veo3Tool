@@ -320,16 +320,8 @@ async def capture_token(payload: TokenPayload):
             target_key = "account1"
             updated_account_index = 1
 
-    token_option = str(cfg.get("TOKEN_OPTION", "Option 1") or "Option 1").strip()
-    existing_token = str(cfg.get(target_key, {}).get("ACCESS_TOKEN", "") or "").strip()
-    if token_option == "Option 1" and existing_token and existing_token != payload.token:
-        logger.info(
-            "ℹ️ [Extension] giữ nguyên token cấu hình cho Account #%s vì TOKEN_OPTION=%s",
-            updated_account_index,
-            token_option,
-        )
-        _last_token_capture["decision"] = "kept_configured_token"
-        return {"ok": True, "message": "Kept configured token"}
+    # Always save live token captured from browser — it's fresher than anything in config.
+    # TOKEN_OPTION only controls user-manual token entry in settings, not live browser capture.
 
     cfg.setdefault(target_key, {})["ACCESS_TOKEN"] = payload.token
     if payload.expiry:

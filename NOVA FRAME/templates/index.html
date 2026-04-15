@@ -200,6 +200,17 @@
             <span class="nav-label">Cài đặt</span>
           </div>
         </div>
+        <div class="sidebar-footer">
+          <a href="https://t.me/haovipscan" target="_blank" class="tg-btn" title="Liên hệ Telegram">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+              <path d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.289c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.48 13.607l-2.95-.924c-.64-.203-.653-.64.136-.953l11.57-4.461c.537-.194 1.006.131.827.979z"/>
+            </svg>
+            <span class="nav-label">@haovipscan</span>
+          </a>
+          <div class="copyright">
+            <span class="nav-label">© Bản quyền thuộc Võ Hoàn Hảo</span>
+          </div>
+        </div>
     </nav>
 
     <!-- Main -->
@@ -562,15 +573,20 @@
                 </svg>
                 Load tải về
               </button>
-              <button id="lib-add-btn" class="btn btn-primary btn-sm">
+              <button id="lib-add-char-btn" class="btn btn-primary btn-sm">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Thêm nhân vật
+              </button>
+              <button id="lib-add-btn" class="btn btn-secondary btn-sm">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                   <line x1="12" y1="5" x2="12" y2="19" />
                   <line x1="5" y1="12" x2="19" y2="12" />
                 </svg>
                 Thêm nhiều hình
               </button>
-              <button id="char-sync-selected-btn" class="btn btn-secondary btn-sm">Sync đã chọn</button>
-              <button id="char-sync-all-btn" class="btn btn-secondary btn-sm">Load nhanh</button>
               <button id="lib-delete-all-btn" class="btn btn-danger btn-sm">Xóa ALL</button>
             </div>
           </div>
@@ -1367,15 +1383,15 @@
 
   <!-- Scripts -->
   <script src="/static/js/api.js?v=2"></script>
-  <script src="/static/js/app.js?v=2"></script>
-  <script src="/static/js/tabs/t2v.js?v=2"></script>
-  <script src="/static/js/tabs/i2v.js?v=2"></script>
-  <script src="/static/js/tabs/consistent_video.js?v=2"></script>
-  <script src="/static/js/tabs/character.js?v=2"></script>
+  <script src="/static/js/app.js?v=3"></script>
+  <script src="/static/js/tabs/t2v.js?v=3"></script>
+  <script src="/static/js/tabs/i2v.js?v=3"></script>
+  <script src="/static/js/tabs/consistent_video.js?v=3"></script>
+  <script src="/static/js/tabs/character.js?v=3"></script>
   <script src="/static/js/tabs/consistent_video_ui.js?v=2"></script>
-  <script src="/static/js/tabs/settings.js?v=4"></script>
+  <script src="/static/js/tabs/settings.js?v=5"></script>
   <script src="/static/js/tabs/other.js?v=2"></script>
-  <script src="/static/js/tabs/studio_unified.js?v=3"></script>
+  <script src="/static/js/tabs/studio_unified.js?v=4"></script>
   <script>
     function toggleDarkMode() {
       const isDark = document.documentElement.classList.toggle('dark');

@@ -143,6 +143,37 @@ body {
   border-top: 1px solid var(--pink-light);
   padding: 8px 10px;
   background: linear-gradient(180deg,#fff 0%,#fff5f9 100%);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tg-btn {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  text-decoration: none;
+  color: #0088cc;
+  font-size: 13px;
+  font-weight: 600;
+  background: rgba(0,136,204,.08);
+  border: 1px solid rgba(0,136,204,.2);
+  transition: background .15s, border-color .15s;
+  cursor: pointer;
+}
+.tg-btn:hover { background: rgba(0,136,204,.16); border-color: rgba(0,136,204,.4); }
+.tg-btn svg { flex-shrink: 0; color: #0088cc; }
+
+.copyright {
+  padding: 4px 10px 2px;
+  text-align: center;
+}
+.copyright .nav-label {
+  font-size: 10px;
+  color: #c084fc;
+  opacity: .8;
 }
 
 /* ── Main content ─────────────────────────────────────────── */

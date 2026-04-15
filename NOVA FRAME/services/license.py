@@ -18,7 +18,7 @@ import jwt
 from cryptography.hazmat.primitives import serialization
 
 # ---------------------------------------------------------------------------
-# Public key — embedded. Replace with real public key after keygen.
+# Public key — embedded.
 # ---------------------------------------------------------------------------
 _PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
 MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1RuZ4HJrabE6EWOy5FF6
@@ -30,13 +30,10 @@ L3TrliZVwSYCoaOkjn4JKj88kYThqXjOZLr+1x5vSmCTROEQI95Z7FZ89JMFSb6Q
 AQIDAQAB
 -----END PUBLIC KEY-----"""
 
-# Set to True to bypass license check during development
-_DEV_MODE = False
-
-# Runtime state
+# Runtime state — không có DEV_MODE, không có bypass
 _license_valid: bool = False
 _license_payload: dict = {}
-_runtime_key: str = str(_uuid.uuid4().hex)  # Anti-direct-call guard
+_runtime_key: str = str(_uuid.uuid4().hex)
 
 
 # ---------------------------------------------------------------------------
@@ -45,7 +42,6 @@ _runtime_key: str = str(_uuid.uuid4().hex)  # Anti-direct-call guard
 
 def get_bios_uuid() -> str:
     """Get machine UUID via WMI chain (Windows). Fallback to all-F UUID."""
-    # Method 1: Win32_ComputerSystemProduct UUID
     try:
         result = subprocess.run(
             ["wmic", "csproduct", "get", "UUID", "/value"],
@@ -60,7 +56,6 @@ def get_bios_uuid() -> str:
     except Exception:
         pass
 
-    # Method 2: Win32_BaseBoard SerialNumber
     try:
         result = subprocess.run(
             ["wmic", "baseboard", "get", "SerialNumber", "/value"],
@@ -75,7 +70,6 @@ def get_bios_uuid() -> str:
     except Exception:
         pass
 
-    # Method 3: Win32_DiskDrive SerialNumber
     try:
         result = subprocess.run(
             ["wmic", "diskdrive", "get", "SerialNumber", "/value"],
@@ -98,16 +92,8 @@ def get_bios_uuid() -> str:
 # ---------------------------------------------------------------------------
 
 def validate_license(token: str) -> tuple[bool, str]:
-    """
-    Validate license token.
-    Returns (is_valid, message).
-    """
+    """Validate license token. Returns (is_valid, message)."""
     global _license_valid, _license_payload
-
-    if _DEV_MODE:
-        _license_valid = True
-        _license_payload = {"token_uuid": "DEV", "exp": 9999999999, "iat": 0}
-        return True, "Dev mode — license bypassed"
 
     if not token or not token.strip():
         _license_valid = False
@@ -119,7 +105,7 @@ def validate_license(token: str) -> tuple[bool, str]:
             token.strip(),
             public_key,
             algorithms=["RS256"],
-            options={"verify_exp": False},  # manual exp check below
+            options={"verify_exp": False},
         )
     except jwt.exceptions.InvalidSignatureError:
         _license_valid = False
@@ -151,7 +137,7 @@ def validate_license(token: str) -> tuple[bool, str]:
 
 
 def get_license_info() -> dict:
-    """Return current license status info for UI display."""
+    """Return current license status for UI."""
     machine_uuid = get_bios_uuid()
     if not _license_valid:
         return {
@@ -159,7 +145,6 @@ def get_license_info() -> dict:
             "machine_uuid": machine_uuid,
             "expires_at": None,
             "message": "Chưa có license hợp lệ",
-            "dev_mode": _DEV_MODE,
         }
     exp = _license_payload.get("exp", 0)
     expires_at = datetime.fromtimestamp(exp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC") if exp else None
@@ -168,12 +153,11 @@ def get_license_info() -> dict:
         "machine_uuid": machine_uuid,
         "expires_at": expires_at,
         "message": "License hợp lệ",
-        "dev_mode": _DEV_MODE,
     }
 
 
 def is_licensed() -> bool:
-    return _license_valid or _DEV_MODE
+    return _license_valid
 
 
 def get_runtime_key() -> str:
@@ -185,20 +169,18 @@ def get_runtime_key() -> str:
 # ---------------------------------------------------------------------------
 
 def license_required(f: Callable) -> Callable:
-    """FastAPI dependency or decorator to guard routes requiring license."""
+    """FastAPI decorator to guard routes requiring valid license."""
     @wraps(f)
     async def wrapper(*args, **kwargs):
         from fastapi import HTTPException, Request
-        # Find Request in kwargs or args
         request: Request | None = kwargs.get("request") or next(
             (a for a in args if hasattr(a, "headers")), None
         )
-        # Check runtime key header
         if request:
             rk = request.headers.get("X-Runtime-Key", "")
             if rk != _runtime_key:
-                raise HTTPException(status_code=403, detail="Unauthorized Access: Missing Runtime Key")
-        if not is_licensed():
-            raise HTTPException(status_code=403, detail="License không hợp lệ")
+                raise HTTPException(status_code=403, detail="Unauthorized")
+        if not _license_valid:
+            raise HTTPException(status_code=403, detail="License không hợp lệ hoặc đã hết hạn")
         return await f(*args, **kwargs)
     return wrapper

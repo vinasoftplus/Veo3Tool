@@ -145,6 +145,7 @@ class T2VRequest(BaseModel):
     output_count: int = 1
     model: str = "auto"
     seed: int | None = None
+    account_index: int | None = None
 
 
 @router.post("/text-to-video")
@@ -152,7 +153,7 @@ async def text_to_video(req: T2VRequest):
     from adapters.google_labs import GoogleLabsAdapter, URL_T2V
     from routers.extension import request_browser_submit
 
-    account = _get_account_or_raise()
+    account = _get_account_or_raise(preferred_index=req.account_index)
     account_index = int(account.get("_index") or 1)
     adapter = GoogleLabsAdapter()
     logger.info("Using %s for text-to-video generation", _account_display(account))
@@ -247,11 +248,12 @@ async def image_to_video(
     aspect_ratio: str = Form("VIDEO_ASPECT_RATIO_LANDSCAPE"),
     output_count: int = Form(1),
     model: str = Form("auto"),
+    account_index: int = Form(0),
 ):
     from adapters.google_labs import GoogleLabsAdapter, URL_I2V
     from routers.extension import request_browser_submit
 
-    account = _get_account_or_raise()
+    account = _get_account_or_raise(preferred_index=account_index or None)
     account_index = int(account.get("_index") or 1)
     adapter = GoogleLabsAdapter()
     logger.info("Using %s for image-to-video generation", _account_display(account))
@@ -450,6 +452,7 @@ class ConsistentVideoRequest(BaseModel):
     output_count: int = 1
     model: str = "auto"
     seed: int | None = None
+    account_index: int | None = None
 
 
 @router.post("/consistent-video")
@@ -457,7 +460,7 @@ async def consistent_video(req: ConsistentVideoRequest):
     from adapters.google_labs import GoogleLabsAdapter
     from services.character_service import get_media_ids_for_account
 
-    account = _get_account_or_raise()
+    account = _get_account_or_raise(preferred_index=req.account_index)
     account_index = int(account.get("_index") or 1)
     adapter = GoogleLabsAdapter()
     logger.info("Using %s for consistent-video generation", _account_display(account))
@@ -539,13 +542,14 @@ async def studio_video(
     seed: int | None = Form(None),
     character_ids_json: str = Form("[]"),
     reference_images: list[UploadFile] = File([]),
+    account_index: int = Form(0),
 ):
     from adapters.google_labs import GoogleLabsAdapter, URL_REF_VIDEO, URL_I2V, URL_T2V
     from routers.extension import request_browser_submit, request_browser_upload_post
     from services.character_service import get_media_ids_for_account
 
-    account = _get_account_or_raise()
-    account_index = int(account.get("_index") or 1)
+    account = _get_account_or_raise(preferred_index=account_index)
+    account_index = int(account.get("_index") or 0)
     adapter = GoogleLabsAdapter()
     token_option = _token_option()
     recaptcha_token = "" if token_option == "Option 2" else await _get_recaptcha_token("video", account_index=account_index)
