@@ -1,349 +1,431 @@
-/* Unified library tab — new grid UI */
+/* Thư viện nhân vật — redesigned */
 (function () {
   'use strict';
 
   const $ = id => document.getElementById(id);
 
+  // ── Thể loại cố định ───────────────────────────────────────────
+  const ASSET_TYPES = [
+    { id: 'all',        label: 'Tất cả'    },
+    { id: 'nhanvat',    label: 'Nhân Vật'  },
+    { id: 'vatpham',    label: 'Vật Phẩm'  },
+    { id: 'style',      label: 'Style'     },
+    { id: 'background', label: 'Background'},
+  ];
+
   // ── State ──────────────────────────────────────────────────────
-  let selectedIds = new Set();
-  let currentType = 'all';       // all / character / asset / style / background / phoi
-  let currentGroup = 'all';      // 'all' | category id | '__characters__'
-  let libraryCategories = [];    // [{id, name}]
-  let libraryAssets = [];        // [{id, name, url, category_id, prompt}]
-  let libraryCharacters = [];    // [{id, name, url, synced, media_id}]
+  let selectedIds     = new Set();
+  let currentType     = 'all';
+  let currentGroup    = 'all'; // 'all' | category id
+  let libraryCategories = [];  // [{id, name, created_at}]
+  let libraryAssets     = [];  // [{id, name, url, category_id, asset_type, ...}]
 
-  function escapeHtml(v) {
-    return String(v ?? '')
-      .replace(/&/g, '&amp;').replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+  // Wizard state
+  let wizSelectedGroup = null; // {id, name}
+  let wizSelectedType  = 'nhanvat';
+
+  // Context menu state
+  let ctxTargetGroupId = null; // for group right-click
+  let renameCallback   = null; // fn(newName)
+
+  function escHtml(v) {
+    return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
-  // ── Derived data ───────────────────────────────────────────────
-  function allItems() {
-    const chars = libraryCharacters.map(ch => ({
-      id: ch.id, type: 'character', name: ch.name, url: ch.url,
-      group: '__characters__', synced: !!ch.synced, media_id: ch.media_id || '',
-    }));
-    const assets = libraryAssets.map(a => ({
-      id: a.id, type: 'asset', name: a.name, url: a.url,
-      group: a.category_id || 'default', prompt: a.prompt || '',
-    }));
-    return [...chars, ...assets];
-  }
-
+  // ── Derived ────────────────────────────────────────────────────
   function filteredItems() {
-    return allItems().filter(item => {
-      if (currentType !== 'all' && item.type !== currentType) return false;
-      if (currentGroup !== 'all' && item.group !== currentGroup) return false;
+    return libraryAssets.filter(a => {
+      if (currentType !== 'all' && a.asset_type !== currentType) return false;
+      if (currentGroup !== 'all' && a.category_id !== currentGroup) return false;
       return true;
     });
   }
 
   function groupCounts() {
-    const counts = { all: 0, __characters__: 0 };
+    const counts = { all: libraryAssets.length };
     libraryCategories.forEach(c => { counts[c.id] = 0; });
-    allItems().forEach(item => {
-      counts.all = (counts.all || 0) + 1;
-      counts[item.group] = (counts[item.group] || 0) + 1;
+    libraryAssets.forEach(a => {
+      const cid = a.category_id || 'default';
+      counts[cid] = (counts[cid] || 0) + 1;
     });
     return counts;
   }
 
-  // ── Render sidebar groups ──────────────────────────────────────
+  // ── Render Sidebar ─────────────────────────────────────────────
   function renderGroups() {
     const list = $('lib-group-list');
     if (!list) return;
     const counts = groupCounts();
+
     const groups = [
-      { id: 'all', name: 'Tất cả' },
-      { id: '__characters__', name: 'Nhân vật' },
+      { id: 'all', name: 'Tất cả', isSpecial: true },
       ...libraryCategories,
     ];
+
     list.innerHTML = groups.map(g => `
-      <div class="lib-group-item ${currentGroup === g.id ? 'active' : ''}" data-gid="${escapeHtml(g.id)}">
-        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(g.name)}</span>
+      <div class="lib-group-item ${currentGroup === g.id ? 'active' : ''}"
+           data-gid="${escHtml(g.id)}"
+           data-special="${g.isSpecial ? '1' : '0'}"
+           title="${escHtml(g.name)}">
+        <span style="flex:1;overflow:hidden;text-overflow:ellipsis;">${escHtml(g.name)}</span>
         <span class="lib-group-count">${counts[g.id] || 0}</span>
       </div>
     `).join('');
+
     list.querySelectorAll('.lib-group-item').forEach(el => {
       el.addEventListener('click', () => {
         currentGroup = el.dataset.gid;
         renderGroups();
         renderGrid();
-        updateGroupDropdown();
+      });
+      // Right-click on group (not "Tất cả")
+      el.addEventListener('contextmenu', e => {
+        if (el.dataset.special === '1') return;
+        e.preventDefault();
+        ctxTargetGroupId = el.dataset.gid;
+        showGroupContextMenu(e.clientX, e.clientY);
       });
     });
-
-    // Populate upload category select
-    const catSel = $('char-upload-category');
-    if (catSel) {
-      catSel.innerHTML = '<option value="">-- Chọn nhóm --</option>' +
-        libraryCategories.map(c => `<option value="${escapeHtml(c.id)}">${escapeHtml(c.name)}</option>`).join('');
-    }
   }
 
-  function updateGroupDropdown() {
-    const sel = $('lib-group-filter');
-    if (!sel) return;
-    const counts = groupCounts();
-    const groups = [
-      { id: 'all', name: 'Nhóm: Tất cả' },
-      { id: '__characters__', name: 'Nhân vật' },
-      ...libraryCategories,
-    ];
-    sel.innerHTML = groups.map(g =>
-      `<option value="${escapeHtml(g.id)}" ${currentGroup === g.id ? 'selected' : ''}>${escapeHtml(g.name)} (${counts[g.id] || 0})</option>`
-    ).join('');
-  }
-
-  // ── Render grid ────────────────────────────────────────────────
+  // ── Render Grid ────────────────────────────────────────────────
   function renderGrid() {
     const grid = $('char-grid');
     if (!grid) return;
     const items = filteredItems();
-    const total = items.length;
     const countLabel = $('lib-count-label');
-    if (countLabel) countLabel.textContent = `${total} mục`;
+    if (countLabel) countLabel.textContent = `${items.length} mục`;
 
-    if (!total) {
+    if (!items.length) {
       grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:60px 20px;color:var(--text3);">
-        <div style="font-size:32px;margin-bottom:12px;">📂</div>
-        <div style="font-size:13px;">Chưa có mục nào trong danh mục này</div>
+        <div style="font-size:36px;margin-bottom:12px;">📂</div>
+        <div style="font-size:13px;">Chưa có ảnh nào. Nhấn <b>Upload</b> để thêm ảnh.</div>
       </div>`;
+      updateInfoBar();
       return;
     }
 
-    grid.innerHTML = items.map(item => {
-      const isChar = item.type === 'character';
-      const checked = selectedIds.has(item.id) ? 'checked' : '';
-      const badge = isChar ? 'Nhân vật' : 'Kho';
-      return `
-        <div class="lib-card ${selectedIds.has(item.id) ? 'selected' : ''}" data-id="${escapeHtml(item.id)}" data-type="${escapeHtml(item.type)}">
-          <input type="checkbox" class="lib-card-check" data-id="${escapeHtml(item.id)}" ${checked} onclick="event.stopPropagation()">
-          <img src="${escapeHtml(item.url)}" alt="${escapeHtml(item.name)}" loading="lazy">
-          <span class="lib-card-badge">${escapeHtml(badge)}</span>
-          <div class="lib-card-actions">
-            <button class="lib-del-btn" data-id="${escapeHtml(item.id)}" data-type="${escapeHtml(item.type)}">Xóa</button>
-          </div>
-          <div class="lib-card-label">${escapeHtml(item.name) || 'Chưa đặt tên'}</div>
-        </div>
-      `;
-    }).join('');
+    const typeLabel = { nhanvat:'Nhân Vật', vatpham:'Vật Phẩm', style:'Style', background:'Background' };
 
-    // Events
+    grid.innerHTML = items.map(item => `
+      <div class="lib-card ${selectedIds.has(item.id) ? 'selected' : ''}"
+           data-id="${escHtml(item.id)}" data-type="${escHtml(item.asset_type || 'nhanvat')}">
+        <input type="checkbox" class="lib-card-check" data-id="${escHtml(item.id)}"
+               ${selectedIds.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation()">
+        <img src="${escHtml(item.url)}" alt="${escHtml(item.name)}" loading="lazy">
+        <span class="lib-card-badge">${escHtml(typeLabel[item.asset_type] || 'Kho')}</span>
+        <div class="lib-card-label lib-card-label--editable" data-id="${escHtml(item.id)}"
+             title="Double-click để đổi tên">${escHtml(item.name) || 'Chưa đặt tên'}</div>
+      </div>
+    `).join('');
+
+    // Checkbox change
     grid.querySelectorAll('.lib-card-check').forEach(cb => {
       cb.addEventListener('change', e => {
         const id = e.target.dataset.id;
-        if (e.target.checked) selectedIds.add(id);
-        else selectedIds.delete(id);
-        const card = grid.querySelector(`.lib-card[data-id="${id}"]`);
-        if (card) card.classList.toggle('selected', e.target.checked);
-        updateSelectAll();
+        e.target.checked ? selectedIds.add(id) : selectedIds.delete(id);
+        grid.querySelector(`.lib-card[data-id="${id}"]`)?.classList.toggle('selected', e.target.checked);
+        updateInfoBar();
       });
     });
-    grid.querySelectorAll('.lib-del-btn').forEach(btn => {
-      btn.addEventListener('click', e => { e.stopPropagation(); deleteItem(btn.dataset.id, btn.dataset.type); });
-    });
+
+    // Card click → toggle select
     grid.querySelectorAll('.lib-card').forEach(card => {
       card.addEventListener('click', e => {
-        if (e.target.classList.contains('lib-card-check') || e.target.tagName === 'BUTTON') return;
-        const id = card.dataset.id;
+        if (e.target.classList.contains('lib-card-check') || e.target.closest('.lib-card-label--editable')) return;
         const cb = card.querySelector('.lib-card-check');
         if (!cb) return;
         cb.checked = !cb.checked;
         cb.dispatchEvent(new Event('change'));
       });
+
+      // Right-click on card
+      card.addEventListener('contextmenu', e => {
+        if (!selectedIds.size) {
+          // auto-select this card
+          const id = card.dataset.id;
+          selectedIds.add(id);
+          card.classList.add('selected');
+          const cb = card.querySelector('.lib-card-check');
+          if (cb) cb.checked = true;
+          updateInfoBar();
+        }
+        e.preventDefault();
+        showItemContextMenu(e.clientX, e.clientY);
+      });
     });
-    updateSelectAll();
+
+    // Double-click label → rename
+    grid.querySelectorAll('.lib-card-label--editable').forEach(el => {
+      el.addEventListener('dblclick', e => {
+        e.stopPropagation();
+        const id = el.dataset.id;
+        const item = libraryAssets.find(a => a.id === id);
+        if (!item) return;
+        const rect = el.getBoundingClientRect();
+        showRenameInput(rect.left, rect.bottom + 4, item.name, async newName => {
+          const res = await API.patch(`/api/image/library/assets/${id}/rename`, { name: newName });
+          if (res.ok) { item.name = newName; renderGrid(); toast('Đã đổi tên', 'success'); }
+          else toast(res.detail || 'Đổi tên thất bại', 'error');
+        });
+      });
+    });
+
+    updateInfoBar();
   }
 
-  function updateSelectAll() {
-    const cb = $('lib-select-all');
-    const items = filteredItems();
-    if (cb) {
-      cb.checked = items.length > 0 && items.every(i => selectedIds.has(i.id));
-      cb.indeterminate = !cb.checked && items.some(i => selectedIds.has(i.id));
-    }
-    // Nút xóa đã chọn
+  function updateInfoBar() {
     const delBtn = $('lib-delete-selected-btn');
     const countEl = $('lib-selected-count');
+    const selAll = $('lib-select-all');
+    const items = filteredItems();
     if (delBtn) delBtn.style.display = selectedIds.size > 0 ? 'inline-flex' : 'none';
     if (countEl) countEl.textContent = selectedIds.size;
+    if (selAll) {
+      selAll.checked = items.length > 0 && items.every(i => selectedIds.has(i.id));
+      selAll.indeterminate = !selAll.checked && items.some(i => selectedIds.has(i.id));
+    }
   }
 
-  // ── API actions ────────────────────────────────────────────────
+  // ── API ────────────────────────────────────────────────────────
   async function loadAll() {
     const grid = $('char-grid');
     if (grid) grid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-    const [catsRes, assetsRes, charsRes] = await Promise.all([
+    const [catsRes, assetsRes] = await Promise.all([
       API.get('/api/image/library/categories'),
       API.get('/api/image/library/assets'),
-      API.get('/api/character/list'),
     ]);
     libraryCategories = catsRes.items || [];
     libraryAssets = assetsRes.items || [];
-    libraryCharacters = charsRes.data || [];
     renderGroups();
-    updateGroupDropdown();
     renderGrid();
+    populateWizardGroupList();
   }
 
-  async function createGroup() {
-    const name = window.prompt('Nhập tên nhóm mới:');
-    if (!name || !name.trim()) return;
-    const res = await API.post('/api/image/library/categories', { name: name.trim() });
-    if (!res.ok) return toast(res.detail || 'Tạo nhóm thất bại', 'error');
-    currentGroup = res.item?.id || 'all';
-    toast('✅ Đã tạo nhóm mới', 'success');
+  async function createGroup(name) {
+    const n = name || window.prompt('Nhập tên nhóm mới:');
+    if (!n || !n.trim()) return null;
+    const res = await API.post('/api/image/library/categories', { name: n.trim() });
+    if (!res.ok) { toast(res.detail || 'Tạo nhóm thất bại', 'error'); return null; }
+    toast('Đã tạo nhóm', 'success');
     await loadAll();
+    return res.item;
   }
 
-  async function syncIds(ids) {
-    if (!ids.length) return toast('Chưa chọn nhân vật nào', 'error');
-    const res = await API.post('/api/character/sync', { ids });
-    if (res.ok) {
-      toast(res.message || `✅ Sync ${ids.length} nhân vật`, 'success');
-      await loadAll();
-    } else {
-      toast(res.detail || res.message || 'Sync thất bại', 'error');
-    }
-  }
-
-  async function syncAll() {
-    const res = await API.post('/api/character/sync-all', {});
-    if (res.ok) {
-      toast(res.message || '✅ Sync toàn bộ nhân vật', 'success');
-      await loadAll();
-    } else {
-      toast(res.detail || res.message || 'Sync tất cả thất bại', 'error');
-    }
-  }
-
-  async function deleteItem(id, type) {
+  async function deleteItem(id) {
     if (!confirm('Xóa mục này?')) return;
-    let res;
-    if (type === 'character') {
-      res = await API.delete(`/api/character/${id}`);
-    } else {
-      res = await API.delete(`/api/image/library/assets/${id}`);
-    }
+    const res = await API.delete(`/api/image/library/assets/${id}`);
     if (res.ok || res.detail === undefined) {
       selectedIds.delete(id);
-      toast('✅ Đã xóa', 'success');
+      toast('Đã xóa', 'success');
       await loadAll();
-    } else {
-      toast(res.detail || 'Xóa thất bại', 'error');
-    }
+    } else toast(res.detail || 'Xóa thất bại', 'error');
   }
 
   async function deleteSelected() {
     if (!selectedIds.size) return toast('Chưa chọn mục nào', 'error');
     if (!confirm(`Xóa ${selectedIds.size} mục đã chọn?`)) return;
-    const items = allItems().filter(i => selectedIds.has(i.id));
-    await Promise.all(items.map(i => {
-      if (i.type === 'character') return API.delete(`/api/character/${i.id}`);
-      return API.delete(`/api/image/library/assets/${i.id}`);
-    }));
+    await Promise.all([...selectedIds].map(id => API.delete(`/api/image/library/assets/${id}`)));
     selectedIds.clear();
-    toast('✅ Đã xóa các mục đã chọn', 'success');
+    toast('Đã xóa các mục đã chọn', 'success');
     await loadAll();
   }
 
-  async function uploadCharacter() {
-    const fileInput = $('char-file');
-    const nameInput = $('char-name');
-    const files = fileInput?.files;
-    const name = (nameInput?.value || '').trim() || 'Character';
-    if (!files || !files.length) return toast('Chọn ảnh trước đã', 'error');
-
-    // Xác định đích upload dựa vào nhóm đang chọn
-    const catSel = $('char-upload-category');
-    const catId = catSel?.value || '';
-    // Nếu không chọn nhóm hoặc chọn __characters__ → upload character
-    // Nếu chọn một category cụ thể → upload vào library asset của nhóm đó
-    const isLibrary = catId && catId !== '__characters__';
-
-    const btn = $('char-upload-btn');
-    if (btn) { btn.disabled = true; btn.textContent = 'Đang upload...'; }
-    let failed = 0;
-    try {
-      for (const file of files) {
-        const fd = new FormData();
-        fd.append('image', file);
-        const itemName = files.length === 1 ? name : file.name.replace(/\.[^.]+$/, '');
-        fd.append('name', itemName);
-        let res;
-        if (isLibrary) {
-          fd.append('category_id', catId);
-          res = await API.postForm('/api/image/library/upload', fd);
-        } else {
-          res = await API.postForm('/api/character/upload', fd);
-        }
-        if (!res.ok) { failed++; }
-      }
-      const ok = files.length - failed;
-      if (ok > 0) toast(`✅ Đã thêm ${ok} ảnh${isLibrary ? ' vào kho' : ' nhân vật'}`, 'success');
-      if (failed > 0) toast(`⚠️ ${failed} ảnh thất bại`, 'error');
-      // Reset
-      fileInput.value = '';
-      clearPreviews();
-      $('lib-upload-bar').style.display = 'none';
-      await loadAll();
-    } finally {
-      if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
-    }
+  async function moveSelectedToGroup(targetGroupId) {
+    if (!selectedIds.size) return;
+    const res = await API.post('/api/image/library/assets/move', {
+      asset_ids: [...selectedIds],
+      target_category_id: targetGroupId,
+    });
+    if (res.ok) { toast(`Đã chuyển ${res.moved} mục`, 'success'); selectedIds.clear(); await loadAll(); }
+    else toast(res.detail || 'Chuyển nhóm thất bại', 'error');
   }
 
-  // ── Preview strip for multiple files ──────────────────────────
-  let _previewUrls = [];
+  // ── Upload Wizard ──────────────────────────────────────────────
+  function populateWizardGroupList() {
+    const container = $('lib-wiz-group-list');
+    if (!container) return;
+    container.innerHTML = libraryCategories.length
+      ? libraryCategories.map(g => `
+          <div class="lib-wiz-group-card" data-gid="${escHtml(g.id)}" data-gname="${escHtml(g.name)}">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M22 19a2 2 0 01-2 2H4a2 2 0 01-2-2V5a2 2 0 012-2h5l2 3h9a2 2 0 012 2z"/></svg>
+            <span>${escHtml(g.name)}</span>
+            <span class="lib-wiz-group-count">${libraryAssets.filter(a => a.category_id === g.id).length}</span>
+          </div>
+        `).join('')
+      : '<div style="text-align:center;padding:20px;color:var(--text3);font-size:13px;">Chưa có nhóm nào.<br>Tạo nhóm mới bên dưới.</div>';
 
-  function clearPreviews() {
-    _previewUrls.forEach(u => URL.revokeObjectURL(u));
-    _previewUrls = [];
-    const strip = $('lib-preview-strip');
+    container.querySelectorAll('.lib-wiz-group-card').forEach(el => {
+      el.addEventListener('click', () => {
+        wizSelectedGroup = { id: el.dataset.gid, name: el.dataset.gname };
+        $('lib-wiz-group-name').textContent = el.dataset.gname;
+        $('lib-wiz-step1').style.display = 'none';
+        $('lib-wiz-step2').style.display = '';
+      });
+    });
+  }
+
+  function openUploadWizard() {
+    wizSelectedGroup = null;
+    wizSelectedType = 'nhanvat';
+    $('lib-wiz-step1').style.display = '';
+    $('lib-wiz-step2').style.display = 'none';
+    $('lib-wiz-file').value = '';
+    $('lib-wiz-name').value = '';
+    $('lib-wiz-preview').innerHTML = '';
+    // Reset type buttons
+    $('lib-wiz-type-row').querySelectorAll('.lib-wiz-type-btn').forEach(b => {
+      b.classList.toggle('active', b.dataset.type === 'nhanvat');
+    });
+    $('lib-upload-popup').style.display = 'flex';
+    populateWizardGroupList();
+  }
+
+  function closeUploadWizard() {
+    $('lib-upload-popup').style.display = 'none';
+    clearWizPreviews();
+  }
+
+  let _wizPreviewUrls = [];
+  function clearWizPreviews() {
+    _wizPreviewUrls.forEach(u => URL.revokeObjectURL(u));
+    _wizPreviewUrls = [];
+    const strip = $('lib-wiz-preview');
     if (strip) strip.innerHTML = '';
   }
 
-  function showPreviews(files) {
-    clearPreviews();
-    const strip = $('lib-preview-strip');
-    if (!strip || !files || !files.length) return;
+  function showWizPreviews(files) {
+    clearWizPreviews();
+    const strip = $('lib-wiz-preview');
+    if (!strip) return;
     Array.from(files).forEach(file => {
       const url = URL.createObjectURL(file);
-      _previewUrls.push(url);
+      _wizPreviewUrls.push(url);
       const img = document.createElement('img');
-      img.src = url;
-      img.title = file.name;
+      img.src = url; img.title = file.name;
       strip.appendChild(img);
     });
   }
 
-  function bindUploadZone() {
-    const zone = $('char-upload-zone');
-    const input = $('char-file');
-    if (!zone || !input || zone.dataset.bound === '1') return;
-    zone.dataset.bound = '1';
+  async function doUpload() {
+    if (!wizSelectedGroup) return toast('Chưa chọn nhóm', 'error');
+    const fileInput = $('lib-wiz-file');
+    const files = fileInput?.files;
+    if (!files || !files.length) return toast('Chưa chọn ảnh', 'error');
 
-    zone.addEventListener('click', e => { if (e.target !== input) input.click(); });
-    input.addEventListener('click', e => e.stopPropagation());
-    input.addEventListener('change', () => showPreviews(input.files));
-    zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
-    zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
-    zone.addEventListener('drop', e => {
-      e.preventDefault(); zone.classList.remove('drag-over');
-      const dropped = e.dataTransfer?.files;
-      if (!dropped?.length) return;
-      const dt = new DataTransfer();
-      Array.from(dropped).forEach(f => dt.items.add(f));
-      input.files = dt.files;
-      showPreviews(input.files);
+    const btn = $('lib-wiz-upload-btn');
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang upload...'; }
+    let failed = 0;
+    const name = ($('lib-wiz-name')?.value || '').trim();
+
+    for (const file of files) {
+      const fd = new FormData();
+      fd.append('image', file);
+      fd.append('name', files.length === 1 && name ? name : file.name.replace(/\.[^.]+$/, ''));
+      fd.append('category_id', wizSelectedGroup.id);
+      fd.append('asset_type', wizSelectedType);
+      const res = await API.postForm('/api/image/library/upload', fd);
+      if (!res.ok) failed++;
+    }
+
+    const ok = files.length - failed;
+    if (ok > 0) toast(`Đã upload ${ok} ảnh vào nhóm ${wizSelectedGroup.name}`, 'success');
+    if (failed > 0) toast(`${failed} ảnh thất bại`, 'error');
+    if (btn) { btn.disabled = false; btn.textContent = 'Upload'; }
+
+    clearWizPreviews();
+    fileInput.value = '';
+    closeUploadWizard();
+    await loadAll();
+  }
+
+  // ── Right-click menus ──────────────────────────────────────────
+  function hideAllMenus() {
+    ['lib-context-menu','lib-group-context-menu','lib-move-group-menu'].forEach(id => {
+      const el = $(id);
+      if (el) el.style.display = 'none';
     });
+  }
+
+  function showItemContextMenu(x, y) {
+    hideAllMenus();
+    const menu = $('lib-context-menu');
+    if (!menu) return;
+    menu.style.left = x + 'px';
+    menu.style.top  = y + 'px';
+    menu.style.display = 'block';
+    // Clamp to viewport
+    requestAnimationFrame(() => {
+      const r = menu.getBoundingClientRect();
+      if (r.right  > window.innerWidth)  menu.style.left = (x - r.width)  + 'px';
+      if (r.bottom > window.innerHeight) menu.style.top  = (y - r.height) + 'px';
+    });
+  }
+
+  function showGroupContextMenu(x, y) {
+    hideAllMenus();
+    const menu = $('lib-group-context-menu');
+    if (!menu) return;
+    menu.style.left = x + 'px';
+    menu.style.top  = y + 'px';
+    menu.style.display = 'block';
+    requestAnimationFrame(() => {
+      const r = menu.getBoundingClientRect();
+      if (r.right  > window.innerWidth)  menu.style.left = (x - r.width)  + 'px';
+      if (r.bottom > window.innerHeight) menu.style.top  = (y - r.height) + 'px';
+    });
+  }
+
+  function showMoveGroupMenu(x, y) {
+    hideAllMenus();
+    const menu = $('lib-move-group-menu');
+    if (!menu) return;
+    const listEl = $('lib-move-group-list');
+    if (listEl) {
+      listEl.innerHTML = libraryCategories.map(g => `
+        <div class="lib-ctx-item lib-move-group-opt" data-gid="${escHtml(g.id)}">${escHtml(g.name)}</div>
+      `).join('');
+      listEl.querySelectorAll('.lib-move-group-opt').forEach(el => {
+        el.addEventListener('click', () => {
+          hideAllMenus();
+          moveSelectedToGroup(el.dataset.gid);
+        });
+      });
+    }
+    menu.style.left = x + 'px';
+    menu.style.top  = y + 'px';
+    menu.style.display = 'block';
+  }
+
+  // ── Rename input ───────────────────────────────────────────────
+  function showRenameInput(x, y, currentName, onConfirm) {
+    const wrap = $('lib-rename-wrap');
+    const inp  = $('lib-rename-input');
+    if (!wrap || !inp) return;
+    renameCallback = onConfirm;
+    inp.value = currentName;
+    wrap.style.left = Math.min(x, window.innerWidth - 240) + 'px';
+    wrap.style.top  = y + 'px';
+    wrap.style.display = 'block';
+    inp.focus(); inp.select();
+  }
+
+  function hideRenameInput() {
+    const wrap = $('lib-rename-wrap');
+    if (wrap) wrap.style.display = 'none';
+    renameCallback = null;
+  }
+
+  async function confirmRename() {
+    const inp = $('lib-rename-input');
+    const val = inp?.value.trim();
+    if (!val) return toast('Tên không được trống', 'error');
+    if (renameCallback) await renameCallback(val);
+    hideRenameInput();
   }
 
   // ── Init ───────────────────────────────────────────────────────
   window.init_character = function () {
-    bindUploadZone();
-
     // Type filter tabs
     document.querySelectorAll('.lib-type-btn').forEach(btn => {
       btn.addEventListener('click', () => {
@@ -354,60 +436,142 @@
       });
     });
 
-    // Group dropdown
-    $('lib-group-filter')?.addEventListener('change', e => {
-      currentGroup = e.target.value;
-      renderGroups();
-      renderGrid();
+    // Upload button → open wizard
+    $('lib-upload-btn')?.addEventListener('click', openUploadWizard);
+
+    // Wizard close
+    $('lib-upload-wizard-close')?.addEventListener('click', closeUploadWizard);
+    $('lib-upload-popup')?.addEventListener('click', e => { if (e.target === $('lib-upload-popup')) closeUploadWizard(); });
+
+    // Wizard: tạo nhóm mới
+    $('lib-wiz-new-group-btn')?.addEventListener('click', async () => {
+      const item = await createGroup();
+      if (item) {
+        wizSelectedGroup = { id: item.id, name: item.name };
+        $('lib-wiz-group-name').textContent = item.name;
+        $('lib-wiz-step1').style.display = 'none';
+        $('lib-wiz-step2').style.display = '';
+      }
     });
 
-    // Sidebar add group
-    $('lib-add-group-btn')?.addEventListener('click', createGroup);
-
-    // Thêm nhân vật → mở upload bar, force chọn nhân vật (không chọn nhóm kho)
-    $('lib-add-char-btn')?.addEventListener('click', () => {
-      const bar = $('lib-upload-bar');
-      if (!bar) return;
-      bar.style.display = 'flex';
-      // Reset category về nhân vật (value rỗng = nhân vật mặc định)
-      const catSel = $('char-upload-category');
-      if (catSel) catSel.value = '';
+    // Wizard: back
+    $('lib-wiz-back-btn')?.addEventListener('click', () => {
+      $('lib-wiz-step1').style.display = '';
+      $('lib-wiz-step2').style.display = 'none';
     });
 
-    // Add nhiều hình button → toggle upload bar (giữ nguyên category đang chọn)
-    $('lib-add-btn')?.addEventListener('click', () => {
-      const bar = $('lib-upload-bar');
-      if (bar) bar.style.display = bar.style.display === 'none' ? 'flex' : 'none';
-    });
-    $('lib-upload-cancel')?.addEventListener('click', () => {
-      const bar = $('lib-upload-bar');
-      if (bar) bar.style.display = 'none';
+    // Wizard: type buttons
+    $('lib-wiz-type-row')?.querySelectorAll('.lib-wiz-type-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        $('lib-wiz-type-row').querySelectorAll('.lib-wiz-type-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        wizSelectedType = btn.dataset.type;
+      });
     });
 
-    // Upload btn
-    $('char-upload-btn')?.addEventListener('click', uploadCharacter);
+    // Wizard: upload zone
+    const wzone = $('lib-wiz-zone');
+    const wfile = $('lib-wiz-file');
+    if (wzone && wfile) {
+      if (!wzone.dataset.bound) {
+        wzone.dataset.bound = '1';
+        wzone.addEventListener('click', e => { if (e.target !== wfile) wfile.click(); });
+        wfile.addEventListener('click', e => e.stopPropagation());
+        wfile.addEventListener('change', () => showWizPreviews(wfile.files));
+        wzone.addEventListener('dragover', e => { e.preventDefault(); wzone.classList.add('drag-over'); });
+        wzone.addEventListener('dragleave', () => wzone.classList.remove('drag-over'));
+        wzone.addEventListener('drop', e => {
+          e.preventDefault(); wzone.classList.remove('drag-over');
+          const dt = new DataTransfer();
+          Array.from(e.dataTransfer?.files || []).forEach(f => dt.items.add(f));
+          wfile.files = dt.files;
+          showWizPreviews(wfile.files);
+        });
+      }
+    }
 
-    // Select all
+    $('lib-wiz-upload-btn')?.addEventListener('click', doUpload);
+    $('lib-wiz-cancel-btn')?.addEventListener('click', closeUploadWizard);
+
+    // Sidebar: add group
+    $('lib-add-group-btn')?.addEventListener('click', () => createGroup());
+
+    // Info bar
     $('lib-select-all')?.addEventListener('change', e => {
       const items = filteredItems();
       if (e.target.checked) items.forEach(i => selectedIds.add(i.id));
       else items.forEach(i => selectedIds.delete(i.id));
       renderGrid();
     });
-
-    // Delete buttons
-    $('lib-delete-all-btn')?.addEventListener('click', deleteSelected);
     $('lib-delete-selected-btn')?.addEventListener('click', deleteSelected);
-    $('lib-load-sel-btn')?.addEventListener('click', () => {
+    $('lib-download-sel-btn')?.addEventListener('click', () => {
       const items = filteredItems().filter(i => selectedIds.has(i.id));
       if (!items.length) return toast('Chưa chọn mục nào', 'info');
       items.forEach(i => {
         const a = document.createElement('a');
-        a.href = i.url; a.download = i.name || 'image';
-        a.click();
+        a.href = i.url; a.download = i.name || 'image'; a.click();
       });
     });
 
+    // Context menu: items
+    $('lib-ctx-delete')?.addEventListener('click', () => { hideAllMenus(); deleteSelected(); });
+    $('lib-ctx-move')?.addEventListener('click', e => {
+      const rect = e.target.getBoundingClientRect();
+      showMoveGroupMenu(rect.right + 4, rect.top);
+    });
+
+    // Context menu: group
+    $('lib-ctx-group-rename')?.addEventListener('click', () => {
+      hideAllMenus();
+      if (!ctxTargetGroupId) return;
+      const g = libraryCategories.find(c => c.id === ctxTargetGroupId);
+      if (!g) return;
+      // Find DOM element position
+      const el = document.querySelector(`.lib-group-item[data-gid="${ctxTargetGroupId}"]`);
+      const rect = el ? el.getBoundingClientRect() : { left: 200, bottom: 200 };
+      showRenameInput(rect.left + rect.width + 8, rect.top, g.name, async newName => {
+        const res = await API.patch(`/api/image/library/categories/${ctxTargetGroupId}/rename`, { name: newName });
+        if (res.ok) { g.name = newName; renderGroups(); toast('Đã đổi tên nhóm', 'success'); }
+        else toast(res.detail || 'Đổi tên thất bại', 'error');
+      });
+    });
+
+    $('lib-ctx-group-delete')?.addEventListener('click', async () => {
+      hideAllMenus();
+      if (!ctxTargetGroupId) return;
+      const g = libraryCategories.find(c => c.id === ctxTargetGroupId);
+      if (!g) return;
+      if (!confirm(`Xóa nhóm "${g.name}"? Nhóm phải trống mới xóa được.`)) return;
+      const res = await API.delete(`/api/image/library/categories/${ctxTargetGroupId}`);
+      if (res.ok) {
+        if (currentGroup === ctxTargetGroupId) currentGroup = 'all';
+        toast('Đã xóa nhóm', 'success');
+        await loadAll();
+      } else toast(res.detail || 'Xóa nhóm thất bại', 'error');
+    });
+
+    // Rename input controls
+    $('lib-rename-ok')?.addEventListener('click', confirmRename);
+    $('lib-rename-cancel')?.addEventListener('click', hideRenameInput);
+    $('lib-rename-input')?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') { e.preventDefault(); confirmRename(); }
+      if (e.key === 'Escape') hideRenameInput();
+    });
+
+    // Close menus on outside click
+    document.addEventListener('click', e => {
+      const menus = ['lib-context-menu','lib-group-context-menu','lib-move-group-menu'];
+      menus.forEach(id => {
+        const el = $(id);
+        if (el && !el.contains(e.target)) el.style.display = 'none';
+      });
+      const renameWrap = $('lib-rename-wrap');
+      if (renameWrap && !renameWrap.contains(e.target)) hideRenameInput();
+    }, true);
+
     loadAll();
   };
+
+  // Expose for Studio vault to reload
+  window.LibraryModule = { getAssets: () => libraryAssets, getCategories: () => libraryCategories };
 })();

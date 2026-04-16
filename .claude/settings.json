@@ -15,10 +15,12 @@
       "Bash(grep -n \"license\\\\|LICENSE\\\\|DOMContentLoaded\\\\|init_app\\\\|runtime\" \"c:/Users/PC/Desktop/Veo3Tool/NOVA FRAME/static/js/\"*.js)",
       "Bash(py -3.10 -m nuitka --version)",
       "Bash(cat)",
-      "Read(//tmp/**)"
+      "Read(//tmp/**)",
+      "Bash(ls -d /c/Users/PC/Downloads/veo/VEO_PACK/extension*)"
     ],
     "additionalDirectories": [
-      "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1"
+      "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1",
+      "C:\\Users\\PC\\Downloads\\veo\\VEO_PACK\\extension-treov-v0.12-code - ok"
     ]
   }
 }

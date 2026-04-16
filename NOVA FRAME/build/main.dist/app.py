@@ -85,6 +85,13 @@ def create_app() -> FastAPI:
         app.mount("/studio-images", StaticFiles(directory=str(APP_BASE / "data" / "studio"), html=False), name="studio-images")
         app.mount("/library-images", StaticFiles(directory=str(APP_BASE / "data" / "library"), html=False), name="library-images")
 
+        # Start auto token refresh background task
+        try:
+            from services.token_refresh_service import start_auto_refresh
+            start_auto_refresh()
+        except Exception:
+            pass
+
     # --- Routers ---
     from routers import ui, settings, license_router, veo, image, subtitle, workflow, youtube, character, extension
 

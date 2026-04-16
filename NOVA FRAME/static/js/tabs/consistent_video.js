@@ -42,10 +42,43 @@
     };
   }
 
+  let _activeFilter = 'all';
+
+  function applyFilter() {
+    const container = $('cv-cards');
+    if (!container) return;
+    container.querySelectorAll('.t2v-card').forEach(el => {
+      const card = cards.find(c => 'card-' + c.id === el.id);
+      if (!card) return;
+      if (_activeFilter === 'all') { el.style.display = ''; return; }
+      if (_activeFilter === 'running') {
+        el.style.display = (card.status === 'running') ? '' : 'none';
+      } else if (_activeFilter === 'completed') {
+        el.style.display = card.outputs.length > 0 ? '' : 'none';
+      } else {
+        el.style.display = card.status === _activeFilter ? '' : 'none';
+      }
+    });
+  }
+
   function refreshStats() {
-    $('cv-pending-count').textContent = cards.filter(c => c.status === 'idle').length;
-    $('cv-saved-count').textContent = cards.filter(c => c.outputs.length > 0).length;
+    const idle = cards.filter(c => c.status === 'idle').length;
+    const running = cards.filter(c => c.status === 'running').length;
+    const done = cards.filter(c => c.outputs.length > 0).length;
+    const failed = cards.filter(c => c.status === 'failed').length;
+    $('cv-pending-count').textContent = idle;
+    $('cv-saved-count').textContent = done;
     $('cv-empty').style.display = cards.length ? 'none' : '';
+    const totalEl = $('cv-total-count'); if (totalEl) totalEl.textContent = cards.length;
+    const idleEl = $('cv-idle-count'); if (idleEl) idleEl.textContent = idle;
+    const runEl = $('cv-running-count'); if (runEl) runEl.textContent = running;
+    const doneEl = $('cv-done-count'); if (doneEl) doneEl.textContent = done;
+    const failEl = $('cv-failed-count'); if (failEl) failEl.textContent = failed;
+    ['all','idle','running','completed','failed'].forEach(f => {
+      const el = $('cv-filter-' + f);
+      if (el) el.classList.toggle('active', _activeFilter === f);
+    });
+    applyFilter();
   }
 
   function cardsEl() {
@@ -278,14 +311,22 @@
     card.currentIdx = 0;
     renderCard(card, false);
     try {
-      const res = await API.post('/api/veo/consistent-video', {
-        prompt: card.prompt || '',
-        character_ids: card.chars.map(c => c.id),
-        aspect_ratio: CFG.aspect,
-        output_count: CFG.count,
-        model: CFG.model,
-        ...(accountIndex != null ? { account_index: accountIndex } : {}),
-      });
+      // Upload ảnh nhân vật trực tiếp qua FormData — không cần sync
+      const fd = new FormData();
+      fd.append('prompt', card.prompt || '');
+      fd.append('aspect_ratio', CFG.aspect);
+      fd.append('output_count', String(CFG.count));
+      fd.append('model', CFG.model);
+      if (accountIndex != null) fd.append('account_index', String(accountIndex));
+      for (const ch of card.chars.slice(0, 3)) {
+        if (ch.url) {
+          try {
+            const blob = await fetch(ch.url).then(r => r.blob());
+            fd.append('character_images', blob, (ch.name || 'char') + '.jpg');
+          } catch (_) {}
+        }
+      }
+      const res = await API.postForm('/api/veo/consistent-video', fd);
       if (!res.ok) {
         card.status = 'failed';
         card.error = res.detail || 'Lỗi tạo';
@@ -371,163 +412,152 @@
     toast('Đã xóa toàn bộ card', 'success');
   }
 
-  function findCharactersForPrompt(prompt) {
-    const normalizedPrompt = normalizeText(prompt);
-    if (!normalizedPrompt) return [];
+  // ── CV Vault (Kho lưu trữ dùng trong tab CV) ────────────────────────────
+  let _cvVaultAssets = [];
+  let _cvVaultCategories = [];
+  let _cvVaultSelectedIds = new Set();
+  let _cvVaultTypeFilter = 'all';
+  let _cvVaultGroupFilter = 'all';
 
-    const normalizedChars = libraryChars
-      .map(ch => ({ ...ch, _normalizedName: normalizeText(ch.name) }))
-      .filter(ch => ch._normalizedName)
-      .sort((a, b) => b._normalizedName.length - a._normalizedName.length);
-
-    const matched = [];
-    for (const ch of normalizedChars) {
-      if (matched.length >= 3) break;
-      if (normalizedPrompt.includes(ch._normalizedName) && !matched.some(item => item.id === ch.id)) {
-        const { _normalizedName, ...plainChar } = ch;
-        matched.push({ ...plainChar });
-      }
-    }
-    return matched;
-  }
-
-  function autoApplyCharactersToCards(targetCardIds = null) {
-    const targetCards = Array.isArray(targetCardIds) && targetCardIds.length
-      ? cards.filter(card => targetCardIds.includes(card.id))
-      : cards;
-
-    let affectedCount = 0;
-    targetCards.forEach(card => {
-      const matchedChars = findCharactersForPrompt(card.prompt);
-      if (!matchedChars.length) return;
-      card.chars = matchedChars.map(ch => ({ ...ch }));
-      renderCard(card, false);
-      affectedCount++;
+  function _cvVaultFiltered() {
+    return _cvVaultAssets.filter(a => {
+      if (_cvVaultTypeFilter !== 'all' && a.asset_type !== _cvVaultTypeFilter) return false;
+      if (_cvVaultGroupFilter !== 'all' && a.category_id !== _cvVaultGroupFilter) return false;
+      return true;
     });
-
-    if (affectedCount) {
-      toast('Đã auto gán nhân vật cho ' + affectedCount + ' card', 'success');
-    } else {
-      toast('Không tìm thấy tên nhân vật nào khớp trong prompt', 'error');
-    }
-    return affectedCount;
   }
 
-  function openApplyCharsModal() {
-    if (!libraryChars.length) {
-      toast('Chưa có nhân vật trong thư viện', 'error');
+  function _cvVaultUpdateSelCount() {
+    const el = $('cv-vault-sel-count');
+    if (el) el.textContent = `Đã chọn: ${_cvVaultSelectedIds.size}`;
+  }
+
+  function _cvVaultRenderGrid() {
+    const grid = $('cv-vault-grid');
+    if (!grid) return;
+    const items = _cvVaultFiltered();
+    const countLabel = $('cv-vault-count-label');
+    if (countLabel) countLabel.textContent = `${items.length} ảnh`;
+    const typeLabel = { nhanvat: 'Nhân Vật', vatpham: 'Vật Phẩm', style: 'Style', background: 'BG' };
+    if (!items.length) {
+      grid.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:40px 20px;color:var(--text3);font-size:13px;">Không có ảnh nào</div>`;
+      _cvVaultUpdateSelCount();
       return;
     }
-
-    let modal = $('cv-apply-modal');
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = 'cv-apply-modal';
-      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.65);z-index:3000;display:flex;align-items:center;justify-content:center;';
-      document.body.appendChild(modal);
-    }
-
-    const selectedCharIds = new Set(defaultChars.map(ch => ch.id));
-    const selectedCardIds = new Set(cards.map(c => c.id));
-
-    const render = () => {
-      modal.innerHTML = `
-        <div style="background:var(--bg2);border:1px solid var(--border);border-radius:12px;padding:24px;width:900px;max-width:95vw;max-height:90vh;overflow:auto;">
-          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <div>
-              <div style="font-size:18px;font-weight:700;">Áp dụng nhân vật cho prompt</div>
-              <div style="font-size:12px;color:var(--text2);margin-top:4px;">Chọn tối đa 3 nhân vật và gán vào các card đang có.</div>
-            </div>
-            <button class="btn btn-secondary btn-sm" id="cv-apply-close">Đóng</button>
-          </div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:12px;margin-bottom:18px;">
-            ${libraryChars.map(ch => `
-              <button type="button" class="cv-char-choice ${selectedCharIds.has(ch.id) ? 'active' : ''}" data-id="${ch.id}"
-                style="position:relative;border:2px solid ${selectedCharIds.has(ch.id) ? 'var(--accent)' : 'var(--border)'};background:var(--bg3);border-radius:12px;padding:8px;cursor:pointer;">
-                <img src="${ch.url}" alt="${ch.name}" style="width:100%;aspect-ratio:1;object-fit:cover;border-radius:10px;display:block;">
-                <div style="font-size:12px;margin-top:8px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${ch.name}</div>
-                <div style="position:absolute;top:10px;right:10px;width:24px;height:24px;border-radius:999px;background:${selectedCharIds.has(ch.id) ? 'var(--accent)' : 'rgba(15,23,42,.65)'};color:#fff;display:flex;align-items:center;justify-content:center;font-weight:700;">${selectedCharIds.has(ch.id) ? '✓' : ''}</div>
-              </button>
-            `).join('')}
-          </div>
-          <div style="font-size:13px;font-weight:600;margin-bottom:8px;">Chọn card áp dụng</div>
-          <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(130px,1fr));gap:8px;margin-bottom:18px;">
-            ${cards.map((card, idx) => `
-              <label style="display:flex;align-items:center;gap:8px;border:1px solid var(--border);border-radius:8px;padding:8px 10px;cursor:pointer;">
-                <input type="checkbox" class="cv-card-check" data-id="${card.id}" ${selectedCardIds.has(card.id) ? 'checked' : ''}>
-                <span>Card #${idx + 1}</span>
-              </label>
-            `).join('')}
-          </div>
-          <div style="display:flex;justify-content:flex-end;gap:8px;">
-            <button class="btn btn-secondary" id="cv-apply-auto">AUTO Nhân Vật</button>
-            <button class="btn btn-secondary" id="cv-apply-clear">Bỏ chọn</button>
-            <button class="btn btn-primary" id="cv-apply-submit">Áp dụng</button>
-          </div>
-        </div>
-      `;
-
-      modal.style.display = 'flex';
-      modal.onclick = ev => { if (ev.target === modal) modal.style.display = 'none'; };
-      $('cv-apply-close')?.addEventListener('click', () => { modal.style.display = 'none'; });
-      $('cv-apply-clear')?.addEventListener('click', () => {
-        selectedCharIds.clear();
-        selectedCardIds.clear();
-        render();
+    grid.innerHTML = items.map(item => `
+      <div class="studio-vault-card ${_cvVaultSelectedIds.has(item.id) ? 'selected' : ''}" data-id="${item.id}">
+        <input type="checkbox" class="studio-vault-card-check" data-id="${item.id}"
+               ${_cvVaultSelectedIds.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation()">
+        <img src="${item.url}" alt="${item.name}" loading="lazy">
+        <span class="studio-vault-card-badge">${typeLabel[item.asset_type] || 'Kho'}</span>
+        <div class="studio-vault-card-label">${item.name || 'Chưa đặt tên'}</div>
+      </div>
+    `).join('');
+    grid.querySelectorAll('.studio-vault-card-check').forEach(cb => {
+      cb.addEventListener('change', e => {
+        const id = e.target.dataset.id;
+        e.target.checked ? _cvVaultSelectedIds.add(id) : _cvVaultSelectedIds.delete(id);
+        grid.querySelector(`.studio-vault-card[data-id="${id}"]`)?.classList.toggle('selected', e.target.checked);
+        _cvVaultUpdateSelCount();
       });
+    });
+    grid.querySelectorAll('.studio-vault-card').forEach(card => {
+      card.addEventListener('click', () => {
+        const id = card.dataset.id;
+        const cb = card.querySelector('.studio-vault-card-check');
+        if (_cvVaultSelectedIds.has(id)) {
+          _cvVaultSelectedIds.delete(id);
+          card.classList.remove('selected');
+          if (cb) cb.checked = false;
+        } else {
+          _cvVaultSelectedIds.add(id);
+          card.classList.add('selected');
+          if (cb) cb.checked = true;
+        }
+        _cvVaultUpdateSelCount();
+      });
+    });
+    _cvVaultUpdateSelCount();
+  }
 
-      $('cv-apply-auto')?.addEventListener('click', () => {
-        const affectedCount = autoApplyCharactersToCards(Array.from(selectedCardIds));
-        if (affectedCount) {
-          modal.style.display = 'none';
-          renderDefaultChars();
+  async function openCVVault() {
+    const popup = $('cv-vault-popup');
+    if (!popup) return;
+    const [catsRes, assetsRes] = await Promise.all([
+      API.get('/api/image/library/categories'),
+      API.get('/api/image/library/assets'),
+    ]);
+    _cvVaultCategories = catsRes.items || [];
+    _cvVaultAssets = assetsRes.items || [];
+    _cvVaultSelectedIds = new Set(defaultChars.map(ch => ch.id));
+    _cvVaultTypeFilter = 'all';
+    _cvVaultGroupFilter = 'all';
+
+    const groupSel = $('cv-vault-group-filter');
+    if (groupSel) {
+      groupSel.innerHTML = '<option value="all">Tất cả nhóm</option>' +
+        _cvVaultCategories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      groupSel.value = 'all';
+    }
+    const typeSel = $('cv-vault-type-filter');
+    if (typeSel) typeSel.value = 'all';
+
+    _cvVaultRenderGrid();
+    popup.style.display = 'flex';
+  }
+
+  function _initCVVaultListeners() {
+    $('cv-vault-type-filter')?.addEventListener('change', e => {
+      _cvVaultTypeFilter = e.target.value;
+      _cvVaultRenderGrid();
+    });
+    $('cv-vault-group-filter')?.addEventListener('change', e => {
+      _cvVaultGroupFilter = e.target.value;
+      _cvVaultRenderGrid();
+    });
+    $('cv-vault-select-all')?.addEventListener('change', e => {
+      const items = _cvVaultFiltered();
+      if (e.target.checked) items.forEach(i => _cvVaultSelectedIds.add(i.id));
+      else items.forEach(i => _cvVaultSelectedIds.delete(i.id));
+      _cvVaultRenderGrid();
+    });
+    $('cv-vault-apply-btn')?.addEventListener('click', () => {
+      if (!_cvVaultSelectedIds.size) { toast('Chưa chọn ảnh nào', 'error'); return; }
+      const selected = _cvVaultAssets.filter(a => _cvVaultSelectedIds.has(a.id)).slice(0, 3);
+      defaultChars = selected.map(a => ({ id: a.id, url: a.url, name: a.name || a.id, media_id: a.media_id || '' }));
+      cards.forEach(card => {
+        card.chars = defaultChars.map(ch => ({ ...ch }));
+        renderCard(card, false);
+      });
+      renderDefaultChars();
+      $('cv-vault-popup').style.display = 'none';
+      toast('Đã áp dụng ' + selected.length + ' nhân vật cho tất cả card', 'success');
+    });
+    $('cv-vault-auto-btn')?.addEventListener('click', () => {
+      const selected = _cvVaultAssets.filter(a => _cvVaultSelectedIds.has(a.id)).slice(0, 3);
+      if (!selected.length) { toast('Chưa chọn ảnh nào', 'error'); return; }
+      let affected = 0;
+      cards.forEach(card => {
+        const matched = selected.filter(a => {
+          const name = normalizeText(a.name || '');
+          return name && normalizeText(card.prompt).includes(name);
+        });
+        if (matched.length) {
+          card.chars = matched.slice(0, 3).map(a => ({ id: a.id, url: a.url, name: a.name || a.id, media_id: a.media_id || '' }));
+          renderCard(card, false);
+          affected++;
         }
       });
-
-      modal.querySelectorAll('.cv-char-choice').forEach(btn => {
-        btn.addEventListener('click', () => {
-          const id = btn.dataset.id;
-          if (selectedCharIds.has(id)) selectedCharIds.delete(id);
-          else {
-            if (selectedCharIds.size >= 3) {
-              toast('Tối đa 3 nhân vật', 'error');
-              return;
-            }
-            selectedCharIds.add(id);
-          }
-          render();
-          window.CVUIEnhancer?.decorateNow?.();
-        });
-      });
-
-      modal.querySelectorAll('.cv-card-check').forEach(input => {
-        input.addEventListener('change', e => {
-          const id = e.target.dataset.id;
-          if (e.target.checked) selectedCardIds.add(id);
-          else selectedCardIds.delete(id);
-        });
-      });
-
-      $('cv-apply-submit')?.addEventListener('click', () => {
-        const selectedChars = libraryChars.filter(ch => selectedCharIds.has(ch.id)).slice(0, 3);
-        defaultChars = selectedChars.map(ch => ({ ...ch }));
-        const targetCards = cards.filter(c => selectedCardIds.has(c.id));
-        targetCards.forEach(card => {
-          card.chars = selectedChars.map(ch => ({ ...ch }));
-          renderCard(card, false);
-        });
-        renderDefaultChars();
-        modal.style.display = 'none';
-        toast('Đã áp dụng nhân vật cho ' + targetCards.length + ' card', 'success');
-      });
-
-      window.CVUIEnhancer?.decorateNow?.();
-    };
-
-    render();
+      renderDefaultChars();
+      $('cv-vault-popup').style.display = 'none';
+      toast(affected ? `AUTO: áp dụng cho ${affected} card` : 'Không tìm thấy tên nào khớp', affected ? 'success' : 'info');
+    });
   }
 
   window.CV = {
+    setFilter: f => { _activeFilter = f; refreshStats(); },
+    openVault: openCVVault,
+    closeVault: () => { const p = $('cv-vault-popup'); if (p) p.style.display = 'none'; },
     genOne: id => { const card = cards.find(c => c.id === id); if (card) genOne(card); },
     remove: id => { cards = cards.filter(c => c.id !== id); $('card-' + id)?.remove(); refreshStats(); },
     prev: id => { const card = cards.find(c => c.id === id); if (card && card.currentIdx > 0) { card.currentIdx--; renderCard(card, false); } },
@@ -587,7 +617,8 @@
     $('cv-stop')?.addEventListener('click', () => { stopFlag = true; $('cv-stop').textContent = 'Đang dừng...'; });
     $('cv-save-all')?.addEventListener('click', saveAll);
     $('cv-clear-all')?.addEventListener('click', clearAll);
-    $('cv-apply-chars')?.addEventListener('click', openApplyCharsModal);
+    $('cv-open-vault')?.addEventListener('click', openCVVault);
+    _initCVVaultListeners();
     document.addEventListener('click', e => {
       if (!e.target.closest('.card-action-group')) {
         document.querySelectorAll('.card-insert-menu').forEach(menu => { menu.style.display = 'none'; });

@@ -25,6 +25,9 @@ _captcha_queue: list[dict[str, Any]] = []
 _pending_browser_submit: dict[str, asyncio.Future] = {}
 _browser_submit_queue: list[dict[str, Any]] = []
 
+# Jobs đã được poll, đang xử lý bởi extension (tránh trả lại cùng 1 job)
+_inflight_jobs: set[str] = set()
+
 
 async def request_captcha_token(job_id: str, job_type: str = "video", account_index: int = 1) -> str | None:
     loop = asyncio.get_event_loop()
@@ -57,6 +60,7 @@ async def request_captcha_token(job_id: str, job_type: str = "video", account_in
         return None
     finally:
         _pending_captcha.pop(job_id, None)
+        _inflight_jobs.discard(job_id)
         for i, item in enumerate(_captcha_queue):
             if item["jobId"] == job_id:
                 _captcha_queue.pop(i)
@@ -106,6 +110,7 @@ async def request_browser_upload_post(
         return {"ok": False, "status": 0, "body": "Browser upload+post timeout"}
     finally:
         _pending_browser_submit.pop(job_id, None)
+        _inflight_jobs.discard(job_id)
         for i, item in enumerate(_browser_submit_queue):
             if item["jobId"] == job_id:
                 _browser_submit_queue.pop(i)
@@ -143,13 +148,14 @@ async def request_browser_submit(
         normalized_account_index,
     )
     try:
-        result = await asyncio.wait_for(asyncio.shield(fut), timeout=90.0)
+        result = await asyncio.wait_for(asyncio.shield(fut), timeout=300.0)
         return result or {"ok": False, "status": 0, "body": "No browser result"}
     except asyncio.TimeoutError:
         logger.warning("⚠️ Timeout khi chờ browser-submit cho job_%s", job_id[:8])
         return {"ok": False, "status": 0, "body": "Browser submit timeout"}
     finally:
         _pending_browser_submit.pop(job_id, None)
+        _inflight_jobs.discard(job_id)
         for i, item in enumerate(_browser_submit_queue):
             if item["jobId"] == job_id:
                 _browser_submit_queue.pop(i)
@@ -158,12 +164,17 @@ async def request_browser_submit(
 
 @router.get("/poll-job")
 async def poll_job():
-    if _browser_submit_queue:
-        job = _browser_submit_queue[0]
+    # Browser submit jobs — pop ngay khi trả, đánh dấu in-flight
+    for i, job in enumerate(_browser_submit_queue):
+        job_id = job["jobId"]
+        if job_id in _inflight_jobs:
+            continue  # đang được xử lý, bỏ qua
+        _browser_submit_queue.pop(i)
+        _inflight_jobs.add(job_id)
         job_kind = str(job.get("jobKind") or "browser_submit")
         logger.info(
             "📤 [Extension] poll-job -> job_%s (%s, %s, account #%s)",
-            str(job["jobId"])[:8],
+            job_id[:8],
             job_kind,
             job.get("jobType", "video"),
             job.get("accountIndex", 1),
@@ -171,7 +182,7 @@ async def poll_job():
         return {
             "hasJob": True,
             "jobKind": job_kind,
-            "jobId": job["jobId"],
+            "jobId": job_id,
             "jobType": job.get("jobType", "video"),
             "accountIndex": job.get("accountIndex", 1),
             "url": job.get("url", ""),
@@ -179,18 +190,23 @@ async def poll_job():
             "accessToken": job.get("accessToken", ""),
         }
 
-    if _captcha_queue:
-        job = _captcha_queue[0]
+    # Captcha jobs
+    for i, job in enumerate(_captcha_queue):
+        job_id = job["jobId"]
+        if job_id in _inflight_jobs:
+            continue
+        _captcha_queue.pop(i)
+        _inflight_jobs.add(job_id)
         logger.info(
             "📤 [Extension] poll-job -> job_%s (%s, account #%s)",
-            str(job["jobId"])[:8],
+            job_id[:8],
             job.get("jobType", "video"),
             job.get("accountIndex", 1),
         )
         return {
             "hasJob": True,
             "jobKind": "captcha",
-            "jobId": job["jobId"],
+            "jobId": job_id,
             "jobType": job.get("jobType", "video"),
             "accountIndex": job.get("accountIndex", 1),
         }
@@ -212,6 +228,7 @@ async def submit_job(req: SubmitJobRequest):
             _captcha_queue.pop(i)
             break
 
+    _inflight_jobs.discard(req.jobId)
     fut = _pending_captcha.get(req.jobId)
     if fut and not fut.done():
         expected_account = int((queued_job or {}).get("accountIndex") or 1)
@@ -253,6 +270,7 @@ async def submit_browser(req: BrowserSubmitResponse):
             _browser_submit_queue.pop(i)
             break
 
+    _inflight_jobs.discard(req.jobId)
     fut = _pending_browser_submit.get(req.jobId)
     if fut and not fut.done():
         expected_account = int((queued_job or {}).get("accountIndex") or 1)
@@ -336,6 +354,26 @@ async def capture_token(payload: TokenPayload):
         payload.url or "?",
     )
     return {"ok": True, "message": "Token saved"}
+
+
+@router.get("/token-for-account")
+async def get_token_for_account(account_index: int = 1):
+    """Extension gọi endpoint này để lấy token đúng theo account_index."""
+    from services.config_service import load_config
+    cfg = load_config()
+    requested_index = max(1, int(account_index or 1))
+    target_key = f"account{requested_index}"
+    acc = cfg.get(target_key, {})
+    token = acc.get("ACCESS_TOKEN", "") if acc else ""
+    if not token:
+        # Fallback: tìm account đầu tiên có token
+        for i in range(1, 6):
+            key = f"account{i}"
+            t = cfg.get(key, {}).get("ACCESS_TOKEN", "")
+            if t:
+                token = t
+                break
+    return {"ok": True, "token": token, "accountIndex": requested_index}
 
 
 @router.get("/status")

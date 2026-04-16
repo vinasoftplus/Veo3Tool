@@ -39,11 +39,21 @@ async def init_library_tables() -> None:
                 prompt TEXT NOT NULL DEFAULT '',
                 source_type TEXT NOT NULL DEFAULT 'image',
                 origin_url TEXT NOT NULL DEFAULT '',
+                asset_type TEXT NOT NULL DEFAULT 'nhanvat',
                 created_at TEXT NOT NULL,
                 FOREIGN KEY(category_id) REFERENCES library_categories(id)
             )
             """
         )
+        # Migration: add columns if not exists
+        for migration in [
+            "ALTER TABLE library_assets ADD COLUMN asset_type TEXT NOT NULL DEFAULT 'nhanvat'",
+            "ALTER TABLE library_assets ADD COLUMN media_id TEXT NOT NULL DEFAULT ''",
+        ]:
+            try:
+                await db.execute(migration)
+            except Exception:
+                pass
         await db.commit()
 
 
@@ -92,6 +102,8 @@ async def save_library_asset(
     category_id: str | None = None,
     source_type: str = "image",
     origin_url: str = "",
+    asset_type: str = "nhanvat",
+    media_id: str = "",
 ) -> dict[str, Any]:
     await ensure_default_category()
     category_id = str(category_id or "default").strip() or "default"
@@ -101,6 +113,9 @@ async def save_library_asset(
     out_path = LIBRARY_DIR / stored_name
     out_path.write_bytes(image_bytes)
 
+    valid_types = {"nhanvat", "vatpham", "style", "background"}
+    safe_type = asset_type if asset_type in valid_types else "nhanvat"
+
     asset = {
         "id": asset_id,
         "name": Path(filename).stem or stored_name,
@@ -109,13 +124,15 @@ async def save_library_asset(
         "prompt": str(prompt or ""),
         "source_type": str(source_type or "image"),
         "origin_url": str(origin_url or ""),
+        "asset_type": safe_type,
+        "media_id": str(media_id or ""),
         "created_at": _now_iso(),
     }
     async with aiosqlite.connect(str(DB_PATH)) as db:
         await db.execute(
             """
-            INSERT INTO library_assets (id, name, category_id, filename, prompt, source_type, origin_url, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO library_assets (id, name, category_id, filename, prompt, source_type, origin_url, asset_type, media_id, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 asset["id"],
@@ -125,11 +142,29 @@ async def save_library_asset(
                 asset["prompt"],
                 asset["source_type"],
                 asset["origin_url"],
+                asset["asset_type"],
+                asset["media_id"],
                 asset["created_at"],
             ),
         )
         await db.commit()
     return asset
+
+
+async def delete_category(category_id: str) -> None:
+    if category_id == "default":
+        raise ValueError("Không thể xóa nhóm mặc định")
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        async with db.execute(
+            "SELECT COUNT(*) FROM library_assets WHERE category_id = ?", (category_id,)
+        ) as cur:
+            row = await cur.fetchone()
+        if row and row[0] > 0:
+            raise ValueError("Nhóm còn ảnh, hãy xóa hết ảnh trước khi xóa nhóm")
+        result = await db.execute("DELETE FROM library_categories WHERE id = ?", (category_id,))
+        if result.rowcount == 0:
+            raise ValueError("Không tìm thấy nhóm")
+        await db.commit()
 
 
 async def delete_asset(asset_id: str) -> bool:
@@ -153,7 +188,7 @@ async def list_assets() -> list[dict[str, Any]]:
         async with db.execute(
             """
             SELECT a.id, a.name, a.category_id, a.filename, a.prompt, a.source_type, a.origin_url, a.created_at,
-                   c.name
+                   c.name, a.asset_type, COALESCE(a.media_id, '')
             FROM library_assets a
             LEFT JOIN library_categories c ON c.id = a.category_id
             ORDER BY a.created_at DESC
@@ -171,8 +206,46 @@ async def list_assets() -> list[dict[str, Any]]:
             "origin_url": r[6],
             "created_at": r[7],
             "category_name": r[8] or "Mặc định",
+            "asset_type": r[9] or "nhanvat",
+            "media_id": r[10] or "",
             "url": f"/library-images/{r[3]}",
         }
         for r in rows
     ]
+
+
+async def rename_asset(asset_id: str, new_name: str) -> bool:
+    safe = str(new_name or "").strip()
+    if not safe:
+        raise ValueError("Tên không được trống")
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        result = await db.execute("UPDATE library_assets SET name = ? WHERE id = ?", (safe, asset_id))
+        await db.commit()
+    return result.rowcount > 0
+
+
+async def move_assets(asset_ids: list[str], target_category_id: str) -> int:
+    if not asset_ids:
+        return 0
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        async with db.execute("SELECT id FROM library_categories WHERE id = ?", (target_category_id,)) as cur:
+            if not await cur.fetchone():
+                raise ValueError("Nhóm đích không tồn tại")
+        placeholders = ",".join("?" * len(asset_ids))
+        result = await db.execute(
+            f"UPDATE library_assets SET category_id = ? WHERE id IN ({placeholders})",
+            [target_category_id] + list(asset_ids),
+        )
+        await db.commit()
+    return result.rowcount
+
+
+async def rename_category(category_id: str, new_name: str) -> bool:
+    safe = str(new_name or "").strip()
+    if not safe:
+        raise ValueError("Tên nhóm không được trống")
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        result = await db.execute("UPDATE library_categories SET name = ? WHERE id = ?", (safe, category_id))
+        await db.commit()
+    return result.rowcount > 0
 

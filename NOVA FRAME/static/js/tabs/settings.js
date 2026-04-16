@@ -31,13 +31,21 @@
     if (el('cfg-youtube-key')) el('cfg-youtube-key').value = cfg.YOUTUBE_API_KEY || '';
     if (el('cfg-gemini-keys')) el('cfg-gemini-keys').value = cfg.GEMINI_API_KEYS || '';
     if (el('cfg-ffmpeg-path')) el('cfg-ffmpeg-path').value = cfg.FFMPEG_PATH || '';
+    if (el('cfg-max-concurrent')) el('cfg-max-concurrent').value = cfg.MAX_CONCURRENT != null ? cfg.MAX_CONCURRENT : 3;
+    if (el('cfg-max-concurrent-image')) el('cfg-max-concurrent-image').value = cfg.MAX_CONCURRENT_IMAGE != null ? cfg.MAX_CONCURRENT_IMAGE : 2;
   }
 
   async function saveGeneral() {
+    const rawConcurrent = parseInt(document.getElementById('cfg-max-concurrent')?.value || '3', 10);
+    const maxConcurrent = Math.min(10, Math.max(1, isNaN(rawConcurrent) ? 3 : rawConcurrent));
+    const rawImg = parseInt(document.getElementById('cfg-max-concurrent-image')?.value || '2', 10);
+    const maxConcurrentImage = Math.min(5, Math.max(1, isNaN(rawImg) ? 2 : rawImg));
     const updates = {
       YOUTUBE_API_KEY: document.getElementById('cfg-youtube-key')?.value.trim() || '',
       GEMINI_API_KEYS: document.getElementById('cfg-gemini-keys')?.value.trim() || '',
       FFMPEG_PATH: document.getElementById('cfg-ffmpeg-path')?.value.trim() || '',
+      MAX_CONCURRENT: maxConcurrent,
+      MAX_CONCURRENT_IMAGE: maxConcurrentImage,
     };
     for (const [k, v] of Object.entries(updates)) {
       await API.post('/api/settings/save-value', { key: k, value: v });

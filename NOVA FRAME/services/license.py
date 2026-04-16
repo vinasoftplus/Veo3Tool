@@ -40,8 +40,41 @@ _runtime_key: str = str(_uuid.uuid4().hex)
 # UUID helpers
 # ---------------------------------------------------------------------------
 
+_INVALID_UUIDS = {
+    "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
+    "FEFEFEFE-FEFE-FEFE-FEFE-FEFEFEFEFEFE",
+    "00000000-0000-0000-0000-000000000000",
+    "03000200-0400-0500-0006-000700080009",
+}
+
+def _is_valid_uuid(val: str) -> bool:
+    if not val:
+        return False
+    v = val.strip().upper()
+    if v in ("", "NONE", "DEFAULT STRING", "TO BE FILLED BY O.E.M."):
+        return False
+    if v in _INVALID_UUIDS:
+        return False
+    # Loại UUID mà tất cả các byte đều giống nhau (ABABABAB-...) hoặc toàn 1 ký tự hex
+    stripped = v.replace("-", "")
+    if len(set(stripped)) <= 1:
+        return False
+    # Loại pattern lặp 2 ký tự như FEFEFEFE
+    if len(stripped) == 32 and len(set(stripped[i:i+2] for i in range(0, 32, 2))) <= 1:
+        return False
+    return True
+
+def _mac_based_uuid() -> str:
+    """Tạo UUID ổn định từ MAC address của máy."""
+    import hashlib
+    mac = hex(_uuid.getnode()).upper().lstrip("0X").zfill(12)
+    # Dùng SHA1 để map MAC → UUID v5-like
+    h = hashlib.sha1(f"NOVAFRAME:{mac}".encode()).hexdigest()
+    return f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}".upper()
+
 def get_bios_uuid() -> str:
-    """Get machine UUID via WMI chain (Windows). Fallback to all-F UUID."""
+    """Get machine UUID via WMI chain (Windows). Fallback to MAC-based UUID."""
+    # 1. BIOS UUID
     try:
         result = subprocess.run(
             ["wmic", "csproduct", "get", "UUID", "/value"],
@@ -51,11 +84,12 @@ def get_bios_uuid() -> str:
             line = line.strip()
             if line.startswith("UUID="):
                 val = line.split("=", 1)[1].strip()
-                if val and val != "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF":
+                if _is_valid_uuid(val):
                     return val.upper()
     except Exception:
         pass
 
+    # 2. Baseboard serial
     try:
         result = subprocess.run(
             ["wmic", "baseboard", "get", "SerialNumber", "/value"],
@@ -65,11 +99,12 @@ def get_bios_uuid() -> str:
             line = line.strip()
             if line.startswith("SerialNumber="):
                 val = line.split("=", 1)[1].strip()
-                if val and val not in ("", "None", "Default string"):
+                if _is_valid_uuid(val):
                     return val.upper()
     except Exception:
         pass
 
+    # 3. Disk serial
     try:
         result = subprocess.run(
             ["wmic", "diskdrive", "get", "SerialNumber", "/value"],
@@ -79,12 +114,13 @@ def get_bios_uuid() -> str:
             line = line.strip()
             if line.startswith("SerialNumber="):
                 val = line.split("=", 1)[1].strip()
-                if val and val not in ("", "None"):
+                if _is_valid_uuid(val):
                     return val.upper()
     except Exception:
         pass
 
-    return "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"
+    # 4. Fallback: MAC address hash (ổn định, không toàn F)
+    return _mac_based_uuid()
 
 
 # ---------------------------------------------------------------------------

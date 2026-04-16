@@ -60,6 +60,7 @@ _DEFAULT_CONFIG: dict = {
     "TOKEN_OPTION": "Option 1",
     "LICENSE_TOKEN": "",
     "MAX_CONCURRENT": 3,
+    "MAX_CONCURRENT_IMAGE": 2,
 }
 
 _DEFAULT_SETTINGS: dict = {

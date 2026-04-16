@@ -18,16 +18,37 @@ router = APIRouter(tags=["image"])
 logger = logging.getLogger("veo.image")
 
 
-def _get_account_or_raise():
+def _get_account_or_raise(account_index: int = 0):
     accounts = get_active_accounts()
     if not accounts:
         raise HTTPException(400, "Chưa có account nào có token.")
+    if account_index > 0:
+        for acc in accounts:
+            if int(acc.get("_index") or 0) == account_index:
+                return acc
     return accounts[0]
 
 
 def _token_option() -> str:
     cfg = load_config()
     return str(cfg.get("TOKEN_OPTION", "Option 1") or "Option 1").strip()
+
+
+async def _refresh_if_needed(result: dict, account_index: int) -> bool:
+    """Nếu result là 401/403 và account có cookie → refresh token. Trả về True nếu refresh OK."""
+    status = result.get("status", 0)
+    if status not in (401, 403):
+        return False
+    if not account_index:
+        return False
+    from services.token_refresh_service import refresh_account_token
+    logger.warning("[Image] HTTP %s — thử refresh token account #%s...", status, account_index)
+    refreshed = await refresh_account_token(account_index)
+    if refreshed:
+        logger.info("[Image] ✅ Refresh token OK account #%s", account_index)
+    else:
+        logger.warning("[Image] ❌ Refresh token thất bại account #%s", account_index)
+    return refreshed
 
 
 def _normalize_images(medias: list[dict]) -> list[dict]:
@@ -37,6 +58,7 @@ def _normalize_images(medias: list[dict]) -> list[dict]:
             continue
         url = item.get("url") or item.get("downloadUrl") or item.get("image_url") or item.get("imageUrl") or ""
         media_id = item.get("media_id") or item.get("mediaId") or item.get("mediaGenerationId") or item.get("name") or ""
+        logger.info("[Image] parse media_id=%r keys=%s", media_id, list(item.keys()))
         normalized.append(
             {
                 **item,
@@ -124,7 +146,26 @@ async def generate_image(req: GenerateImageRequest):
             seed=req.seed,
         )
     if not result.get("ok"):
-        raise HTTPException(400, f"API error: {result.get('body', '')}")
+        # Retry 1 lần nếu 401/403 + refresh thành công
+        if await _refresh_if_needed(result, account_index):
+            account = _get_account_or_raise(account_index)
+            if token_option == "Option 2":
+                result = await request_browser_submit(
+                    str(uuid.uuid4()),
+                    job_type="image",
+                    url=URL_IMG_GEN_TPL.format(project_id=quote(project_id, safe="")),
+                    payload=payload,
+                    access_token=account.get("ACCESS_TOKEN", ""),
+                    account_index=account_index,
+                )
+            else:
+                result = await adapter.generate_images(
+                    prompt=req.prompt, account=account,
+                    aspect_ratio=req.aspect_ratio, output_count=req.output_count,
+                    model=req.model, seed=req.seed,
+                )
+        if not result.get("ok"):
+            raise HTTPException(400, f"API error: {result.get('body', '')}")
 
     medias = _normalize_images(adapter.parse_image_results(result.get("body", "")))
     return {"ok": True, "images": medias}
@@ -139,6 +180,7 @@ async def generate_image_studio(
     seed: int | None = Form(None),
     character_ids_json: str = Form("[]"),
     reference_images: list[UploadFile] = File([]),
+    account_index: int = Form(0),
 ):
     from adapters.google_labs import GoogleLabsAdapter
     from adapters.google_labs import URL_IMG_GEN_TPL
@@ -146,7 +188,7 @@ async def generate_image_studio(
     from services.character_service import get_character
     from urllib.parse import quote
 
-    account = _get_account_or_raise()
+    account = _get_account_or_raise(account_index)
     account_index = int(account.get("_index") or 1)
     adapter = GoogleLabsAdapter()
     token_option = _token_option()
@@ -252,7 +294,33 @@ async def generate_image_studio(
             )
 
     if not result.get("ok"):
-        raise HTTPException(400, f"API error: {result.get('body', '')}")
+        # Retry 1 lần nếu 401/403 + refresh thành công
+        if await _refresh_if_needed(result, account_index):
+            account = _get_account_or_raise(account_index)
+            if token_option == "Option 2":
+                result = await request_browser_submit(
+                    str(uuid.uuid4()),
+                    job_type="image",
+                    url=URL_IMG_GEN_TPL.format(project_id=quote(project_id, safe="")),
+                    payload=payload,
+                    access_token=account.get("ACCESS_TOKEN", ""),
+                    account_index=account_index,
+                )
+            else:
+                if reference_input_names:
+                    from adapters.google_labs import _async_send
+                    result = await _async_send(
+                        URL_IMG_GEN_TPL.format(project_id=quote(project_id, safe="")),
+                        payload, account.get("ACCESS_TOKEN", ""), account.get("COOKIE", ""),
+                    )
+                else:
+                    result = await adapter.generate_images(
+                        prompt=effective_prompt, account=account,
+                        aspect_ratio=aspect_ratio, output_count=output_count,
+                        model=model, seed=seed, recaptcha_token="",
+                    )
+        if not result.get("ok"):
+            raise HTTPException(400, f"API error: {result.get('body', '')}")
 
     medias = _normalize_images(adapter.parse_image_results(result.get("body", "")))
     return {"ok": True, "images": medias, "reference_count": len(reference_input_names)}
@@ -324,6 +392,8 @@ class StudioSaveRequest(BaseModel):
     prompt: str | None = None
     filename: str | None = None
     category_id: str | None = None
+    media_id: str | None = None
+    asset_type: str | None = None
 
 
 @router.post("/studio/save")
@@ -352,6 +422,8 @@ async def studio_save_image(req: StudioSaveRequest):
                 category_id=req.category_id or "default",
                 source_type="studio",
                 origin_url=req.url,
+                media_id=req.media_id or "",
+                asset_type=req.asset_type or "nhanvat",
             )
     except Exception as e:
         raise HTTPException(500, f"L?i l?u ?nh v?o kho: {e}")
@@ -381,6 +453,17 @@ async def library_create_category(req: LibraryCategoryRequest):
     return {"ok": True, "item": item}
 
 
+@router.delete("/library/categories/{category_id}")
+async def library_delete_category(category_id: str):
+    from services.library_service import delete_category
+
+    try:
+        await delete_category(category_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True}
+
+
 @router.get("/library/assets")
 async def library_assets():
     from services.library_service import list_assets
@@ -393,6 +476,7 @@ async def library_upload_asset(
     image: UploadFile = File(...),
     name: str = Form(""),
     category_id: str = Form("default"),
+    asset_type: str = Form("nhanvat"),
 ):
     """Upload a file directly into library assets."""
     from services.library_service import save_library_asset
@@ -409,6 +493,7 @@ async def library_upload_asset(
         category_id=category_id or "default",
         source_type="upload",
         origin_url="",
+        asset_type=asset_type or "nhanvat",
     )
     return {"ok": True, "item": asset}
 
@@ -420,6 +505,56 @@ async def library_delete_asset(asset_id: str):
     deleted = await delete_asset(asset_id)
     if not deleted:
         raise HTTPException(404, "Asset not found")
+    return {"ok": True}
+
+
+class RenameAssetRequest(BaseModel):
+    name: str
+
+
+@router.patch("/library/assets/{asset_id}/rename")
+async def library_rename_asset(asset_id: str, req: RenameAssetRequest):
+    from services.library_service import rename_asset
+
+    try:
+        ok = await rename_asset(asset_id, req.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not ok:
+        raise HTTPException(404, "Asset not found")
+    return {"ok": True}
+
+
+class MoveAssetsRequest(BaseModel):
+    asset_ids: list[str]
+    target_category_id: str
+
+
+@router.post("/library/assets/move")
+async def library_move_assets(req: MoveAssetsRequest):
+    from services.library_service import move_assets
+
+    try:
+        count = await move_assets(req.asset_ids, req.target_category_id)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    return {"ok": True, "moved": count}
+
+
+class RenameCategoryRequest(BaseModel):
+    name: str
+
+
+@router.patch("/library/categories/{category_id}/rename")
+async def library_rename_category(category_id: str, req: RenameCategoryRequest):
+    from services.library_service import rename_category
+
+    try:
+        ok = await rename_category(category_id, req.name)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+    if not ok:
+        raise HTTPException(404, "Category not found")
     return {"ok": True}
 
 
