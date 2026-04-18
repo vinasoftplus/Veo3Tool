@@ -272,6 +272,10 @@
   }
 
   async function autoDownloadCard(card) {
+    // Nếu chưa chọn folder, tự mở dialog để tránh browser hỏi "allow multiple downloads"
+    if (!CFG._saveHandle && window.showDirectoryPicker) {
+      await chooseFolder();
+    }
     for (let i = 0; i < card.outputs.length; i++) {
       const out = card.outputs[i];
       const url = out.video_url || out.videoUri || out.fifeUrl;
@@ -534,7 +538,7 @@
       toast('Đã áp dụng ' + selected.length + ' nhân vật cho tất cả card', 'success');
     });
     $('cv-vault-auto-btn')?.addEventListener('click', () => {
-      const selected = _cvVaultAssets.filter(a => _cvVaultSelectedIds.has(a.id)).slice(0, 3);
+      const selected = _cvVaultAssets.filter(a => _cvVaultSelectedIds.has(a.id));
       if (!selected.length) { toast('Chưa chọn ảnh nào', 'error'); return; }
       let affected = 0;
       cards.forEach(card => {

@@ -73,7 +73,7 @@
   }
 
   function newCard(prompt = '') {
-    return { id: 'studio-' + (++seq), prompt, refs: [], refIndex: 0, chars: [], images: [], outputs: [], outputIndex: 0, status: 'idle', error: '', jobId: null, busyImage: false, busyVideo: false, upscaling: false };
+    return { id: 'studio-' + (++seq), prompt, refs: [], refIndex: 0, chars: [], images: [], outputs: [], outputIndex: 0, status: 'idle', error: '', jobId: null, busyImage: false, busyVideo: false, upscaling: false, videoAccountIndex: null };
   }
 
 
@@ -181,15 +181,15 @@
   function populateLibraryCategoryFilters() {
     const saveSel = $('studio-save-category');
     const pickerSel = $('studio-library-category-filter');
-    const options = [{ id: 'all', name: 'Tất cả' }, { id: '__characters__', name: 'Nhân vật' }, ...libraryCategories];
     if (saveSel) {
       saveSel.innerHTML = libraryCategories.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
       if (!saveSel.value && libraryCategories[0]) saveSel.value = libraryCategories[0].id;
     }
     if (pickerSel) {
-      const current = pickerSel.value || 'all';
-      pickerSel.innerHTML = options.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
-      pickerSel.value = options.some(item => item.id === current) ? current : 'all';
+      const current = pickerSel.value;
+      pickerSel.innerHTML = libraryCategories.map(item => `<option value="${item.id}">${item.name}</option>`).join('');
+      if (current && libraryCategories.some(c => c.id === current)) pickerSel.value = current;
+      else if (libraryCategories[0]) pickerSel.value = libraryCategories[0].id;
     }
   }
 
@@ -228,7 +228,7 @@
 
   async function deleteCurrentCategory() {
     const filter = $('studio-library-category-filter')?.value || 'all';
-    if (!filter || filter === 'all' || filter === '__characters__') return;
+    if (!filter) return;
     const cat = libraryCategories.find(c => c.id === filter);
     if (!cat) return;
     if (!confirm(`Xóa nhóm "${cat.name}"? Nhóm phải không có ảnh nào mới xóa được.`)) return;
@@ -248,12 +248,11 @@
     const filter = $('studio-library-category-filter')?.value || 'all';
     // Hiện/ẩn nút xóa nhóm
     const delBtn = $('studio-delete-category-btn');
-    if (delBtn) delBtn.style.display = (filter && filter !== 'all' && filter !== '__characters__') ? '' : 'none';
+    if (delBtn) delBtn.style.display = filter ? '' : 'none';
     if (!grid) return;
-    const items = [
-      ...libraryCharacters.map(ch => ({ type: 'character', id: ch.id, name: ch.name, url: ch.url, category_id: '__characters__', media_id: ch.media_id || '' })),
-      ...libraryAssets.map(a => ({ type: 'asset', id: a.id, name: a.name, url: a.url, category_id: a.category_id || 'default' })),
-    ].filter(item => filter === 'all' || item.category_id === filter);
+    const items = libraryAssets
+      .map(a => ({ type: 'asset', id: a.id, name: a.name, url: a.url, category_id: a.category_id || 'default' }))
+      .filter(item => !filter || item.category_id === filter);
     if (!items.length) {
       grid.innerHTML = '<div class="studio-note" style="grid-column:1/-1;">Danh mục này chưa có ảnh nào.</div>';
       return;
@@ -330,7 +329,6 @@
           <input type="file" class="studio-ref-input" accept="image/*" multiple style="display:none;">
         </div>
         <div class="studio-inline-tools">
-          <button class="btn btn-secondary btn-sm studio-auto-char">AUTO Nhân Vật</button>
           <button class="btn btn-secondary btn-sm studio-clear-ref">Xóa ảnh tham chiếu</button>
           ${card.outputs.length ? `<button class="btn btn-secondary btn-sm studio-save-video-btn" onclick="Studio.saveCardOutputs('${card.id}')">Lưu video</button>` : ''}
         </div>
@@ -377,7 +375,7 @@
     // Prompt click → modal
     el.querySelector('.studio-prompt-open').addEventListener('click', () => openPromptModal(card));
     el.querySelectorAll('.studio-open-library').forEach(btn => btn.addEventListener('click', () => openLibraryPicker(card.id)));
-    el.querySelector('.studio-auto-char').addEventListener('click', () => autoCharacters(card.id));
+    el.querySelector('.studio-auto-char')?.addEventListener('click', () => autoCharacters(card.id));
     el.querySelectorAll('.studio-add-ref').forEach(btn => btn.addEventListener('click', () => el.querySelector('.studio-ref-input').click()));
     el.querySelector('.studio-clear-ref').addEventListener('click', () => { card.refs = []; card.refIndex = 0; renderCard(card, false); updateStats(); });
     el.querySelector('.studio-generate-image').addEventListener('click', () => genImages(card.id));
@@ -433,7 +431,6 @@
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px;gap:12px;">
         <div><strong>Áp dụng nhân vật cho cụm</strong><div class="studio-note">Chọn tối đa 3 nhân vật hoặc bấm AUTO để quét theo prompt.</div></div>
         <div style="display:flex;gap:8px;">
-          <button class="btn btn-secondary btn-sm" onclick="Studio.autoCharacters('${cardId}')">AUTO Nhân Vật</button>
           <button class="btn btn-secondary btn-sm" onclick="document.getElementById('studio-char-picker-modal').style.display='none'">Đóng</button>
         </div>
       </div>
@@ -542,7 +539,7 @@
         if (!res.ok) throw new Error(res.detail || 'Tạo hình thất bại');
         (res.images || []).forEach(img => {
           const url = img.url || img.downloadUrl || img.image_url || img.imageUrl || '';
-          if (url) card.images.unshift({ url, media_id: img.media_id || img.mediaId || '', prompt: card.prompt, label: 'Ảnh đã tạo' });
+          if (url) card.images.unshift({ url, media_id: img.media_id || img.mediaId || '', prompt: card.prompt, label: 'Ảnh đã tạo', account_index: accountIndex || 0 });
         });
         card.status = 'idle';
         card.busyImage = false;
@@ -580,14 +577,15 @@
       if (!file && ch.url) file = await urlToFile(ch.url, `${card.id}_char_${i + 1}.png`);
       if (file) fd.append('reference_images', file, file.name || `${card.id}_char_${i + 1}.png`);
     }
-    // Refs: ảnh có media_id thì gửi media_id, không thì upload binary
+    // Refs: ảnh có media_id → dùng trực tiếp (đã thuộc đúng account nhờ auto-detect accountIndex)
+    //        không có media_id → upload binary
     const refMediaIds = [];
     for (let i = 0; i < card.refs.length; i++) {
       const ref = card.refs[i];
       if (ref.media_id) {
         refMediaIds.push(ref.media_id);
       } else {
-        let file = ref.file;
+        let file = ref.file || null;
         if (!file && ref.url) file = await urlToFile(ref.url, `${card.id}_video_ref_${i + 1}.png`);
         if (file) fd.append('reference_images', file, file.name || `${card.id}_video_ref_${i + 1}.png`);
       }
@@ -601,6 +599,14 @@
     const card = cards.find(c => c.id === cardId);
     if (!card) return;
     if (!String(card.prompt || '').trim()) return toast('Nhập prompt trước khi tạo video', 'error');
+
+    // Auto-detect account từ ảnh gen trong card (images hoặc refs có account_index)
+    if (accountIndex === null) {
+      const imgWithAcc = card.images.find(img => img.account_index);
+      const refWithAcc = card.refs.find(ref => ref.account_index);
+      if (imgWithAcc) accountIndex = imgWithAcc.account_index;
+      else if (refWithAcc) accountIndex = refWithAcc.account_index;
+    }
 
     const MAX_RETRY = 3;
     let attempt = 0;
@@ -627,6 +633,7 @@
         const req = await createVideo(card, accountIndex);
         if (!req.ok || !req.jobId) throw new Error(req.error || 'Tạo video thất bại');
         card.jobId = req.jobId;
+        card.videoAccountIndex = accountIndex;
 
         await pollJob(req.jobId, '/api/veo/job', async job => {
           if (stopAll) return;
@@ -682,6 +689,10 @@
   async function saveOutputs(cardId) {
     const card = cards.find(c => c.id === cardId);
     if (!card) return;
+    // Nếu chưa chọn folder, tự mở dialog chọn folder trước để tránh browser hỏi "allow multiple downloads"
+    if (!cfg.saveHandle && window.showDirectoryPicker) {
+      await chooseFolder();
+    }
     for (let i = 0; i < card.outputs.length; i++) {
       const out = card.outputs[i];
       const url = out.video_url || out.videoUri || out.fifeUrl;
@@ -740,7 +751,7 @@
           card.upscaleFailed = false;
           renderCard(card, false);
           try {
-            const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: i });
+            const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: i, account_index: card.videoAccountIndex || null });
             if (res.ok && Array.isArray(res.outputs) && res.outputs.length) {
               card.outputs[i] = { ...out, ...res.outputs[0], _upscaled: true };
               const url1080 = card.outputs[i].video_url || card.outputs[i].videoUri || card.outputs[i].fifeUrl;
@@ -778,7 +789,7 @@
     card.upscaleFailed = false;
     renderCard(card, false);
     try {
-      const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: outputIndex });
+      const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: outputIndex, account_index: card.videoAccountIndex || null });
       if (res.ok && Array.isArray(res.outputs) && res.outputs.length) {
         card.outputs[outputIndex] = { ...card.outputs[outputIndex], ...res.outputs[0], _upscaled: true };
         card.upscaleFailed = false;
@@ -809,7 +820,7 @@
     if (!card) return;
     const item = type === 'generated' ? card.images[idx] : type === 'char' ? card.chars[idx] : card.refs[idx];
     if (!item) return;
-    popup = { cardId, type, idx, url: item.url, prompt: card.prompt || '', label: item.label || '', media_id: item.media_id || '' };
+    popup = { cardId, type, idx, url: item.url, prompt: card.prompt || '', label: item.label || '', media_id: item.media_id || '', account_index: item.account_index || 0 };
     $('studio-popup-img').src = item.url;
     $('studio-popup-caption-text').textContent = (item.label || '') + (card.prompt ? ' · ' + card.prompt.slice(0, 120) : '');
     $('studio-img-popup').style.display = 'flex';
@@ -872,21 +883,23 @@
 
   async function saveToLib() {
     if (!popup) return;
-    // Hiện dialog chọn nhóm trước khi lưu
     const cats = libraryCategories.length ? libraryCategories : (await API.get('/api/image/library/categories').then(r => r.items || []).catch(() => []));
     const opts = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     const modalId = 'studio-save-lib-modal';
     let modal = $(modalId);
-    if (!modal) {
-      modal = document.createElement('div');
-      modal.id = modalId;
-      modal.className = 'studio-popup-overlay';
-      document.body.appendChild(modal);
-    }
+    if (!modal) { modal = document.createElement('div'); modal.id = modalId; modal.className = 'studio-popup-overlay'; document.body.appendChild(modal); }
     modal.innerHTML = `
-      <div style="background:var(--bg2);border-radius:14px;padding:22px;min-width:300px;max-width:90vw;">
-        <div style="font-weight:600;margin-bottom:14px;">Chọn nhóm lưu ảnh</div>
-        <select id="studio-save-lib-cat" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);margin-bottom:14px;">${opts}</select>
+      <div style="background:var(--bg2);border-radius:14px;padding:22px;min-width:320px;max-width:90vw;">
+        <div style="font-weight:600;margin-bottom:14px;">Lưu vào kho (1K)</div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Nhóm</label>
+        <select id="studio-save-lib-cat" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);margin-bottom:12px;">${opts}</select>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Thể loại</label>
+        <select id="studio-save-lib-type" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);margin-bottom:14px;">
+          <option value="nhanvat">Nhân vật</option>
+          <option value="vatpham">Vật phẩm</option>
+          <option value="background">Background</option>
+          <option value="style">Style</option>
+        </select>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn btn-secondary btn-sm" onclick="document.getElementById('${modalId}').style.display='none'">Hủy</button>
           <button class="btn btn-primary btn-sm" id="studio-save-lib-confirm">Lưu</button>
@@ -896,17 +909,126 @@
     modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
     $('studio-save-lib-confirm').onclick = async () => {
       const categoryId = $('studio-save-lib-cat').value || 'default';
+      const assetType = $('studio-save-lib-type').value || 'nhanvat';
       modal.style.display = 'none';
-      const res = await API.post('/api/image/studio/save', { url: popup.url, prompt: popup.prompt || '', category_id: categoryId, media_id: popup.media_id || '' });
-      if (res.ok) { toast('Đã lưu vào kho', 'success'); loadLibrary(); }
-      else toast(res.detail || 'Lưu thất bại', 'error');
+      await _batchSaveLibSSE([{ url: popup.url, media_id: popup.media_id || '', prompt: popup.prompt || '', asset_type: assetType }], categoryId, '1k');
+      loadLibrarySources().catch(() => {});
     };
   }
 
-  function downloadImg() {
+  async function downloadImg(quality = '1k') {
     if (!popup) return;
-    const ext = (popup.url.split('?')[0].split('.').pop() || 'jpg').slice(0, 4);
-    downloadUrl(popup.url, `studio_img_${Date.now()}.${ext}`);
+    // Chọn folder lưu (không liên quan folder autosave video)
+    let dirHandle = null;
+    if (window.showDirectoryPicker) {
+      try { dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' }); } catch (_) { return; }
+    }
+    await _downloadImageWithQuality(popup.url, popup.media_id || '', quality, `studio_img_${Date.now()}`, dirHandle, popup.account_index || 0);
+  }
+
+  function togglePopupDlMenu() {
+    const m = $('studio-popup-dl-menu');
+    if (m) m.style.display = m.style.display === 'none' ? '' : 'none';
+  }
+  function closePopupDlMenu() {
+    const m = $('studio-popup-dl-menu');
+    if (m) m.style.display = 'none';
+  }
+
+  // Đóng dropdown khi click ngoài
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#studio-popup-dl-menu-btn') && !e.target.closest('#studio-popup-dl-menu')) {
+      closePopupDlMenu();
+    }
+  });
+
+  // ── Helper: download 1 ảnh theo quality, lưu vào dirHandle hoặc browser download
+  async function _downloadImageWithQuality(url, media_id, quality, baseName, dirHandle, account_index = 0) {
+    _showImgProgress(true, `Đang tải ${quality.toUpperCase()}...`);
+    try {
+      let finalUrl = url;
+      if (quality !== '1k' && media_id) {
+        const res = await API.post('/api/image/get-quality-url', { url, media_id, quality, account_index });
+        if (res.ok && res.url) finalUrl = res.url;
+        else { toast(`Không lấy được ảnh ${quality.toUpperCase()}`, 'error'); _showImgProgress(false); return; }
+      }
+      let blob;
+      if (finalUrl.startsWith('data:')) {
+        const res2 = await fetch(finalUrl);
+        blob = await res2.blob();
+      } else {
+        const proxyUrl = `/api/veo/proxy-download?url=${encodeURIComponent(finalUrl)}&filename=${encodeURIComponent(baseName + '.jpg')}`;
+        const resp = await fetch(proxyUrl);
+        blob = await resp.blob();
+      }
+      if (dirHandle) {
+        const fh = await dirHandle.getFileHandle(`${baseName}.jpg`, { create: true });
+        const w = await fh.createWritable(); await w.write(blob); await w.close();
+      } else {
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${baseName}.jpg`; a.click();
+      }
+      toast(`Đã tải ảnh ${quality.toUpperCase()}`, 'success');
+    } catch (e) {
+      toast(`Lỗi tải ảnh: ${e.message}`, 'error');
+    } finally {
+      _showImgProgress(false);
+    }
+  }
+
+  // ── Helper: progress bar nhỏ dưới màn hình
+  function _showImgProgress(show, text = '') {
+    let bar = $('studio-img-progress-toast');
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = 'studio-img-progress-toast';
+      bar.style.cssText = 'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:10px 20px;font-size:13px;color:var(--text1);z-index:9998;display:none;box-shadow:0 8px 24px rgba(0,0,0,.3);white-space:nowrap;';
+      document.body.appendChild(bar);
+    }
+    if (show) { bar.textContent = text; bar.style.display = 'block'; }
+    else bar.style.display = 'none';
+  }
+
+  // ── Helper: batch lưu kho qua SSE stream
+  async function _batchSaveLibSSE(images, categoryId, quality) {
+    const total = images.length;
+    const progWrap = $('studio-save-images-progress');
+    const progBar = $('studio-save-images-progress-bar');
+    const progText = $('studio-save-images-progress-text');
+    if (progWrap) progWrap.style.display = '';
+
+    return new Promise(resolve => {
+      let done = 0;
+      const body = JSON.stringify({ images, category_id: categoryId, quality });
+      fetch('/api/image/studio/batch-save-lib', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+        .then(resp => {
+          const reader = resp.body.getReader();
+          const dec = new TextDecoder();
+          function read() {
+            reader.read().then(({ done: doneStream, value }) => {
+              if (doneStream) { resolve(); return; }
+              const text = dec.decode(value);
+              for (const line of text.split('\n')) {
+                if (!line.startsWith('data:')) continue;
+                try {
+                  const d = JSON.parse(line.slice(5).trim());
+                  done = d.done;
+                  const pct = total ? Math.round(done / total * 100) : 0;
+                  if (progBar) progBar.style.width = pct + '%';
+                  if (progText) progText.textContent = `${done} / ${total}`;
+                  if (d.finished) {
+                    toast(`Đã lưu ${done}/${total} ảnh vào kho`, 'success');
+                    if (progWrap) setTimeout(() => { progWrap.style.display = 'none'; if (progBar) progBar.style.width = '0%'; }, 1500);
+                    resolve();
+                  }
+                } catch (_) {}
+              }
+              read();
+            });
+          }
+          read();
+        })
+        .catch(e => { toast('Lỗi lưu kho: ' + e.message, 'error'); if (progWrap) progWrap.style.display = 'none'; resolve(); });
+    });
   }
 
   async function addToCard() {
@@ -923,7 +1045,7 @@
       const blob = await resp.blob();
       file = new File([blob], `studio_ref_${Date.now()}.png`, { type: blob.type || 'image/png' });
     } catch (_) { }
-    card.refs.unshift({ url: popup.url, file, label: 'Ảnh chèn từ preview', media_id: popup.media_id || '' });
+    card.refs.unshift({ url: popup.url, file, label: 'Ảnh chèn từ preview', media_id: popup.media_id || '', account_index: popup.account_index || 0 });
     card.refIndex = 0;
     renderCard(card, false);
     closePopup();
@@ -933,13 +1055,30 @@
   function importImages(files) {
     const list = Array.from(files || []).filter(file => String(file.type || '').startsWith('image/'));
     if (!list.length) return toast('Không có ảnh hợp lệ', 'error');
-    list.forEach(file => {
-      const card = createCard('');
-      card.refs.push({ url: URL.createObjectURL(file), file, label: file.name || 'Ảnh import' });
-      renderCard(card, false);
-    });
-    updateStats();
-    toast('Đã nạp ' + list.length + ' ảnh vào Studio', 'success');
+
+    if (cards.length > 0) {
+      // Mode đè vào cụm có sẵn — phải khớp số lượng
+      if (list.length !== cards.length) {
+        return toast(
+          `Số ảnh không khớp: chọn ${list.length} ảnh nhưng Studio đang có ${cards.length} cụm. Vui lòng chọn đúng ${cards.length} ảnh.`,
+          'error', 6000
+        );
+      }
+      cards.forEach((card, i) => {
+        card.refs.unshift({ url: URL.createObjectURL(list[i]), file: list[i], label: list[i].name || 'Ảnh import' });
+      });
+      rerender();
+      toast('Đã thêm ' + list.length + ' ảnh vào ' + list.length + ' cụm theo thứ tự', 'success');
+    } else {
+      // Mode tạo mới — mỗi ảnh tạo 1 cụm
+      list.forEach(file => {
+        const card = createCard('');
+        card.refs.push({ url: URL.createObjectURL(file), file, label: file.name || 'Ảnh import' });
+        renderCard(card, false);
+      });
+      updateStats();
+      toast('Đã nạp ' + list.length + ' ảnh vào Studio', 'success');
+    }
   }
 
   function importPromptsXlsx(file) {
@@ -1364,16 +1503,214 @@
     loadLibrarySources().catch(() => { });
     initVaultListeners();
     updateStats();
+
+    // ── Drag & Drop ─────────────────────────────────────────────────────────
+    _initStudioDragDrop();
   };
+
+  function _initStudioDragDrop() {
+    const studioPage = document.querySelector('#tab-studio');
+    if (!studioPage) return;
+
+    // Overlay element
+    const overlay = document.createElement('div');
+    overlay.id = 'studio-dnd-overlay';
+    overlay.style.cssText = [
+      'position:fixed;inset:0;z-index:9000;display:none;',
+      'align-items:center;justify-content:center;flex-direction:column;gap:16px;',
+      'background:rgba(236,72,153,0.13);backdrop-filter:blur(2px);',
+      'border:3px dashed var(--pink,#ec4899);pointer-events:none;transition:opacity .15s;',
+    ].join('');
+    overlay.innerHTML = `
+      <svg width="72" height="72" viewBox="0 0 24 24" fill="none" stroke="var(--pink,#ec4899)" stroke-width="1.5">
+        <path d="M12 5v14M5 12l7-7 7 7"/>
+      </svg>
+      <div id="studio-dnd-label" style="font-size:22px;font-weight:700;color:var(--pink,#ec4899);text-align:center;line-height:1.4;"></div>`;
+    document.body.appendChild(overlay);
+
+    let dragEnterCount = 0;
+    let _cardDragTarget = null; // card id being hovered during single-image drag
+
+    function _getFiles(dt) {
+      return dt.items
+        ? Array.from(dt.items).filter(i => i.kind === 'file').map(i => i.getAsFile()).filter(Boolean)
+        : Array.from(dt.files || []);
+    }
+
+    function _showOverlay(label) {
+      overlay.style.display = 'flex';
+      document.getElementById('studio-dnd-label').innerHTML = label;
+    }
+    function _hideOverlay() { overlay.style.display = 'none'; }
+
+    // ── Per-card hover highlight ─────────────────────────────────────────────
+    function _getCardElFromPoint(x, y) {
+      const els = document.elementsFromPoint(x, y);
+      for (const el of els) {
+        const card = el.closest('.studio-card');
+        if (card) return card;
+      }
+      return null;
+    }
+
+    function _highlightCard(cardEl, cardIndex) {
+      _clearCardHighlight();
+      _cardDragTarget = cardEl ? (cardEl.id || '').replace(/^card-/, '') || null : null;
+      if (!cardEl) return;
+      cardEl.classList.add('dnd-card-hover');
+      let badge = cardEl.querySelector('.dnd-card-badge');
+      if (!badge) {
+        badge = document.createElement('div');
+        badge.className = 'dnd-card-badge';
+        badge.style.cssText = [
+          'position:absolute;inset:0;border-radius:inherit;z-index:10;',
+          'display:flex;align-items:center;justify-content:center;',
+          'background:rgba(236,72,153,0.18);border:2px solid var(--pink,#ec4899);',
+          'font-size:15px;font-weight:700;color:var(--pink,#ec4899);pointer-events:none;',
+        ].join('');
+        cardEl.style.position = 'relative';
+        cardEl.appendChild(badge);
+      }
+      badge.textContent = `Thêm vào cụm ${(cardIndex ?? '') + 1}`;
+    }
+
+    function _clearCardHighlight() {
+      document.querySelectorAll('.studio-card.dnd-card-hover').forEach(el => {
+        el.classList.remove('dnd-card-hover');
+        el.querySelector('.dnd-card-badge')?.remove();
+      });
+      _cardDragTarget = null;
+    }
+
+    // ── Global dragenter/leave counter ──────────────────────────────────────
+    let _isSingleImageDrag = false;
+
+    document.addEventListener('dragenter', e => {
+      if (!document.querySelector('#tab-studio.active')) return;
+      const items = e.dataTransfer?.items ? Array.from(e.dataTransfer.items) : [];
+      if (!items.some(i => i.kind === 'file')) return;
+      dragEnterCount++;
+      if (dragEnterCount === 1) {
+        _isSingleImageDrag = items.length === 1 && items[0].type?.startsWith('image/');
+        if (_isSingleImageDrag) {
+          // Kéo 1 ảnh: KHÔNG show overlay toàn màn hình, chỉ highlight card
+        } else if (items.some(i => i.type?.startsWith('image/'))) {
+          _showOverlay(`Thả để import <strong>${items.length}</strong> ảnh vào Studio`);
+        } else {
+          _showOverlay('Thả file prompt vào đây<br><span style="font-size:14px;font-weight:400;">.txt · .json · .xlsx</span>');
+        }
+      }
+      e.preventDefault();
+    }, false);
+
+    document.addEventListener('dragleave', () => {
+      if (!document.querySelector('#tab-studio.active')) return;
+      dragEnterCount = Math.max(0, dragEnterCount - 1);
+      if (dragEnterCount === 0) {
+        _hideOverlay();
+        _clearCardHighlight();
+        _isSingleImageDrag = false;
+      }
+    }, false);
+
+    document.addEventListener('dragover', e => {
+      if (!document.querySelector('#tab-studio.active')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+
+      if (!_isSingleImageDrag) return;
+
+      // Kéo 1 ảnh: highlight card dưới con trỏ
+      const cardEl = _getCardElFromPoint(e.clientX, e.clientY);
+      const currentHighlighted = document.querySelector('.studio-card.dnd-card-hover');
+      if (cardEl !== currentHighlighted) {
+        const allCards = Array.from(document.querySelectorAll('#studio-cards .studio-card'));
+        const idx = allCards.indexOf(cardEl);
+        _highlightCard(cardEl, idx);
+      }
+    }, false);
+
+    document.addEventListener('drop', e => {
+      if (!document.querySelector('#tab-studio.active')) return;
+      e.preventDefault();
+      dragEnterCount = 0;
+      _hideOverlay();
+
+      const files = _getFiles(e.dataTransfer);
+      _isSingleImageDrag = false;
+
+      if (!files.length) { _clearCardHighlight(); return; }
+
+      const images = files.filter(f => f.type.startsWith('image/'));
+      const docs = files.filter(f => ['txt', 'json', 'xlsx'].includes(f.name.split('.').pop().toLowerCase()));
+
+      // 1 ảnh thả vào card cụ thể → vào refs, bỏ qua rule số cụm
+      if (images.length === 1) {
+        // Tìm card dưới điểm thả (ưu tiên _cardDragTarget, fallback elementsFromPoint)
+        let targetCardEl = _cardDragTarget
+          ? document.getElementById('card-' + _cardDragTarget)
+          : null;
+        if (!targetCardEl) targetCardEl = _getCardElFromPoint(e.clientX, e.clientY);
+        _clearCardHighlight();
+        if (targetCardEl) {
+          const cardId = (targetCardEl.id || '').replace(/^card-/, '');
+          const card = cards.find(c => c.id === cardId);
+          if (card) {
+            const file = images[0];
+            card.refs.unshift({ url: URL.createObjectURL(file), file, label: file.name || 'Ảnh tham chiếu' });
+            renderCard(card, false);
+            updateStats();
+            toast(`Đã thêm ảnh vào cụm ${cards.indexOf(card) + 1}`, 'success');
+            return;
+          }
+        }
+      }
+      _clearCardHighlight();
+
+      // 1 ảnh thả ra ngoài (không trúng card) hoặc nhiều ảnh → importImages với rule số cụm
+      if (images.length > 0 && docs.length === 0) {
+        importImages(images);
+        return;
+      }
+
+      // Prompt files
+      if (docs.length > 0 && images.length === 0) {
+        if (docs.length > 1) { toast('Chỉ kéo 1 file prompt mỗi lần', 'error'); return; }
+        const file = docs[0];
+        const ext = file.name.split('.').pop().toLowerCase();
+        if (ext === 'xlsx') importPromptsXlsx(file);
+        else importPrompts(file, ext === 'json' ? 'json' : 'txt');
+        return;
+      }
+
+      if (images.length === 0 && docs.length === 0) {
+        toast('File không hợp lệ — chỉ chấp nhận .txt, .json, .xlsx hoặc ảnh', 'error');
+      }
+    }, false);
+  }
 
   // ── Save Images Popup ────────────────────────────────────────
   let _saveImgSelected = new Set(); // key = "cardId:imgIndex"
+  let _saveImgDlQuality = '1k';
+  let _saveImgLibQuality = '1k';
+
+  function toggleSaveImgQualityMenu() {
+    const m = $('studio-save-images-quality-menu');
+    if (m) m.style.display = m.style.display === 'none' ? '' : 'none';
+  }
+
+  document.addEventListener('click', e => {
+    if (!e.target.closest('#studio-save-images-quality-btn') && !e.target.closest('#studio-save-images-quality-menu')) {
+      const m = $('studio-save-images-quality-menu');
+      if (m) m.style.display = 'none';
+    }
+  });
 
   function openSaveImagesPopup() {
     const allImages = [];
     cards.forEach(card => {
       card.images.forEach((img, i) => {
-        allImages.push({ key: `${card.id}:${i}`, cardId: card.id, imgIdx: i, url: img.url, cardTitle: `Cụm ${cards.indexOf(card) + 1}`, prompt: card.prompt || '', media_id: img.media_id || '' });
+        allImages.push({ key: `${card.id}:${i}`, cardId: card.id, imgIdx: i, url: img.url, cardTitle: `Cụm ${cards.indexOf(card) + 1}`, prompt: card.prompt || '', media_id: img.media_id || '', account_index: img.account_index || 0 });
       });
     });
     if (!allImages.length) return toast('Chưa có ảnh nào được tạo', 'info');
@@ -1406,18 +1743,55 @@
     $('studio-save-images-select-all').onclick = () => { allImages.forEach(i => _saveImgSelected.add(i.key)); renderGrid(); };
     $('studio-save-images-deselect').onclick = () => { _saveImgSelected.clear(); renderGrid(); };
 
-    const _toDiskBtn = $('studio-save-images-to-disk');
-    if (_toDiskBtn) _toDiskBtn.onclick = async () => {
+    // Quality menu options
+    document.querySelectorAll('.simg-q-opt').forEach(el => {
+      el.onclick = () => {
+        _saveImgDlQuality = el.dataset.quality;
+        $('studio-save-images-to-disk').textContent = `Tải về (${_saveImgDlQuality.toUpperCase()})`;
+        $('studio-save-images-quality-menu').style.display = 'none';
+      };
+    });
+    document.querySelectorAll('.simg-lq-opt').forEach(el => {
+      el.onclick = () => {
+        _saveImgLibQuality = el.dataset.libQuality;
+        $('studio-save-images-to-lib').textContent = `Lưu vào kho (${_saveImgLibQuality.toUpperCase()})`;
+        $('studio-save-images-quality-menu').style.display = 'none';
+      };
+    });
+
+    // Tải về — chọn folder 1 lần rồi tải hết
+    $('studio-save-images-to-disk').onclick = async () => {
       const selected = allImages.filter(i => _saveImgSelected.has(i.key));
       if (!selected.length) return toast('Chưa chọn ảnh nào', 'error');
-      for (const item of selected) {
-        const ext = (item.url.split('?')[0].split('.').pop() || 'jpg').slice(0, 4);
-        downloadUrl(item.url, `studio_img_${item.cardTitle.replace(/\s/g, '_')}_${Date.now()}.${ext}`);
-        await new Promise(r => setTimeout(r, 200));
+      let dirHandle = null;
+      if (window.showDirectoryPicker) {
+        try { dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' }); } catch (_) { return; }
       }
+      const progWrap = $('studio-save-images-progress');
+      const progBar = $('studio-save-images-progress-bar');
+      const progText = $('studio-save-images-progress-text');
+      if (progWrap) progWrap.style.display = '';
+      let done = 0;
+      // Chia 2 luồng song song
+      const half = Math.ceil(selected.length / 2);
+      const g1 = selected.slice(0, half);
+      const g2 = selected.slice(half);
+      async function processGroup(group) {
+        for (const item of group) {
+          const baseName = `studio_img_${item.cardTitle.replace(/\s/g,'_')}_${Date.now()}`;
+          await _downloadImageWithQuality(item.url, item.media_id, _saveImgDlQuality, baseName, dirHandle, item.account_index || 0);
+          done++;
+          const pct = Math.round(done / selected.length * 100);
+          if (progBar) progBar.style.width = pct + '%';
+          if (progText) progText.textContent = `${done} / ${selected.length}`;
+        }
+      }
+      await Promise.all([processGroup(g1), processGroup(g2)]);
       toast(`Đã tải ${selected.length} ảnh về máy`, 'success');
+      if (progWrap) setTimeout(() => { progWrap.style.display = 'none'; if (progBar) progBar.style.width = '0%'; }, 1500);
     };
 
+    // Lưu kho — SSE stream, 2 account song song
     $('studio-save-images-to-lib').onclick = async () => {
       const selected = allImages.filter(i => _saveImgSelected.has(i.key));
       if (!selected.length) return toast('Chưa chọn ảnh nào', 'error');
@@ -1426,9 +1800,17 @@
       const dlgId = 'studio-save-images-cat-dlg';
       let dlg = $(dlgId);
       if (!dlg) { dlg = document.createElement('div'); dlg.id = dlgId; dlg.className = 'studio-popup-overlay'; document.body.appendChild(dlg); }
-      dlg.innerHTML = `<div style="background:var(--bg2);border-radius:14px;padding:22px;min-width:280px;">
-        <div style="font-weight:600;margin-bottom:12px;">Chọn nhóm lưu (${selected.length} ảnh)</div>
-        <select id="studio-simg-cat-sel" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);margin-bottom:14px;">${opts}</select>
+      dlg.innerHTML = `<div style="background:var(--bg2);border-radius:14px;padding:22px;min-width:320px;">
+        <div style="font-weight:600;margin-bottom:12px;">Lưu ${selected.length} ảnh vào kho (${_saveImgLibQuality.toUpperCase()})</div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Nhóm</label>
+        <select id="studio-simg-cat-sel" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);margin-bottom:12px;">${opts}</select>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Thể loại</label>
+        <select id="studio-simg-type-sel" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);margin-bottom:14px;">
+          <option value="nhanvat">Nhân vật</option>
+          <option value="vatpham">Vật phẩm</option>
+          <option value="background">Background</option>
+          <option value="style">Style</option>
+        </select>
         <div style="display:flex;gap:8px;justify-content:flex-end;">
           <button class="btn btn-secondary btn-sm" onclick="document.getElementById('${dlgId}').style.display='none'">Hủy</button>
           <button class="btn btn-primary btn-sm" id="studio-simg-cat-confirm">Lưu</button>
@@ -1437,14 +1819,11 @@
       dlg.onclick = e => { if (e.target === dlg) dlg.style.display = 'none'; };
       $('studio-simg-cat-confirm').onclick = async () => {
         const catId = $('studio-simg-cat-sel').value || 'default';
+        const assetType = $('studio-simg-type-sel').value || 'nhanvat';
         dlg.style.display = 'none';
-        // Gửi song song để tránh URL Google expire trước khi gọi đến
-        const results = await Promise.all(
-          selected.map(item => API.post('/api/image/studio/save', { url: item.url, prompt: item.prompt, category_id: catId }).catch(() => ({ ok: false })))
-        );
-        const ok = results.filter(r => r.ok).length;
-        toast(`Đã lưu ${ok}/${selected.length} ảnh vào kho`, ok === selected.length ? 'success' : 'info');
-        loadLibrarySources().catch(() => { });
+        const images = selected.map(item => ({ url: item.url, media_id: item.media_id, prompt: item.prompt, asset_type: assetType }));
+        await _batchSaveLibSSE(images, catId, _saveImgLibQuality);
+        loadLibrarySources().catch(() => {});
       };
     };
 
@@ -1873,5 +2252,8 @@
     deleteVideoPopup,
     deletePopupItem,
     closeVault,
+    togglePopupDlMenu,
+    closePopupDlMenu,
+    toggleSaveImgQualityMenu,
   };
 })();

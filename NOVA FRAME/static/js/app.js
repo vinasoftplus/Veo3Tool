@@ -10,10 +10,12 @@ function switchTab(tabId) {
   TAB_PANELS.forEach(p => p.classList.toggle('active', p.id === `tab-${tabId}`));
   document.getElementById('topbar-title').textContent =
     document.querySelector(`.nav-item[data-tab="${tabId}"] .nav-label`)?.textContent || '';
-  const initFn = window[`init_${tabId.replace(/-/g, '_')}`];
+  const fnKey = `init_${tabId.replace(/-/g, '_')}`;
+  const initFn = window[fnKey];
   if (typeof initFn === 'function') {
     initFn();
-    window[`init_${tabId.replace(/-/g, '_')}`] = null;
+    // settings tab reloads accounts on every visit — don't null it out
+    if (fnKey !== 'init_settings') window[fnKey] = null;
   }
 }
 
@@ -28,13 +30,39 @@ document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
 
 let _licenseValid = false;
 
+function _setLockScreenLoading() {
+  const iconArea = document.getElementById('license-icon-area');
+  const title    = document.getElementById('license-title');
+  const msg      = document.getElementById('license-message');
+  const uuidBox  = document.getElementById('license-uuid-box');
+  const retryBtn = document.getElementById('license-retry-btn');
+  const hint     = document.getElementById('license-contact-hint');
+  if (iconArea) iconArea.innerHTML = '<div class="spinner" style="margin:0 auto;width:48px;height:48px;border-width:3px;border-color:var(--accent,#ec4899) transparent transparent transparent;"></div>';
+  if (title)    title.textContent = 'Đang kiểm tra license...';
+  if (msg)      msg.textContent   = 'Vui lòng chờ trong giây lát';
+  if (uuidBox)  uuidBox.style.display  = 'none';
+  if (retryBtn) retryBtn.style.display = 'none';
+  if (hint)     hint.style.display     = 'none';
+}
+
 function showLockScreen(machineUuid, message) {
-  const screen = document.getElementById('license-screen');
-  const uuidEl = document.getElementById('license-machine-uuid');
-  const msgEl  = document.getElementById('license-message');
-  if (uuidEl) uuidEl.textContent = machineUuid || '...';
-  if (msgEl)  msgEl.textContent  = message || 'Nhập license key để sử dụng phần mềm';
-  if (screen) screen.style.display = 'flex';
+  const screen   = document.getElementById('license-screen');
+  const iconArea = document.getElementById('license-icon-area');
+  const title    = document.getElementById('license-title');
+  const msg      = document.getElementById('license-message');
+  const uuidEl   = document.getElementById('license-machine-uuid');
+  const uuidBox  = document.getElementById('license-uuid-box');
+  const retryBtn = document.getElementById('license-retry-btn');
+  const hint     = document.getElementById('license-contact-hint');
+
+  if (iconArea) iconArea.innerHTML = '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--red,#ef4444)" stroke-width="1.5" style="display:inline-block;"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>';
+  if (title)    title.textContent = 'License không hợp lệ';
+  if (msg)      msg.textContent   = message || 'Máy này chưa được cấp license';
+  if (uuidEl)   uuidEl.textContent = machineUuid || '...';
+  if (uuidBox)  uuidBox.style.display  = machineUuid ? '' : 'none';
+  if (retryBtn) retryBtn.style.display = '';
+  if (hint)     hint.style.display     = '';
+  if (screen)   screen.style.display   = 'flex';
 }
 
 function hideLockScreen() {
@@ -43,39 +71,34 @@ function hideLockScreen() {
 }
 
 function setLicenseStatus(info) {
-  const el = document.getElementById('license-status');
+  const el     = document.getElementById('license-status');
   const detail = document.getElementById('license-status-detail');
   const uuidSetting = document.getElementById('cfg-machine-uuid');
-  const uuidLock = document.getElementById('license-machine-uuid');
+  if (info.machine_uuid && uuidSetting) uuidSetting.value = info.machine_uuid;
 
-  // Điền UUID vào tất cả chỗ
-  if (info.machine_uuid) {
-    if (uuidSetting) uuidSetting.value = info.machine_uuid;
-    if (uuidLock) uuidLock.textContent = info.machine_uuid;
-  }
-
-  if (info.dev_mode) {
-    if (el) { el.textContent = 'DEV MODE'; el.style.color = 'var(--yellow, #f59e0b)'; }
-    if (detail) { detail.textContent = 'Đang chạy chế độ DEV — license bị bypass'; detail.style.color = 'var(--yellow, #f59e0b)'; }
-  } else if (info.valid) {
-    const exp = info.expires_at ? ` · Hết hạn: ${info.expires_at.slice(0, 10)}` : '';
-    if (el) { el.textContent = `✓ Licensed${exp}`; el.style.color = 'var(--green)'; }
+  if (info.valid) {
+    const exp = info.expires_at ? ` · Hết hạn: ${String(info.expires_at).slice(0, 10)}` : '';
+    if (el)     { el.textContent = `✓ Licensed${exp}`; el.style.color = 'var(--green)'; }
     if (detail) { detail.textContent = `✓ License hợp lệ${exp}`; detail.style.color = 'var(--green)'; }
   } else {
-    if (el) { el.textContent = 'Chưa kích hoạt'; el.style.color = 'var(--red)'; }
+    if (el)     { el.textContent = 'Chưa kích hoạt'; el.style.color = 'var(--red)'; }
     if (detail) { detail.textContent = info.message || 'Chưa có license hợp lệ'; detail.style.color = 'var(--red)'; }
   }
 }
 
-async function checkLicense() {
+async function checkLicense({ forceRecheck = false } = {}) {
+  const screen = document.getElementById('license-screen');
+  if (screen) { screen.style.display = 'flex'; _setLockScreenLoading(); }
+
   try {
-    // Tự load token đã lưu và check
-    const res = await API.get('/api/license/auto-check');
+    // forceRecheck = true → gọi /validate để xóa cache backend, dùng khi user bấm "Thử lại"
+    const res = forceRecheck
+      ? await API.post('/api/license/validate', {})
+      : await API.get('/api/license/auto-check');
     if (res.valid) {
       _licenseValid = true;
       hideLockScreen();
       setLicenseStatus(res);
-      // Cập nhật UUID vào ô settings nếu có
       const uuidSettingEl = document.getElementById('cfg-machine-uuid');
       if (uuidSettingEl && res.machine_uuid) uuidSettingEl.value = res.machine_uuid;
     } else {
@@ -85,48 +108,52 @@ async function checkLicense() {
     }
   } catch (e) {
     _licenseValid = false;
-    showLockScreen('', 'Không thể kết nối server');
+    showLockScreen('', 'Không thể kết nối server kiểm tra license');
   }
 }
 
-// Kích hoạt license
-document.getElementById('license-submit-btn')?.addEventListener('click', async () => {
-  const btn   = document.getElementById('license-submit-btn');
-  const token = document.getElementById('license-input')?.value.trim();
-  if (!token) return;
-
-  btn.disabled = true;
-  btn.textContent = 'Đang kiểm tra...';
-
-  try {
-    const res = await API.post('/api/license/validate', { token });
-    if (res.valid) {
-      _licenseValid = true;
-      hideLockScreen();
-      setLicenseStatus(res);
-      toast('Kích hoạt thành công!', 'success');
-      // Cập nhật UUID vào ô settings nếu có
-      const uuidSettingEl = document.getElementById('cfg-machine-uuid');
-      if (uuidSettingEl && res.machine_uuid) uuidSettingEl.value = res.machine_uuid;
-    } else {
-      toast(res.message || 'License không hợp lệ', 'error', 6000);
-    }
-  } catch (e) {
-    toast('Lỗi kết nối server', 'error');
-  } finally {
-    btn.disabled = false;
-    btn.textContent = 'Kích hoạt';
-  }
-});
-
-// Guard: chặn mọi hành động nếu chưa có license
+// Guard: chặn mọi click nếu chưa có license
 document.addEventListener('click', e => {
   if (_licenseValid) return;
   const screen = document.getElementById('license-screen');
-  if (screen && screen.style.display !== 'none') return; // đang hiện lock screen
-  // Nếu lock screen bị ẩn nhưng chưa valid → show lại
+  if (screen && screen.style.display !== 'none') return;
   checkLicense();
 }, true);
+
+// Periodic re-check mỗi 15 phút
+let _shutdownTimer = null;
+
+function _triggerShutdown() {
+  if (_shutdownTimer) return; // đã đếm ngược rồi
+  let remaining = 300; // 5 phút
+  toast('⛔ License không hợp lệ! Tool sẽ tắt sau 5 phút.', 'error', 10000);
+  _shutdownTimer = setInterval(async () => {
+    remaining -= 30;
+    if (remaining <= 0) {
+      clearInterval(_shutdownTimer);
+      toast('🔴 Đang tắt ứng dụng...', 'error', 5000);
+      await new Promise(r => setTimeout(r, 2000));
+      try { await API.post('/api/license/shutdown', {}); } catch (_) {}
+      // Fallback: đóng cửa sổ
+      window.close();
+    } else {
+      toast(`⚠️ Tool sẽ tắt sau ${remaining / 60 < 1 ? remaining + ' giây' : Math.ceil(remaining/60) + ' phút'}.`, 'error', 8000);
+    }
+  }, 30000);
+}
+
+setInterval(async () => {
+  if (!_licenseValid) return;
+  try {
+    const res = await API.get('/api/license/auto-check');
+    if (!res.valid) {
+      _licenseValid = false;
+      showLockScreen(res.machine_uuid, res.message);
+      setLicenseStatus(res);
+      _triggerShutdown();
+    }
+  } catch (_) { /* mất mạng — không block, chờ lần sau */ }
+}, 15 * 60 * 1000);
 
 // Chạy ngay khi load
 checkLicense();

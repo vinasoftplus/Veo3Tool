@@ -103,7 +103,7 @@ async def request_browser_upload_post(
         job_id[:8], job_type, len(uploads), normalized_account_index,
     )
     try:
-        result = await asyncio.wait_for(asyncio.shield(fut), timeout=120.0)
+        result = await asyncio.wait_for(asyncio.shield(fut), timeout=300.0)
         return result or {"ok": False, "status": 0, "body": "No browser result"}
     except asyncio.TimeoutError:
         logger.warning("⚠️ Timeout khi chờ browser-upload-post cho job_%s", job_id[:8])

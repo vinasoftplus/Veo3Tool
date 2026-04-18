@@ -16,7 +16,7 @@
   // ── State ──────────────────────────────────────────────────────
   let selectedIds     = new Set();
   let currentType     = 'all';
-  let currentGroup    = 'all'; // 'all' | category id
+  let currentGroup    = ''; // '' = first user cat | category id
   let libraryCategories = [];  // [{id, name, created_at}]
   let libraryAssets     = [];  // [{id, name, url, category_id, asset_type, ...}]
 
@@ -36,17 +36,17 @@
   function filteredItems() {
     return libraryAssets.filter(a => {
       if (currentType !== 'all' && a.asset_type !== currentType) return false;
-      if (currentGroup !== 'all' && a.category_id !== currentGroup) return false;
+      if (currentGroup && a.category_id !== currentGroup) return false;
       return true;
     });
   }
 
   function groupCounts() {
-    const counts = { all: libraryAssets.length };
+    const counts = {};
     libraryCategories.forEach(c => { counts[c.id] = 0; });
     libraryAssets.forEach(a => {
-      const cid = a.category_id || 'default';
-      counts[cid] = (counts[cid] || 0) + 1;
+      const cid = a.category_id;
+      if (cid && counts[cid] !== undefined) counts[cid] = (counts[cid] || 0) + 1;
     });
     return counts;
   }
@@ -57,10 +57,7 @@
     if (!list) return;
     const counts = groupCounts();
 
-    const groups = [
-      { id: 'all', name: 'Tất cả', isSpecial: true },
-      ...libraryCategories,
-    ];
+    const groups = libraryCategories;
 
     list.innerHTML = groups.map(g => `
       <div class="lib-group-item ${currentGroup === g.id ? 'active' : ''}"
@@ -78,7 +75,6 @@
         renderGroups();
         renderGrid();
       });
-      // Right-click on group (not "Tất cả")
       el.addEventListener('contextmenu', e => {
         if (el.dataset.special === '1') return;
         e.preventDefault();
@@ -195,8 +191,11 @@
       API.get('/api/image/library/categories'),
       API.get('/api/image/library/assets'),
     ]);
-    libraryCategories = catsRes.items || [];
+    libraryCategories = (catsRes.items || []).filter(c => c.id !== 'default');
     libraryAssets = assetsRes.items || [];
+    if (!currentGroup || !libraryCategories.some(c => c.id === currentGroup)) {
+      currentGroup = libraryCategories[0]?.id || '';
+    }
     renderGroups();
     renderGrid();
     populateWizardGroupList();

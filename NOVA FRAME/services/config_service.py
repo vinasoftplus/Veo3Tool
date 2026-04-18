@@ -149,7 +149,7 @@ def save_account(index: int, account_data: dict) -> None:
 def get_gemini_keys() -> list[str]:
     """Return list of Gemini API keys (support multiple keys, newline-separated)."""
     cfg = load_config()
-    raw = cfg.get("GEMINI_API_KEY", "")
+    raw = cfg.get("GEMINI_API_KEYS") or cfg.get("GEMINI_API_KEY") or ""
     return [k.strip() for k in str(raw).splitlines() if k.strip()]
 
 

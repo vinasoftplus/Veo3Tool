@@ -16,7 +16,10 @@
       "Bash(py -3.10 -m nuitka --version)",
       "Bash(cat)",
       "Read(//tmp/**)",
-      "Bash(ls -d /c/Users/PC/Downloads/veo/VEO_PACK/extension*)"
+      "Bash(ls -d /c/Users/PC/Downloads/veo/VEO_PACK/extension*)",
+      "Bash(python -c ' *)",
+      "Bash(python3 -c \"from pathlib import Path; p = Path\\('c:/Users/PC/Desktop/Veo3Tool/NOVA FRAME/routers/youtube.py'\\); print\\(\\(p.parent.parent.parent / 'masterPromt.md'\\).resolve\\(\\)\\)\")",
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('GEMINI_API_KEY:', repr\\(d.get\\('GEMINI_API_KEY'\\)\\)\\); print\\('GEMINI_API_KEYS:', repr\\(d.get\\('GEMINI_API_KEYS'\\)\\)\\)\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1",

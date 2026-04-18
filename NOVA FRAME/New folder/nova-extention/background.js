@@ -622,7 +622,7 @@ async function executeJob(data) {
 
     } else if (data.jobKind === 'browser_submit') {
       log('Browser-submit for job:', data.jobId, 'account:', accountIndex);
-      const action = data.jobType === 'image' ? 'IMAGE_GENERATION' : 'VIDEO_GENERATION';
+      const action = (data.jobType === 'image' || data.jobType === 'image_upscale') ? 'IMAGE_GENERATION' : 'VIDEO_GENERATION';
       const result = await executeBrowserPost(data.url, data.payload || {}, data.accessToken || '', action, accountIndex);
       await fetch(`${APP_URL}/api/extension/submit-browser`, {
         method: 'POST',

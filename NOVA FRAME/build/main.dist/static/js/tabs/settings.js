@@ -385,6 +385,157 @@
     }
   }
 
+  // ── Bulk import accounts from file ───────────────────────────────────────
+  function openImportAccountsModal() {
+    let modal = document.getElementById('import-accounts-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'import-accounts-modal';
+      modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.7);z-index:3000;display:flex;align-items:center;justify-content:center;';
+      document.body.appendChild(modal);
+    }
+    modal.innerHTML = `
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:16px;padding:28px;width:580px;max-width:95vw;max-height:90vh;overflow-y:auto;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+          <div style="font-size:16px;font-weight:700;">📂 Import Tài Khoản Hàng Loạt</div>
+          <button onclick="document.getElementById('import-accounts-modal').style.display='none'" style="background:none;border:none;font-size:20px;cursor:pointer;color:var(--text2);">×</button>
+        </div>
+
+        <div style="background:var(--bg3);border-radius:10px;padding:14px;margin-bottom:16px;font-size:12px;color:var(--text2);line-height:1.9;">
+          <strong style="color:var(--text);">Định dạng hỗ trợ:</strong><br>
+          📊 <strong>Excel (.xlsx)</strong>: Cột A = Cookie, Cột B = Project ID (1 hàng = 1 tài khoản)<br>
+          📄 <strong>TXT (.txt)</strong>: Mỗi dòng là <code style="background:var(--bg);padding:1px 5px;border-radius:4px;">cookie|projectID</code>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-bottom:16px;">
+          <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;border:2px dashed var(--border);border-radius:12px;cursor:pointer;transition:border-color .2s;"
+            onmouseover="this.style.borderColor='var(--pink)'" onmouseout="this.style.borderColor='var(--border)'">
+            <span style="font-size:28px;">📊</span>
+            <span style="font-size:13px;font-weight:600;">Chọn file Excel</span>
+            <span style="font-size:11px;color:var(--text3);">.xlsx</span>
+            <input type="file" accept=".xlsx" style="display:none;" onchange="Settings.handleImportFile(this,'xlsx')">
+          </label>
+          <label style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:20px;border:2px dashed var(--border);border-radius:12px;cursor:pointer;transition:border-color .2s;"
+            onmouseover="this.style.borderColor='var(--pink)'" onmouseout="this.style.borderColor='var(--border)'">
+            <span style="font-size:28px;">📄</span>
+            <span style="font-size:13px;font-weight:600;">Chọn file TXT</span>
+            <span style="font-size:11px;color:var(--text3);">.txt</span>
+            <input type="file" accept=".txt" style="display:none;" onchange="Settings.handleImportFile(this,'txt')">
+          </label>
+        </div>
+
+        <div id="import-accounts-log" style="display:none;background:var(--bg3);border-radius:8px;padding:12px;font-size:11px;font-family:monospace;color:var(--text2);max-height:200px;overflow-y:auto;line-height:1.7;white-space:pre-wrap;margin-bottom:12px;"></div>
+
+        <div style="display:flex;justify-content:flex-end;">
+          <button class="btn btn-secondary btn-sm" onclick="document.getElementById('import-accounts-modal').style.display='none'">Đóng</button>
+        </div>
+      </div>`;
+    modal.style.display = 'flex';
+    modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
+  }
+
+  async function handleImportFile(input, type) {
+    const file = input.files?.[0];
+    if (!file) return;
+    input.value = '';
+
+    const logEl = document.getElementById('import-accounts-log');
+    logEl.style.display = 'block';
+    logEl.textContent = '';
+
+    const appendLog = msg => {
+      logEl.textContent += msg + '\n';
+      logEl.scrollTop = logEl.scrollHeight;
+    };
+
+    // Parse file → list of {cookie, projectId}
+    let rows = [];
+    try {
+      if (type === 'xlsx') {
+        if (typeof XLSX === 'undefined') { appendLog('❌ Thư viện XLSX chưa tải'); return; }
+        const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type: 'array' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const raw = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
+        rows = raw
+          .map(r => ({ cookie: String(r[0] || '').trim(), projectId: String(r[1] || '').trim() }))
+          .filter(r => r.cookie);
+      } else {
+        const text = await file.text();
+        rows = text.split('\n')
+          .map(line => {
+            line = line.trim();
+            if (!line) return null;
+            // Project ID là UUID ở cuối dòng, phân tách bằng | cuối cùng
+            const uuidMatch = line.match(/\|([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})\s*$/i);
+            if (uuidMatch) {
+              const projectId = uuidMatch[1];
+              const cookie = line.slice(0, line.lastIndexOf('|' + uuidMatch[1])).trim();
+              return { cookie, projectId };
+            }
+            // Không có UUID → toàn bộ dòng là cookie
+            return { cookie: line, projectId: '' };
+          })
+          .filter(r => r && r.cookie);
+      }
+    } catch (err) {
+      appendLog('❌ Lỗi đọc file: ' + err.message);
+      return;
+    }
+
+    if (!rows.length) { appendLog('❌ File không có dữ liệu hợp lệ'); return; }
+    appendLog(`📋 Tìm thấy ${rows.length} dòng. Bắt đầu import...\n`);
+
+    // Find next free slot index (0-based) beyond existing accounts
+    const cfgFull = await API.get('/api/settings/config-full');
+    const d = cfgFull.data || {};
+
+    let nextSlot = 0;
+    for (let i = 1; i <= 20; i++) {
+      if (!d[`account${i}`] || !d[`account${i}`].COOKIE) { nextSlot = i - 1; break; }
+      if (i === 20) nextSlot = 20;
+    }
+
+    let ok = 0, skip = 0;
+    for (let i = 0; i < rows.length; i++) {
+      const { cookie, projectId } = rows[i];
+      const slotIndex = nextSlot + i; // 0-based → API expects 0-based
+      appendLog(`[${i + 1}/${rows.length}] Account #${slotIndex + 1} — đang load cookie...`);
+
+      try {
+        const res = await API.post('/api/settings/cookie-to-token', {
+          account_index: slotIndex,
+          cookie_string: cookie,
+          project_id: projectId || undefined,
+        });
+
+        if (res.ok) {
+          // If projectId provided, save it separately
+          if (projectId) {
+            const accKey = `account${slotIndex + 1}`;
+            const accData = (await API.get('/api/settings/config-full')).data?.[accKey] || {};
+            accData.PROJECT_ID = projectId;
+            await API.post('/api/settings/account', { index: slotIndex, account: accData });
+          }
+          appendLog(`  ✅ Thành công${res.email ? ' — ' + res.email : ''}`);
+          ok++;
+        } else {
+          appendLog(`  ⚠️ Bỏ qua: ${res.message || 'Lỗi không xác định'}`);
+          skip++;
+          nextSlot--; // don't advance slot for failed account
+        }
+      } catch (err) {
+        appendLog(`  ⚠️ Bỏ qua: ${err.message}`);
+        skip++;
+        nextSlot--;
+      }
+    }
+
+    appendLog(`\n🏁 Xong: ${ok} thành công, ${skip} bỏ qua`);
+    await loadSettings();
+    await loadAllCredits();
+  }
+
   // ── Expose ────────────────────────────────────────────────────────────────
   Object.assign(window.Settings, {
     saveProjectId,
@@ -394,6 +545,8 @@
     openCookieModal,
     cookieToToken,
     reloadAccount,
+    openImportAccountsModal,
+    handleImportFile,
     reload: loadSettings,
   });
 
@@ -412,7 +565,8 @@
   };
 
   window.init_settings = function () {
-    document.getElementById('save-general-btn')?.addEventListener('click', saveGeneral);
+    const btn = document.getElementById('save-general-btn');
+    if (btn && !btn._bound) { btn._bound = true; btn.addEventListener('click', saveGeneral); }
     loadSettings().then(() => loadAllCredits());
   };
 })();

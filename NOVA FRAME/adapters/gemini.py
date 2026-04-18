@@ -67,6 +67,40 @@ class GeminiAdapter:
         resp = await asyncio.to_thread(_gen)
         return resp.text or ""
 
+    async def analyze_youtube_master_prompt(self, youtube_url: str, master_prompt: str, model: str = "gemini-2.5-flash") -> str:
+        """Send YouTube URL + master prompt template to Gemini, get filled MD back."""
+        client = self._client()
+        from google.genai import types as gtypes
+
+        system_instruction = (
+            "You are a professional video production planner. "
+            "The user will give you a YouTube video URL and a master prompt template. "
+            "Watch/analyze the video carefully, then fill in the master prompt template "
+            "based on the video's content, style, narrative, characters, and locations. "
+            "Replace every [INSERT ...] and [placeholder] with concrete, detailed content derived from the video. "
+            "Return the complete filled markdown document — no explanation, no preamble, just the filled template."
+        )
+
+        user_message = (
+            f"Here is the YouTube video to analyze:\n{youtube_url}\n\n"
+            f"Here is the master prompt template to fill:\n\n{master_prompt}"
+        )
+
+        def _gen():
+            return client.models.generate_content(
+                model=model,
+                contents=[
+                    gtypes.Content(role="user", parts=[gtypes.Part(text=user_message)])
+                ],
+                config=gtypes.GenerateContentConfig(
+                    system_instruction=system_instruction,
+                    temperature=1.0,
+                ),
+            )
+
+        resp = await asyncio.to_thread(_gen)
+        return resp.text or ""
+
     async def generate_json(self, prompt: str, model: str = "gemini-2.0-flash") -> str:
         """Generate JSON-structured response."""
         client = self._client()

@@ -76,6 +76,10 @@ async def save_value(body: dict):
     """Save a single config key-value."""
     cfg = load_config()
     cfg[body["key"]] = body["value"]
+    # Keep GEMINI_API_KEY in sync with first key from GEMINI_API_KEYS
+    if body["key"] == "GEMINI_API_KEYS":
+        first = next((k.strip() for k in str(body["value"]).splitlines() if k.strip()), "")
+        cfg["GEMINI_API_KEY"] = first
     save_config(cfg)
     return {"ok": True}
 
@@ -170,7 +174,9 @@ async def check_cookie(body: dict):
 
 @router.get("/account-credits")
 async def get_account_credits(account_index: int = 0):
-    """Lấy credits từ aisandbox API bằng access_token của account."""
+    """Lấy credits từ aisandbox API bằng access_token của account.
+    account_index là 0-based từ JS (_index = i-1).
+    """
     import httpx
     cfg = load_config()
     acc_key = f"account{account_index + 1}"

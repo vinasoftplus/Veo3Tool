@@ -577,6 +577,193 @@ async def upscale_image(req: UpscaleImageRequest):
 
 
 # ---------------------------------------------------------------------------
+# Get image URL by quality (1k=gốc, 2k, 4k) — dùng cho download + lưu kho
+# ---------------------------------------------------------------------------
+
+class ImageQualityRequest(BaseModel):
+    media_id: str
+    url: str = ""          # URL gốc (dùng cho 1k nếu có sẵn)
+    quality: str = "1k"    # "1k" | "2k" | "4k"
+    account_index: int = 0
+
+
+@router.post("/get-quality-url")
+async def get_quality_url(req: ImageQualityRequest):
+    """Trả về URL ảnh theo quality. 1k = URL gốc, 2k/4k = gọi upsampleImage qua extension."""
+    from adapters.google_labs import GoogleLabsAdapter, URL_UPSCALE_IMAGE
+    from routers.extension import request_browser_submit
+
+    adapter = GoogleLabsAdapter()
+
+    if req.quality == "1k":
+        return {"ok": True, "url": req.url, "quality": "1k"}
+
+    if not req.media_id:
+        raise HTTPException(400, "media_id bắt buộc cho quality 2k/4k")
+
+    account = _get_account_or_raise(req.account_index)
+    account_idx = int(account.get("_index") or 1)
+    payload = adapter.build_upscale_image_payload(req.media_id, quality=req.quality, recaptcha_token="", account=account)
+
+    # Dùng extension để inject recaptcha token, retry tối đa 2 lần
+    result = {"ok": False}
+    for _attempt in range(2):
+        result = await request_browser_submit(
+            str(uuid.uuid4()),
+            job_type="image_upscale",
+            url=URL_UPSCALE_IMAGE,
+            payload=payload,
+            access_token=account.get("ACCESS_TOKEN", ""),
+            account_index=account_idx,
+        )
+        if result.get("ok"):
+            break
+        if _attempt == 0:
+            await asyncio.sleep(3)
+            account = _get_account_or_raise(req.account_index)
+            account_idx = int(account.get("_index") or 1)
+            payload = adapter.build_upscale_image_payload(req.media_id, quality=req.quality, recaptcha_token="", account=account)
+
+    if not result.get("ok"):
+        raise HTTPException(500, f"Upscale ảnh thất bại: HTTP {result.get('status')} {str(result.get('body',''))[:200]}")
+
+    import json as _json
+    try:
+        body_json = _json.loads(result.get("body", ""))
+        encoded = body_json.get("encodedImage", "")
+    except Exception:
+        encoded = ""
+
+    if not encoded:
+        raise HTTPException(500, "Không lấy được ảnh upscale từ response")
+
+    data_url = f"data:image/jpeg;base64,{encoded}"
+    return {"ok": True, "url": data_url, "quality": req.quality}
+
+
+# ---------------------------------------------------------------------------
+# Batch save images to library with quality (2 account song song)
+# ---------------------------------------------------------------------------
+
+class BatchSaveLibRequest(BaseModel):
+    images: list[dict]     # [{url, media_id, prompt, card_title}]
+    category_id: str = "default"
+    quality: str = "1k"    # "1k" | "2k" | "4k"
+
+
+@router.post("/studio/batch-save-lib")
+async def batch_save_lib(req: BatchSaveLibRequest):
+    """
+    Lưu nhiều ảnh vào kho với quality tùy chọn.
+    Chia đều 2 account để tăng tốc. Auto retry 1 lần nếu lỗi.
+    Trả về progress dạng streaming (SSE) để FE hiển thị thanh load.
+    """
+    import asyncio
+    import httpx
+    from adapters.google_labs import GoogleLabsAdapter
+    from services.library_service import save_library_asset
+    from fastapi.responses import StreamingResponse
+    import json as _json
+
+    adapter = GoogleLabsAdapter()
+    accounts = get_active_accounts()
+    acc1 = accounts[0] if len(accounts) > 0 else None
+    acc2 = accounts[1] if len(accounts) > 1 else acc1
+    if not acc1:
+        raise HTTPException(400, "Chưa có account nào")
+
+    images = req.images
+    total = len(images)
+
+    async def process_one(idx: int, item: dict, account, account_index: int) -> dict:
+        media_id = item.get("media_id", "")
+        url = item.get("url", "")
+        prompt = item.get("prompt", "")
+        asset_type = item.get("asset_type", "nhanvat")
+
+        import json as _json, base64 as _b64
+        upscaled_bytes: bytes | None = None
+
+        # Lấy ảnh upscale qua extension (trả encodedImage base64)
+        if req.quality != "1k" and media_id:
+            from routers.extension import request_browser_submit
+            from adapters.google_labs import URL_UPSCALE_IMAGE
+            for attempt in range(2):
+                try:
+                    payload = adapter.build_upscale_image_payload(media_id, quality=req.quality, recaptcha_token="", account=account)
+                    result = await request_browser_submit(
+                        str(uuid.uuid4()), job_type="image_upscale",
+                        url=URL_UPSCALE_IMAGE, payload=payload,
+                        access_token=account.get("ACCESS_TOKEN", ""),
+                        account_index=account_index,
+                    )
+                    if result.get("ok"):
+                        body_json = _json.loads(result.get("body", "{}"))
+                        encoded = body_json.get("encodedImage", "")
+                        if encoded:
+                            upscaled_bytes = _b64.b64decode(encoded)
+                            break
+                except Exception:
+                    if attempt == 0:
+                        await asyncio.sleep(1)
+
+        # Download + lưu kho, retry 1 lần
+        for attempt in range(2):
+            try:
+                if upscaled_bytes:
+                    image_bytes = upscaled_bytes
+                else:
+                    async with httpx.AsyncClient(timeout=60) as client:
+                        resp = await client.get(url)
+                        resp.raise_for_status()
+                        image_bytes = resp.content
+                fname = f"studio_{uuid.uuid4().hex[:12]}.jpg"
+                asset = await save_library_asset(
+                    image_bytes=image_bytes,
+                    filename=fname,
+                    prompt=prompt,
+                    category_id=req.category_id,
+                    source_type="studio",
+                    origin_url=url,
+                    media_id=media_id,
+                    asset_type=asset_type,
+                )
+                return {"ok": True, "idx": idx, "asset": asset}
+            except Exception as e:
+                if attempt == 0:
+                    await asyncio.sleep(1)
+                else:
+                    return {"ok": False, "idx": idx, "error": str(e)}
+
+    async def stream():
+        done = 0
+        # Chia batch thành 2 luồng xen kẽ theo account
+        sem = asyncio.Semaphore(4)  # tối đa 4 concurrent
+
+        async def run(idx, item, acc, acc_idx):
+            nonlocal done
+            async with sem:
+                result = await process_one(idx, item, acc, acc_idx)
+                done += 1
+                yield_data = _json.dumps({"done": done, "total": total, "ok": result["ok"], "idx": idx})
+                return yield_data
+
+        tasks = []
+        for i, item in enumerate(images):
+            acc = acc1 if i % 2 == 0 else acc2
+            acc_idx = int(acc.get("_index") or 1)
+            tasks.append(run(i, item, acc, acc_idx))
+
+        for coro in asyncio.as_completed([t for t in tasks]):
+            data = await coro
+            yield f"data: {data}\n\n"
+
+        yield f"data: {_json.dumps({'done': total, 'total': total, 'finished': True})}\n\n"
+
+    return StreamingResponse(stream(), media_type="text/event-stream")
+
+
+# ---------------------------------------------------------------------------
 # Frame Cutter (FFmpeg)
 # ---------------------------------------------------------------------------
 

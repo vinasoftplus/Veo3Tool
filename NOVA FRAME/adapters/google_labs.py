@@ -807,8 +807,31 @@ class GoogleLabsAdapter:
         return await _async_send(url, payload, _token(account), _cookie(account))
 
     # --- Upscale image ---
-    async def upscale_image(self, media_id: str, token: str) -> dict:
-        payload = {"mediaId": media_id}
+    def build_upscale_image_payload(self, media_id: str, quality: str = "2k", recaptcha_token: str = "", account: dict | None = None) -> dict:
+        ctx: dict = {
+            "recaptchaContext": {"token": recaptcha_token},
+            "sessionId": str(uuid.uuid4()),
+            "tool": "PINHOLE",
+        }
+        if account:
+            pid = _project_id(account)
+            if pid:
+                ctx["projectId"] = pid
+            ctx["userPaygateTier"] = _paygate(account)
+        payload: dict = {"mediaId": media_id, "clientContext": ctx}
+        if quality == "2k":
+            payload["targetResolution"] = "UPSAMPLE_IMAGE_RESOLUTION_2K"
+        elif quality == "4k":
+            payload["targetResolution"] = "UPSAMPLE_IMAGE_RESOLUTION_4K"
+        return payload
+
+    async def upscale_image(self, media_id: str, token: str, quality: str = "1k", recaptcha_token: str = "") -> dict:
+        """
+        quality: "1k" = gốc (không upscale, chỉ lấy URL redirect),
+                 "2k" = UPSAMPLE_IMAGE_RESOLUTION_2K,
+                 "4k" = UPSAMPLE_IMAGE_RESOLUTION_4K
+        """
+        payload = self.build_upscale_image_payload(media_id, quality=quality, recaptcha_token=recaptcha_token)
         return await _async_send(URL_UPSCALE_IMAGE, payload, token)
 
     # ---------------------------------------------------------------------------

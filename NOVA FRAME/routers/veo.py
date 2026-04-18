@@ -22,17 +22,25 @@ logger = logging.getLogger("veo.router")
 # Helpers
 # ---------------------------------------------------------------------------
 
+_rr_counter: int = 0  # server-side round-robin counter
+
+
 def _get_account_or_raise(preferred_index: int | None = None):
+    global _rr_counter
     accounts = get_active_accounts()
     if not accounts:
         raise HTTPException(400, "Chua co account nao co token. Vao Cai dat de lay token.")
 
-    if preferred_index:
+    if preferred_index is not None and preferred_index > 0:
         for account in accounts:
             if int(account.get("_index") or 0) == int(preferred_index):
                 return account
+        # preferred not found — fall through to round-robin
 
-    return accounts[0]
+    # No preference → round-robin across all active accounts
+    idx = _rr_counter % len(accounts)
+    _rr_counter += 1
+    return accounts[idx]
 
 
 def _account_display(account: dict) -> str:
@@ -801,27 +809,38 @@ async def save_job_output(job_id: str, body: dict):
 
 @router.post("/job/{job_id}/upscale")
 async def upscale_job(job_id: str, body: dict):
-    from adapters.google_labs import GoogleLabsAdapter
+    from adapters.google_labs import GoogleLabsAdapter, URL_UPSCALE_VIDEO
+    from routers.extension import request_browser_submit
 
-    account = _get_account_or_raise()
     adapter = GoogleLabsAdapter()
     job = await job_store.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job khong tim thay")
 
-    operation_name = body.get("operation_name", "")
+    # Dùng đúng account đã tạo video — ưu tiên body > job params
+    job_params = job.get("params") or {}
+    body_account_index = body.get("account_index")
+    job_account_index = job_params.get("account_index")
+    preferred = body_account_index if body_account_index is not None else job_account_index
+    account = _get_account_or_raise(preferred_index=int(preferred) if preferred is not None else None)
+    account_index = int(account.get("_index") or 1)
+
+    # Fix 2: lấy aspect_ratio từ job params
+    job_aspect = job_params.get("aspect_ratio") or "VIDEO_ASPECT_RATIO_LANDSCAPE"
+
     output_index = int(body.get("output_index", 0) or 0)
+    operation_name = body.get("operation_name", "")
     if not operation_name:
         outputs = job.get("outputs") or []
         if 0 <= output_index < len(outputs):
             operation_name = outputs[output_index].get("operation_name", "")
     if not operation_name:
-        ops = (job.get("params") or {}).get("operations") or []
+        ops = job_params.get("operations") or []
         if 0 <= output_index < len(ops):
             operation_name = ((ops[output_index] or {}).get("operation") or {}).get("name", "")
         elif ops:
             operation_name = ((ops[0] or {}).get("operation") or {}).get("name", "")
-    # Lấy thêm media_id từ output để thử fallback
+
     media_id = ""
     outputs = job.get("outputs") or []
     if 0 <= output_index < len(outputs):
@@ -830,53 +849,62 @@ async def upscale_job(job_id: str, body: dict):
     if not operation_name and not media_id:
         raise HTTPException(400, "Missing operation_name")
 
-    # Resolve mediaId (UUID operation_name = mediaId)
     resolved_media_id = adapter._resolve_upscale_media_id(operation_name, media_id)
     if not resolved_media_id:
         raise HTTPException(400, "Missing mediaId for upscale")
 
-    account_index = int(account.get("_index") or 1)
-    token_option = _token_option()
-    upscale_payload = adapter.build_upscale_payload(resolved_media_id, account=account, recaptcha_token="")
+    logger.info("[Upscale] mediaId=%r account=#%s aspect=%s", resolved_media_id, account_index, job_aspect)
 
-    logger.info("[Upscale] mediaId=%r token_option=%s", resolved_media_id, token_option)
+    # Fix 3: retry tự động tối đa 3 lần khi 403/500
+    result = None
+    for attempt in range(3):
+        upscale_payload = adapter.build_upscale_payload(resolved_media_id, account=account, recaptcha_token="")
+        # Patch aspect_ratio đúng theo video gốc
+        if upscale_payload.get("requests"):
+            upscale_payload["requests"][0]["aspectRatio"] = job_aspect
 
-    # Luôn dùng browser submit — extension tự inject recaptcha + fresh token
-    from adapters.google_labs import URL_UPSCALE_VIDEO
-    from routers.extension import request_browser_submit
-    browser_job_id = str(uuid.uuid4())
-    result = await request_browser_submit(
-        browser_job_id,
-        job_type="video",
-        url=URL_UPSCALE_VIDEO,
-        payload=upscale_payload,
-        access_token=account.get("ACCESS_TOKEN", ""),
-        account_index=account_index,
-    )
-    if not result.get("ok"):
-        return {"ok": False, "body": result.get("body", "")}
+        browser_job_id = str(uuid.uuid4())
+        result = await request_browser_submit(
+            browser_job_id,
+            job_type="video",
+            url=URL_UPSCALE_VIDEO,
+            payload=upscale_payload,
+            access_token=account.get("ACCESS_TOKEN", ""),
+            account_index=account_index,
+        )
+        status = result.get("status", 0)
+        if result.get("ok"):
+            break
+        if status in (403, 401):
+            logger.warning("[Upscale] attempt %s/%s → HTTP %s, retry...", attempt + 1, 3, status)
+            await asyncio.sleep(2)
+            continue
+        # 500 hoặc lỗi khác — retry luôn
+        logger.warning("[Upscale] attempt %s/%s → status=%s body=%s, retry...", attempt + 1, 3, status, str(result.get("body", ""))[:200])
+        await asyncio.sleep(2)
+
+    if not result or not result.get("ok"):
+        return {"ok": False, "body": result.get("body", "") if result else "No result"}
 
     upscale_operations = adapter.parse_operations(result.get("body", ""))
     if not upscale_operations:
         return {"ok": True, "started": True, "message": "Upscale request accepted"}
 
-    for _ in range(60):
+    for _ in range(80):
         await asyncio.sleep(3)
         status_result = await adapter.check_video_status(upscale_operations, account.get("ACCESS_TOKEN", ""))
         if not status_result.get("ok"):
             continue
         videos = adapter.parse_video_results(status_result.get("body", ""))
         if videos:
-            outputs = []
+            upscaled = []
             for v in videos:
-                outputs.append(
-                    {
-                        "video_url": v.get("videoUrl") or v.get("fifeUrl", ""),
-                        "media_id": v.get("mediaId", ""),
-                        "operation_name": v.get("operationName") or (((upscale_operations[0] or {}).get("operation") or {}).get("name", "")),
-                    }
-                )
-            return {"ok": True, "completed": True, "outputs": outputs}
+                upscaled.append({
+                    "video_url": v.get("videoUrl") or v.get("fifeUrl", ""),
+                    "media_id": v.get("mediaId", ""),
+                    "operation_name": v.get("operationName") or (((upscale_operations[0] or {}).get("operation") or {}).get("name", "")),
+                })
+            return {"ok": True, "completed": True, "outputs": upscaled}
 
     return {"ok": True, "started": True, "message": "Upscale da duoc gui, nhung chua co ket qua kip thoi gian cho"}
 
