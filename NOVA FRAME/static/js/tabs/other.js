@@ -79,84 +79,149 @@ async function pollScriptJob(jobId) {
 }
 
 
-// ── Master Script Analyzer ───────────────────────────────────────────────────
+// ── Master Script (shared result card helpers) ───────────────────────────────
+function _msShowResult(statusText, outputText) {
+  const resultCard = document.getElementById('ms-result-card');
+  const statusEl   = document.getElementById('ms-status');
+  const outputEl   = document.getElementById('ms-output');
+  resultCard.style.display = '';
+  statusEl.textContent = statusText;
+  outputEl.textContent = outputText || '';
+}
+
+function _msBindActions() {
+  const copyBtn = document.getElementById('ms-copy-btn');
+  const dlBtn   = document.getElementById('ms-download-btn');
+  if (copyBtn && !copyBtn._bound) {
+    copyBtn._bound = true;
+    copyBtn.addEventListener('click', () => {
+      const text = document.getElementById('ms-output')?.textContent || '';
+      if (!text) return;
+      navigator.clipboard.writeText(text).then(() => toast('Đã copy vào clipboard', 'success'));
+    });
+  }
+  if (dlBtn && !dlBtn._bound) {
+    dlBtn._bound = true;
+    dlBtn.addEventListener('click', () => {
+      const text = document.getElementById('ms-output')?.textContent || '';
+      if (!text) return toast('Chưa có nội dung để tải', 'error');
+      const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'master_prompt.md';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    });
+  }
+}
+
 window.init_master_script = function () {
-  const btn = document.getElementById('ms-submit');
-  if (!btn || btn._bound) return;
-  btn._bound = true;
+  _msBindActions();
 
-  btn.addEventListener('click', async () => {
-    const url = document.getElementById('ms-url')?.value.trim();
-    if (!url) return toast('Vui lòng nhập YouTube URL', 'error');
+  // ── Auto Master Prompt ──
+  const ampBtn = document.getElementById('amp-submit');
+  if (ampBtn && !ampBtn._bound) {
+    ampBtn._bound = true;
+    ampBtn.addEventListener('click', async () => {
+      const idea     = document.getElementById('amp-idea')?.value.trim();
+      const scenes   = parseInt(document.getElementById('amp-scenes')?.value || '0', 10);
+      const durationMins = parseInt(document.getElementById('amp-duration')?.value || '0', 10);
+      const duration = durationMins * 60;
+      const vtype    = document.getElementById('amp-type')?.value || 'youtube_long';
 
-    btn.disabled = true;
-    btn.textContent = '⏳ Đang phân tích...';
-    const resultCard = document.getElementById('ms-result-card');
-    const statusEl = document.getElementById('ms-status');
-    const outputEl = document.getElementById('ms-output');
-    resultCard.style.display = '';
-    statusEl.textContent = 'Đang gửi lên Gemini 2.5 Flash...';
-    outputEl.textContent = '';
+      if (!idea)     return toast('Vui lòng nhập Idea', 'error');
+      if (!scenes || scenes < 1)   return toast('Số Scenes phải ≥ 1', 'error');
+      if (!durationMins || durationMins < 1) return toast('Độ dài video phải ≥ 1 phút', 'error');
 
-    try {
-      const res = await API.post('/api/youtube/master-script', { youtube_url: url });
-      if (!res.ok) {
-        statusEl.textContent = '❌ ' + (res.detail || 'Lỗi');
-        toast(res.detail || 'Lỗi', 'error');
-        return;
+      ampBtn.disabled = true;
+      ampBtn.textContent = '⏳ Đang tạo...';
+      _msShowResult('Đang gửi lên Gemini 2.5 Flash...', '');
+      document.getElementById('ms-actions').style.display = 'none';
+
+      try {
+        const res = await API.post('/api/youtube/auto-master-prompt', {
+          idea, scene_count: scenes, duration_seconds: duration, video_type: vtype,
+        });
+        if (!res.ok) {
+          _msShowResult('❌ ' + (res.detail || 'Lỗi'), '');
+          toast(res.detail || 'Lỗi', 'error');
+          return;
+        }
+        await pollMasterPromptJob(res.job_id, '/api/youtube/auto-master-prompt/', '✅ Master Prompt đã sẵn sàng');
+      } catch (e) {
+        _msShowResult('❌ Lỗi kết nối: ' + e.message, '');
+        toast('Lỗi: ' + e.message, 'error');
+      } finally {
+        ampBtn.disabled = false;
+        ampBtn.textContent = '✨ Tạo Master Prompt';
       }
-      await pollMasterScriptJob(res.job_id);
-    } catch (e) {
-      statusEl.textContent = '❌ Lỗi kết nối: ' + e.message;
-      toast('Lỗi: ' + e.message, 'error');
-    } finally {
-      btn.disabled = false;
-      btn.textContent = '🎬 Lấy kịch bản';
-    }
-  });
+    });
+  }
 
-  document.getElementById('ms-copy-btn')?.addEventListener('click', () => {
-    const text = document.getElementById('ms-output')?.textContent || '';
-    if (!text) return;
-    navigator.clipboard.writeText(text).then(() => toast('Đã copy vào clipboard', 'success'));
-  });
+  // ── Lấy kịch bản từ YTB ──
+  const msBtn = document.getElementById('ms-submit');
+  if (msBtn && !msBtn._bound) {
+    msBtn._bound = true;
+    msBtn.addEventListener('click', async () => {
+      const url = document.getElementById('ms-url')?.value.trim();
+      if (!url) return toast('Vui lòng nhập YouTube URL', 'error');
 
-  document.getElementById('ms-download-btn')?.addEventListener('click', () => {
-    const text = document.getElementById('ms-output')?.textContent || '';
-    if (!text) return;
-    const blob = new Blob([text], { type: 'text/markdown' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = 'master_script.md';
-    a.click();
-    URL.revokeObjectURL(a.href);
-  });
+      msBtn.disabled = true;
+      msBtn.textContent = '⏳ Đang phân tích...';
+      _msShowResult('Đang gửi lên Gemini 2.5 Flash...', '');
+      document.getElementById('ms-actions').style.display = 'none';
+
+      try {
+        const res = await API.post('/api/youtube/master-script', { youtube_url: url });
+        if (!res.ok) {
+          _msShowResult('❌ ' + (res.detail || 'Lỗi'), '');
+          toast(res.detail || 'Lỗi', 'error');
+          return;
+        }
+        await pollMasterPromptJob(res.job_id, '/api/youtube/master-script/', '✅ Hoàn thành — AI đã phân tích và điền kịch bản');
+      } catch (e) {
+        _msShowResult('❌ Lỗi kết nối: ' + e.message, '');
+        toast('Lỗi: ' + e.message, 'error');
+      } finally {
+        msBtn.disabled = false;
+        msBtn.textContent = '🎬 Lấy kịch bản';
+      }
+    });
+  }
 };
 
-async function pollMasterScriptJob(jobId) {
+async function pollMasterPromptJob(jobId, apiBase, doneMsg) {
   const statusEl = document.getElementById('ms-status');
   const outputEl = document.getElementById('ms-output');
 
   for (let i = 0; i < 180; i++) {
     await new Promise(r => setTimeout(r, 3000));
     try {
-      const res = await API.get('/api/youtube/master-script/' + jobId);
+      const res = await API.get(apiBase + jobId);
       const job = res.job;
       if (job.status === 'done') {
-        statusEl.textContent = '✅ Hoàn thành — AI đã phân tích và điền kịch bản';
+        statusEl.textContent = doneMsg;
         outputEl.textContent = job.outputs?.md || '';
         document.getElementById('ms-actions').style.display = 'flex';
         return;
       }
       if (job.status === 'failed') {
         statusEl.textContent = '❌ Lỗi: ' + (job.error || 'Không xác định');
-        toast('Lỗi phân tích: ' + (job.error || ''), 'error');
+        toast('Lỗi: ' + (job.error || ''), 'error');
         return;
       }
-      statusEl.textContent = `⏳ Gemini đang xem video và viết kịch bản... (${job.progress || 0}%)`;
+      statusEl.textContent = `⏳ Gemini đang xử lý... (${job.progress || 0}%)`;
     } catch (e) { /* retry */ }
   }
-  statusEl.textContent = '⚠️ Timeout — video có thể quá dài, thử lại';
+  statusEl.textContent = '⚠️ Timeout — thử lại sau';
+}
+
+// legacy alias
+async function pollMasterScriptJob(jobId) {
+  return pollMasterPromptJob(jobId, '/api/youtube/master-script/', '✅ Hoàn thành — AI đã phân tích và điền kịch bản');
 }
 
 

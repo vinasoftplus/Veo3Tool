@@ -1124,19 +1124,56 @@
         <!-- MASTER SCRIPT -->
         <div id="tab-master-script" class="tab-panel">
           <div class="two-col" style="align-items:start;">
-            <div class="card">
-              <div class="card-title">🎬 Lấy kịch bản từ video YTB</div>
-              <p style="font-size:12px;color:var(--text2);margin-bottom:16px;line-height:1.7;">
-                Nhập link video YouTube → AI sẽ xem video và điền vào tạo ra <strong>masterPromt.md</strong>
-                trả về kịch bản hoàn chỉnh theo đúng format.
-              </p>
-              <div class="form-group">
-                <label class="form-label">YouTube URL</label>
-                <input type="text" id="ms-url" placeholder="https://www.youtube.com/watch?v=..."
-                  style="font-family:monospace;font-size:12px;">
+
+            <!-- Cột trái: 2 form -->
+            <div style="display:flex;flex-direction:column;gap:16px;">
+
+              <!-- Form 1: Auto Master Prompt -->
+              <div class="card">
+                <div class="card-title">✨ Auto Master Prompt</div>
+                <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.7;">
+                  Nhập ý tưởng → AI tự tạo Master Prompt hoàn chỉnh theo đúng format.
+                </p>
+                <div class="form-group">
+                  <label class="form-label">Idea / Ý tưởng video</label>
+                  <textarea id="amp-idea" rows="3" placeholder="VD: Chú chó con lạc đường trong rừng tìm về nhà..."></textarea>
+                </div>
+                <div class="input-row">
+                  <div class="form-group">
+                    <label class="form-label">Số Scenes</label>
+                    <input type="number" id="amp-scenes" min="1" max="200" step="1" placeholder="20" style="width:90px;">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Độ dài video (phút)</label>
+                    <input type="number" id="amp-duration" min="1" step="1" placeholder="5" style="width:110px;">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Loại video</label>
+                    <select id="amp-type">
+                      <option value="youtube_long">YouTube Long</option>
+                      <option value="short_tiktok">Short / TikTok</option>
+                    </select>
+                  </div>
+                </div>
+                <button id="amp-submit" class="btn btn-primary" style="width:100%;margin-top:4px;">✨ Tạo Master Prompt</button>
               </div>
-              <button id="ms-submit" class="btn btn-primary" style="width:100%;margin-top:4px;">🎬 Lấy kịch bản</button>
+
+              <!-- Form 2: Lấy kịch bản từ YTB -->
+              <div class="card">
+                <div class="card-title">🎬 Lấy kịch bản từ video YTB</div>
+                <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.7;">
+                  Nhập link video YouTube → AI xem video và viết lại Master Prompt theo đúng format.
+                </p>
+                <div class="form-group">
+                  <label class="form-label">YouTube URL</label>
+                  <input type="text" id="ms-url" placeholder="https://www.youtube.com/watch?v=..."
+                    style="font-family:monospace;font-size:12px;">
+                </div>
+                <button id="ms-submit" class="btn btn-primary" style="width:100%;margin-top:4px;">🎬 Lấy kịch bản</button>
+              </div>
             </div>
+
+            <!-- Cột phải: kết quả chung -->
             <div>
               <div id="ms-result-card" class="card" style="display:none;">
                 <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
@@ -1151,6 +1188,7 @@
                   style="white-space:pre-wrap;font-size:11px;line-height:1.7;color:var(--text2);max-height:60vh;overflow-y:auto;background:var(--bg3);border-radius:8px;padding:14px;margin:0;"></pre>
               </div>
             </div>
+
           </div>
         </div>
 
@@ -1923,7 +1961,7 @@
   <script src="/static/js/tabs/character.js?v=3"></script>
   <script src="/static/js/tabs/consistent_video_ui.js?v=2"></script>
   <script src="/static/js/tabs/settings.js?v=6"></script>
-  <script src="/static/js/tabs/other.js?v=4"></script>
+  <script src="/static/js/tabs/other.js?v=6"></script>
   <script src="/static/js/tabs/studio_unified.js?v=6"></script>
   <script>
     function toggleDarkMode() {
