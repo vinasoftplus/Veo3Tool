@@ -1,0 +1,30 @@
+{$DOMAIN} {
+  encode gzip
+
+  # Admin dashboard tại /admin-manage
+  handle /admin-manage* {
+    uri strip_prefix /admin-manage
+    reverse_proxy admin-dashboard:3000
+  }
+
+  # API license server (public endpoint cho tool)
+  handle /api/* {
+    reverse_proxy license-server:8080 {
+      header_up X-Forwarded-For {http.request.remote}
+      header_up X-Real-IP {http.request.remote}
+    }
+  }
+
+  # Admin API routes (JWT protected, dùng bởi dashboard)
+  handle /admin/* {
+    reverse_proxy license-server:8080 {
+      header_up X-Forwarded-For {http.request.remote}
+      header_up X-Real-IP {http.request.remote}
+    }
+  }
+
+  # Health check
+  handle /health {
+    reverse_proxy license-server:8080
+  }
+}

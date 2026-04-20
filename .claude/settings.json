@@ -26,7 +26,11 @@
       "Bash(timeout 600 gemini -m gemini-2.5-flash -p \"Research REST API design for license validation best practices 2024 2025. Focus on: POST /api/validate endpoint design accepting {key, machine_id, nonce}; POST /api/activate for first-time activation; admin CRUD endpoints; viewing activations and analytics; rate limiting strategies \\(per IP, per key, global\\); security best practices; response formats and error handling.\")",
       "Bash(wait)",
       "Bash(go mod *)",
-      "Bash(python scripts/generate-keypair.py)"
+      "Bash(python scripts/generate-keypair.py)",
+      "Bash(py -3.10 -m nuitka --list-plugins)",
+      "Bash(py -3.10 -c \"import webview; print\\(webview.__version__\\)\")",
+      "Bash(py -3.10 -c \"import webview.platforms.winforms\")",
+      "Bash(py -3.10 -c \"import pkg_resources; print\\(pkg_resources.get_distribution\\('pywebview'\\).version\\)\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1",

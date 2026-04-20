@@ -1,0 +1,9 @@
+.env
+*.pem
+*.key
+ed25519_private*
+dist/
+node_modules/
+__pycache__/
+*.pyc
+.license_cache

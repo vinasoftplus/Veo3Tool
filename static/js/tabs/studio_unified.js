@@ -85,7 +85,8 @@
   function _cardMatchesFilter(card, filter) {
     if (!card) return false;
     if (filter === 'all') return true;
-    if (filter === 'running') return !!(card.busyVideo || card.status === 'running' || card.status === 'processing');
+    if (filter === 'running') return !!(card.busyVideo || (card.status === 'running' && !card.busyImage));
+    if (filter === 'processing') return card.status === 'processing' || !!card.upscaling;
     if (filter === 'completed') return card.status === 'completed';
     if (filter === 'failed') return card.status === 'failed';
     if (filter === 'img-running') return !!card.busyImage;
@@ -102,15 +103,16 @@
     const pending = cards.filter(c => c.status === 'idle').length;
     const running = cards.filter(c => c.status === 'running' || c.status === 'processing' || c.busyImage).length;
     const videoDone = cards.filter(c => c.status === 'completed').length;
+    const videoProcessing = cards.filter(c => c.status === 'processing' || c.upscaling).length;
     const imageDone = cards.filter(c => c.images.length > 0).length;
     const failed = cards.filter(c => c.status === 'failed').length;
-    const videoRunning = cards.filter(c => c.busyVideo || c.status === 'running' || c.status === 'processing').length;
+    const videoRunning = cards.filter(c => c.busyVideo || (c.status === 'running' && !c.busyImage)).length;
     const imageRunning = cards.filter(c => c.busyImage).length;
     const imageFailed = cards.filter(c => c.status === 'failed' && !c.outputs.length).length;
     const el = id => document.getElementById(id);
     if (el('studio-pending-count')) el('studio-pending-count').textContent = pending;
     if (el('studio-saved-count')) el('studio-saved-count').textContent = videoDone;
-    if (el('studio-metric-total')) el('studio-metric-total').textContent = cards.length + ' card';
+    if (el('studio-metric-total')) el('studio-metric-total').textContent = cards.length + ' cụm';
     if (el('studio-metric-running')) el('studio-metric-running').textContent = running + ' đang chạy';
     if (el('studio-metric-done')) el('studio-metric-done').textContent = videoDone + ' video / ' + imageDone + ' ảnh';
     if (el('studio-metric-failed')) el('studio-metric-failed').textContent = failed + ' lỗi';
@@ -130,6 +132,7 @@
     }
     if (el('studio-filter-total-count')) el('studio-filter-total-count').textContent = cards.length;
     if (el('studio-filter-running-count')) el('studio-filter-running-count').textContent = videoRunning;
+    if (el('studio-filter-processing-count')) el('studio-filter-processing-count').textContent = videoProcessing;
     if (el('studio-filter-done-count')) el('studio-filter-done-count').textContent = videoDone;
     if (el('studio-filter-failed-count')) el('studio-filter-failed-count').textContent = failed;
     if (el('studio-filter-image-running-count')) el('studio-filter-image-running-count').textContent = imageRunning;
@@ -161,9 +164,45 @@
   function _setFolderLabel(text) {
     const el = $('studio-folder-label');
     if (!el) return;
-    el.textContent = text || 'Folder';
-    el.title = text || '';
-    el.style.color = text ? 'var(--accent)' : '';
+    const path = (text || '').trim();
+    el.textContent = path ? `AutoSave: ${path}` : 'AutoSave: chưa chọn';
+    el.title = path || 'Chưa chọn folder';
+    el.style.color = path ? 'var(--accent)' : '';
+  }
+
+  function _syncAutoDownloadUILegacy() {
+    const autoCb = $('studio-auto-download');
+    const autoLabel = $('studio-auto-download-label');
+    const hasFolder = !!(cfg.saveHandle || cfg.saveFolder);
+    if (autoCb) {
+      if (!hasFolder && autoCb.checked) {
+        autoCb.checked = false;
+        cfg.autoDownload = false;
+      }
+    }
+    if (autoLabel) {
+      autoLabel.textContent = hasFolder
+        ? `AutoSave: ${cfg.saveFolder || cfg.saveHandle?.name || ''}`
+        : 'Auto Lưu (chưa chọn folder)';
+      autoLabel.title = hasFolder ? (cfg.saveFolder || cfg.saveHandle?.name || '') : 'Chọn folder để bật Auto Lưu';
+    }
+  }
+
+  // Override UI sync to keep AutoSave path on folder button (full text)
+  function _syncAutoDownloadUI() {
+    const autoCb = $('studio-auto-download');
+    const autoLabel = $('studio-auto-download-label');
+    const hasFolder = !!(cfg.saveHandle || cfg.saveFolder);
+    const folderPath = (cfg.saveFolder || cfg.saveHandle?.name || '').trim();
+    if (autoCb && !hasFolder && autoCb.checked) {
+      autoCb.checked = false;
+      cfg.autoDownload = false;
+    }
+    if (autoLabel) {
+      autoLabel.textContent = 'Auto Lưu';
+      autoLabel.title = hasFolder ? `Folder AutoSave: ${folderPath}` : 'Bật Auto Lưu sẽ yêu cầu chọn folder';
+    }
+    _setFolderLabel(folderPath);
   }
 
   async function chooseFolder() {
@@ -171,7 +210,8 @@
       try {
         cfg.saveHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
         cfg.saveFolder = cfg.saveHandle.name;
-        _setFolderLabel(cfg.saveHandle.name);
+        _setFolderLabel(cfg.saveFolder);
+        _syncAutoDownloadUI();
         toast('Đã chọn folder: ' + cfg.saveHandle.name, 'success');
         return;
       } catch (e) {
@@ -183,6 +223,7 @@
     if (path) {
       cfg.saveFolder = path;
       _setFolderLabel(path);
+      _syncAutoDownloadUI();
       toast('Đã lưu folder: ' + path, 'success');
     }
   }
@@ -393,6 +434,13 @@
                 <path d="M3 10h18"></path>
               </svg>
             </button>
+            <button type="button" class="btn btn-secondary btn-sm studio-ref-btn-icon studio-ref-btn-danger" onclick="Studio.clearCardRefs('${card.id}')" title="Xóa toàn bộ ảnh tham chiếu" aria-label="Xóa toàn bộ ảnh tham chiếu">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M3 7h18"></path>
+                <path d="M8 7V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+                <path d="M6 7l1 12a1 1 0 0 0 1 .9h8a1 1 0 0 0 1-.9l1-12"></path>
+              </svg>
+            </button>
           </div>
         </div>
         ${refCount
@@ -455,14 +503,32 @@
         <span class="studio-card-title">Cụm ${idx}</span>
         <div class="studio-toolbar-spacer"></div>
         <div class="card-action-group" style="position:relative;display:inline-flex;">
-          <button class="btn btn-secondary btn-sm card-insert-btn" onclick="Studio.toggleInsertMenu('${card.id}')">+ Cụm ▾</button>
+          <button class="btn btn-secondary btn-sm card-insert-btn" onclick="Studio.toggleInsertMenu('${card.id}')">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+              <line x1="12" y1="5" x2="12" y2="19"></line>
+              <line x1="5" y1="12" x2="19" y2="12"></line>
+            </svg>
+            Cụm
+            <span class="studio-btn-caret">▾</span>
+          </button>
           <div class="card-insert-menu" id="studio-insert-menu-${card.id}" style="display:none;">
             <div onclick="Studio.insertCard('${card.id}','before')">Thêm trước</div>
             <div onclick="Studio.insertCard('${card.id}','after')">Thêm sau</div>
           </div>
         </div>
-        <button class="btn btn-secondary btn-sm" onclick="Studio.cloneCard('${card.id}')">⧉</button>
-        <button class="btn btn-secondary btn-sm" onclick="Studio.deleteCard('${card.id}')">🗑</button>
+        <button class="btn btn-secondary btn-sm studio-icon-btn" onclick="Studio.cloneCard('${card.id}')" title="Nhân bản cụm" aria-label="Nhân bản cụm">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="10" height="10" rx="2"></rect>
+            <rect x="5" y="5" width="10" height="10" rx="2"></rect>
+          </svg>
+        </button>
+        <button class="btn btn-secondary btn-sm studio-icon-btn studio-icon-btn-danger" onclick="Studio.deleteCard('${card.id}')" title="Xóa cụm" aria-label="Xóa cụm">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M3 7h18"></path>
+            <path d="M8 7V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"></path>
+            <path d="M6 7l1 12a1 1 0 0 0 1 .9h8a1 1 0 0 0 1-.9l1-12"></path>
+          </svg>
+        </button>
       </div>
       <div class="studio-card-body ${_cardLayout === 'horizontal' ? 'is-horizontal' : ''}">
         ${bodyContent}
@@ -592,6 +658,15 @@
     renderCard(card, false);
   }
 
+  function clearCardRefs(cardId) {
+    const card = cards.find(c => c.id === cardId);
+    if (!card) return;
+    card.refs = [];
+    card.refIndex = 0;
+    renderCard(card, false);
+    updateStats();
+  }
+
   async function genImages(cardId, accountIndex = null) {
     const card = cards.find(c => c.id === cardId);
     if (!card) return;
@@ -642,7 +717,7 @@
         card.busyImage = false;
         renderCard(card, false);
         updateStats();
-        toast('Đã tạo ' + (res.images || []).length + ' ảnh cho card', 'success');
+        toast('Đã tạo ' + (res.images || []).length + ' ảnh cho cụm', 'success');
         return; // thành công
       } catch (err) {
         attempt++;
@@ -1314,7 +1389,7 @@
     const pending = _activeFilter === 'failed'
       ? cards.filter(c => !c.busyImage && c.status === 'failed' && String(c.prompt || '').trim())
       : cards.filter(c => !c.busyImage && String(c.prompt || '').trim());
-    if (!pending.length) return toast('Không có card nào sẵn sàng tạo hình', 'error');
+    if (!pending.length) return toast('Không có cụm nào sẵn sàng tạo hình', 'error');
     stopAll = false;
     $('studio-gen-all-images').style.display = 'none';
     $('studio-stop-all').style.display = '';
@@ -1329,8 +1404,8 @@
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const n = accountIndices.length;
     toast(n > 1
-      ? `Tạo ảnh ${pending.length} card với ${n} tài khoản (tối đa ${maxConcurrentImage} ảnh/tài khoản)`
-      : `Bắt đầu tạo ảnh ${pending.length} card (tối đa ${maxConcurrentImage} cùng lúc)`, 'info');
+      ? `Tạo ảnh ${pending.length} cụm với ${n} tài khoản (tối đa ${maxConcurrentImage} ảnh/tài khoản)`
+      : `Bắt đầu tạo ảnh ${pending.length} cụm (tối đa ${maxConcurrentImage} cùng lúc)`, 'info');
 
     if (n <= 1) {
       const sem = makeSemaphore(maxConcurrentImage);
@@ -1370,7 +1445,7 @@
     const pending = _activeFilter === 'failed'
       ? cards.filter(c => c.status === 'failed')
       : cards.filter(c => c.status === 'idle');
-    if (!pending.length) return toast('Không có card nào chờ tạo video', 'error');
+    if (!pending.length) return toast('Không có cụm nào chờ tạo video', 'error');
     stopAll = false;
     $('studio-gen-all-videos').style.display = 'none';
     $('studio-stop-all').style.display = '';
@@ -1384,7 +1459,7 @@
     const sleep = ms => new Promise(r => setTimeout(r, ms));
     const n = accountIndices.length;
     toast(n > 1
-      ? `Chạy ${pending.length} card với ${n} tài khoản (tối đa ${maxConcurrent} job/tài khoản)`
+      ? `Chạy ${pending.length} cụm với ${n} tài khoản (tối đa ${maxConcurrent} job/tài khoản)`
       : `Bắt đầu tạo ${pending.length} video (tối đa ${maxConcurrent} cùng lúc)`, 'info');
 
     if (n <= 1) {
@@ -1426,7 +1501,7 @@
     cards = [];
     $('studio-cards').innerHTML = '';
     updateStats();
-    toast('Đã xóa tất cả card trong Studio', 'success');
+    toast('Đã xóa tất cả cụm trong Studio', 'success');
   }
 
   function cloneCard(cardId) {
@@ -1607,21 +1682,22 @@
     }
 
     function _studioFancyIcon(selectId, value) {
+      const icon = (svg, tone) => ({ tone, svg });
       if (selectId === 'studio-model') {
-        if (value === 'auto') return { tone: 'violet', glyph: '✦' };
-        if (value === 'flow_fast_relaxed') return { tone: 'orange', glyph: '⚡' };
-        if (value === 'flow_fast_no_ultra') return { tone: 'blue', glyph: '▷' };
-        return { tone: 'green', glyph: '▣' };
+        if (value === 'auto') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v4"/><path d="M12 17v4"/><path d="M4.9 4.9l2.8 2.8"/><path d="M16.3 16.3l2.8 2.8"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M4.9 19.1l2.8-2.8"/><path d="M16.3 7.7l2.8-2.8"/></svg>', 'violet');
+        if (value === 'flow_fast_relaxed') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 10-14h-7l0-6z"/></svg>', 'orange');
+        if (value === 'flow_fast_no_ultra') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>', 'blue');
+        return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8v8H8z"/></svg>', 'green');
       }
       if (selectId === 'studio-image-model') {
-        if (value === 'Nano Banana pro') return { tone: 'amber', glyph: '☰' };
-        if (value === 'Nano Banana 2') return { tone: 'orange', glyph: '◒' };
-        if (value === 'Imagen 4') return { tone: 'teal', glyph: '✧' };
-        return { tone: 'slate', glyph: '◻' };
+        if (value === 'Nano Banana pro') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="6" y1="8" x2="18" y2="8"/><line x1="6" y1="12" x2="18" y2="12"/><line x1="6" y1="16" x2="14" y2="16"/></svg>', 'amber');
+        if (value === 'Nano Banana 2') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="8" cy="8" r="2"/><circle cx="8" cy="16" r="2"/><path d="M12 8h8"/><path d="M12 16h8"/></svg>', 'orange');
+        if (value === 'Imagen 4') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3l2.2 4.4L19 9.6l-4 2.8.8 4.8L12 14.8 8.2 17.2 9 12.4 5 9.6l4.8-2.2L12 3z"/></svg>', 'teal');
+        return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/></svg>', 'slate');
       }
-      if (selectId === 'studio-image-count') return { tone: 'rose', glyph: '🖼' };
-      if (selectId === 'studio-video-count') return { tone: 'blue', glyph: '🎥' };
-      return { tone: 'slate', glyph: '•' };
+      if (selectId === 'studio-image-count') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="10" r="2"/><path d="M21 16l-5-5-5 5"/></svg>', 'rose');
+      if (selectId === 'studio-video-count') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/></svg>', 'blue');
+      return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>', 'slate');
     }
 
     function _studioFancyBadge(selectId, value) {
@@ -1636,7 +1712,7 @@
       const badge = _studioFancyBadge(selectId, value);
       return `
         <span class="studio-dd-icon-wrap">
-          <span class="studio-dd-icon tone-${icon.tone}">${icon.glyph}</span>
+          <span class="studio-dd-icon tone-${icon.tone}">${icon.svg}</span>
           ${badge ? `<span class="studio-dd-badge">${badge}</span>` : ''}
         </span>`;
     }
@@ -1753,7 +1829,16 @@
     $('studio-auto-upscale').addEventListener('change', e => { cfg.autoUpscale = e.target.checked; });
     $('studio-auto-download').addEventListener('change', async e => {
       cfg.autoDownload = e.target.checked;
-      if (cfg.autoDownload && !cfg.saveHandle && !cfg.saveFolder) await chooseFolder();
+      if (!cfg.autoDownload) return;
+      if (!cfg.saveHandle && !cfg.saveFolder) {
+        await chooseFolder();
+      }
+      if (!cfg.saveHandle && !cfg.saveFolder) {
+        cfg.autoDownload = false;
+        e.target.checked = false;
+        toast('Chọn folder trước khi bật Auto Lưu', 'info');
+      }
+      _syncAutoDownloadUI();
     });
     document.querySelectorAll('.studio-aspect-btn').forEach(btn => btn.addEventListener('click', () => {
       document.querySelectorAll('.studio-aspect-btn').forEach(x => x.classList.remove('active'));
@@ -1767,6 +1852,7 @@
     $('studio-import-popup').addEventListener('click', e => { if (e.target === $('studio-import-popup')) $('studio-import-popup').style.display = 'none'; });
     $('studio-library-picker').addEventListener('click', e => { if (e.target === $('studio-library-picker')) closeLibraryPicker(); });
     $('studio-library-category-filter').addEventListener('change', () => renderLibraryPicker());
+    _syncAutoDownloadUI();
     loadLibrarySources().catch(() => { });
     initVaultListeners();
     updateStats();
@@ -2484,6 +2570,7 @@
     addToCard,
     removeChar,
     removeRef,
+    clearCardRefs,
     deleteCard(cardId) { cards = cards.filter(c => c.id !== cardId); $('card-' + cardId)?.remove(); updateStats(); },
     cloneCard,
     insertCard,

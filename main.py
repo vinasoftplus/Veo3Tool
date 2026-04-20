@@ -75,7 +75,7 @@ def main():
     # Start PyWebView window
     import webview
     window = webview.create_window(
-        title="Veo3Hao",
+        title="Dream Forge - Tool tạo video AI tự động",
         url=f"http://{HOST}:{PORT}/",
         width=1440,
         height=900,

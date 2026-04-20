@@ -3662,7 +3662,7 @@ html.theme-dawn #studio-gen-all-videos {
   letter-spacing: .18em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--accent) 72%, #5c2a4a 28%);
-  padding-left: 4px;
+  display: none;
 }
 
 #studio-sticky-bar .studio-toolbar-mid-row {
@@ -3670,6 +3670,24 @@ html.theme-dawn #studio-gen-all-videos {
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
+}
+
+#studio-sticky-bar .studio-aspect-group {
+  position: relative;
+  margin-top: 0;
+}
+
+#studio-sticky-bar .studio-aspect-group::before {
+  content: 'TỶ LỆ KHUNG HÌNH';
+  position: absolute;
+  left: 2px;
+  top: -24px;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--accent) 72%, #5c2a4a 28%);
+  white-space: nowrap;
 }
 
 #studio-sticky-bar .studio-toolbar-models {
@@ -3710,6 +3728,20 @@ html.theme-dawn #studio-gen-all-videos {
   border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
   border-radius: 12px;
   overflow: visible;
+}
+
+#studio-sticky-bar #studio-choose-folder {
+  max-width: min(420px, 42vw);
+  justify-content: flex-start;
+}
+
+#studio-sticky-bar #studio-folder-label {
+  display: inline-block;
+  max-width: calc(min(420px, 42vw) - 52px);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-align: left;
 }
 
 #studio-sticky-bar #studio-save-quality-toggle {
@@ -4582,4 +4614,213 @@ html.theme-dawn #studio-sticky-bar .studio-filter-toggle:hover {
   border-color: rgba(236, 72, 153, .44);
   background: linear-gradient(180deg, rgba(236, 72, 153, .2), rgba(236, 72, 153, .13));
   color: #9d174d;
+}
+
+/* Studio UX polish (ui-ux-pro-max pass) */
+#tab-studio .btn {
+  justify-content: center;
+  text-align: center;
+}
+
+.studio-icon-btn {
+  width: 34px;
+  min-width: 34px;
+  min-height: 34px;
+  padding: 0 !important;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.studio-icon-btn svg {
+  flex-shrink: 0;
+}
+
+.studio-icon-btn-danger {
+  color: #ef4444 !important;
+}
+
+.studio-ref-btn-danger {
+  border-color: rgba(244, 63, 94, .56) !important;
+  background: rgba(244, 63, 94, .12) !important;
+  color: #f43f5e !important;
+}
+
+.studio-ref-btn-danger:hover {
+  background: rgba(244, 63, 94, .2) !important;
+  border-color: rgba(244, 63, 94, .74) !important;
+}
+
+.studio-dd-icon svg {
+  width: 13px;
+  height: 13px;
+  display: block;
+}
+
+#studio-add-card-dialog #studio-add-card-confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  margin-inline: auto;
+}
+
+#studio-add-card,
+#studio-add-card-confirm {
+  background: linear-gradient(135deg, #34d399 0%, #22c55e 55%, #16a34a 100%);
+  border: 1px solid rgba(52, 211, 153, .64);
+  color: #ecfdf5;
+  box-shadow: 0 12px 26px rgba(34, 197, 94, .26);
+}
+
+#studio-add-card:hover:not(:disabled),
+#studio-add-card-confirm:hover:not(:disabled) {
+  background: linear-gradient(135deg, #22c55e 0%, #16a34a 55%, #15803d 100%);
+  border-color: rgba(52, 211, 153, .82);
+}
+
+.studio-generate-video {
+  background: linear-gradient(135deg, #38bdf8 0%, #0ea5e9 55%, #2563eb 100%) !important;
+  border: 1px solid rgba(56, 189, 248, .72) !important;
+  color: #eff6ff !important;
+  box-shadow: 0 12px 26px rgba(14, 165, 233, .24) !important;
+}
+
+.studio-generate-video:hover:not(:disabled) {
+  background: linear-gradient(135deg, #0ea5e9 0%, #0284c7 55%, #1d4ed8 100%) !important;
+  border-color: rgba(56, 189, 248, .84) !important;
+}
+
+#studio-auto-download:disabled + .t2v-toggle-track {
+  opacity: .45;
+}
+
+#studio-auto-download:disabled ~ #studio-auto-download-label {
+  opacity: .65;
+}
+
+@media (max-width: 760px) {
+  #studio-sticky-bar #studio-choose-folder {
+    max-width: 100%;
+    width: 100%;
+  }
+
+  #studio-sticky-bar #studio-folder-label {
+    max-width: calc(100vw - 180px);
+  }
+}
+
+#sidebar.collapsed ~ #sidebar-footer-pinned .theme-switcher {
+  width: 100%;
+  justify-items: center;
+  padding-inline: 6px;
+}
+
+#sidebar.collapsed ~ #sidebar-footer-pinned .theme-slider {
+  margin-inline: auto;
+}
+
+#sidebar.collapsed ~ #sidebar-footer-pinned .theme-slider label {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Final alignment fixes */
+#studio-sticky-bar .studio-toolbar-mid-row {
+  align-items: center !important;
+}
+
+#studio-sticky-bar .studio-aspect-group {
+  margin-top: 0 !important;
+  align-self: center;
+}
+
+#studio-sticky-bar .studio-aspect-group::before {
+  top: -20px;
+}
+
+#sidebar.collapsed ~ #sidebar-footer-pinned {
+  align-items: center;
+}
+
+#sidebar.collapsed ~ #sidebar-footer-pinned .theme-switcher {
+  margin-inline: auto !important;
+  justify-content: center !important;
+}
+
+#sidebar.collapsed ~ #sidebar-footer-pinned .theme-slider {
+  margin-inline: auto !important;
+  justify-self: center !important;
+}
+
+#sidebar.collapsed ~ #sidebar-footer-pinned .theme-slider label {
+  width: 100%;
+}
+
+/* Sidebar collapsed: move toggle under logo icon */
+#sidebar.collapsed .sidebar-logo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  min-height: 72px;
+  padding: 8px 0 10px;
+}
+
+#sidebar.collapsed .sidebar-logo svg {
+  margin: 0 auto;
+}
+
+#sidebar.collapsed .sidebar-logo .sidebar-toggle {
+  margin: 0;
+  transform: rotate(180deg);
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  line-height: 1;
+}
+
+/* Center text for YTB buttons */
+#tab-master-script #amp-submit,
+#tab-master-script #ms-submit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Center text for Load Cookie buttons in Settings */
+#tab-settings button[onclick*="openCookieModal"],
+#cookie-submit-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+/* Theme-aware active tab colors (not fixed purple in mist/dawn) */
+html.theme-mist .nav-item.active {
+  color: #fff;
+  background: linear-gradient(135deg, #d6a13f, #b7791f);
+  border-color: transparent;
+  box-shadow: 0 10px 22px rgba(183, 121, 31, .26);
+}
+
+html.theme-dawn .nav-item.active {
+  color: #fff;
+  background: linear-gradient(135deg, #f472b6, #ec4899);
+  border-color: transparent;
+  box-shadow: 0 10px 22px rgba(236, 72, 153, .24);
+}
+
+html.theme-mist .nav-item:hover {
+  background: rgba(183, 121, 31, .12);
+  border-color: rgba(183, 121, 31, .24);
+}
+
+html.theme-dawn .nav-item:hover {
+  background: rgba(236, 72, 153, .12);
+  border-color: rgba(236, 72, 153, .24);
 }

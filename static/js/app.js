@@ -91,7 +91,7 @@ function switchTab(tabId) {
 
 NAV_ITEMS.forEach(n => n.addEventListener('click', () => switchTab(n.dataset.tab)));
 initThemeControls();
-switchTab('text-to-video');
+switchTab('studio');
 
 document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
   document.getElementById('sidebar')?.classList.toggle('collapsed');

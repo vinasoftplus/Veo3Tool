@@ -1,0 +1,110 @@
+version: '3.8'
+
+services:
+  license-server:
+    build:
+      context: ./license-server
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      DATABASE_URL: postgres://${DB_USER}:${DB_PASS}@postgres:5432/licenses?sslmode=disable
+      REDIS_URL: redis://redis:6379
+      ED25519_PRIVATE_KEY_B64: ${ED25519_PRIVATE_KEY_B64}
+      JWT_SECRET: ${JWT_SECRET}
+      TOTP_ENCRYPT_KEY: ${TOTP_ENCRYPT_KEY}
+      PORT: ${PORT:-8080}
+    depends_on:
+      postgres: { condition: service_healthy }
+      redis:    { condition: service_healthy }
+    networks: [license_net]
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+  admin-dashboard:
+    build:
+      context: ./admin-dashboard
+      dockerfile: Dockerfile
+    restart: always
+    environment:
+      BODY_SIZE_LIMIT: "4096"
+      ORIGIN: https://${DOMAIN}
+      VITE_BACKEND_URL: https://${DOMAIN}
+    networks: [license_net]
+
+  postgres:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      POSTGRES_DB: licenses
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASS}
+    volumes:
+      - db_data:/var/lib/postgresql/data
+      - ./docker/init.sql:/docker-entrypoint-initdb.d/01-init.sql
+    networks: [license_net]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d licenses"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    restart: always
+    command: redis-server --maxmemory 128mb --maxmemory-policy allkeys-lru
+    volumes:
+      - cache_data:/data
+    networks: [license_net]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+
+  caddy:
+    image: caddy:2-alpine
+    restart: always
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile
+      - caddy_data:/data
+      - caddy_config:/config
+    environment:
+      DOMAIN: ${DOMAIN}
+    networks: [license_net]
+    depends_on:
+      - license-server
+      - admin-dashboard
+
+  backup:
+    image: postgres:17-alpine
+    restart: always
+    environment:
+      DB_USER: ${DB_USER}
+      PGPASSWORD: ${DB_PASS}
+      B2_BUCKET: ${B2_BUCKET:-}
+      B2_KEY_ID: ${B2_KEY_ID:-}
+      B2_APP_KEY: ${B2_APP_KEY:-}
+    volumes:
+      - ./docker/backup.sh:/backup.sh:ro
+      - ./docker/crontab:/etc/crontabs/root:ro
+    command: ["sh", "-c", "chmod +x /backup.sh && crond -f -d 8"]
+    networks: [license_net]
+    depends_on:
+      - postgres
+
+volumes:
+  db_data:
+  cache_data:
+  caddy_data:
+  caddy_config:
+
+networks:
+  license_net:
+    driver: bridge

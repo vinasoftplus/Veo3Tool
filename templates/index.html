@@ -11,7 +11,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/app.css?v=19">
+  <link rel="stylesheet" href="/static/css/app.css?v=27">
 </head>
 
 <body>
@@ -104,79 +104,49 @@
         <button id="sidebar-toggle" class="sidebar-toggle" title="Thu gọn">&lsaquo;</button>
       </div>
 
+
       <div class="nav-section">
         <div class="nav-section-title">
           <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
             <path
-              d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-5 14H7v-2h7v2zm3-4H7v-2h10v2zm0-4H7V7h10v2z" />
+              d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
           </svg>
-          VEO AI
+          Tool đa năng
         </div>
-        <div class="nav-item active" data-tab="text-to-video">
+        <div class="nav-item active" data-tab="studio">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M11 5H6a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h11a2 2 0 0 0 2-2v-5" />
-            <path d="M14 3h7v7" />
-            <path d="m21 3-9 9" />
+            <rect x="3" y="3" width="18" height="18" rx="2" />
+            <path d="M3 9h18M9 21V9" />
+            <circle cx="15.5" cy="15.5" r="2.5" />
           </svg>
-          <span class="nav-label">Text to Video</span>
+          <span class="nav-label">Studio</span>
         </div>
-        <div class="nav-item" data-tab="consistent-video">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <circle cx="9" cy="7" r="4" />
-            <path d="M3 21v-2a4 4 0 0 1 4-4h4a4 4 0 0 1 4 4v2" />
-            <path d="M16 11a4 4 0 1 0 0-8" />
-            <path d="M22 21v-2a4 4 0 0 0-3-3.87" />
-          </svg>
-          <span class="nav-label">Video đồng nhất</span>
-        </div>
-        <div class="nav-item" data-tab="startend-video">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
-          </svg>
-          <span class="nav-label">Start-End → Video</span>
-        </div>
-        <div class="nav-section">
-          <div class="nav-section-title">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="currentColor">
-              <path
-                d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
-            </svg>
-            Tool đa năng
-          </div>
-          <div class="nav-item" data-tab="studio">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M3 9h18M9 21V9" />
-              <circle cx="15.5" cy="15.5" r="2.5" />
-            </svg>
-            <span class="nav-label">Studio</span>
-          </div>
-        </div>
+      </div>
 
-        <div class="nav-section">
-          <div class="nav-section-title">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="#ff0000">
-              <path
-                d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 0 0-1.95 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.95 1.96C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.96A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z" />
-              <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="white" />
-            </svg>
-            YOUTUBE
-          </div>
-          <div class="nav-item" data-tab="view-hunter">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="11" cy="11" r="8" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-            <span class="nav-label">YTB Key Hunter</span>
-          </div>
-          <div class="nav-item" data-tab="master-script">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <polygon points="23 7 16 12 23 17 23 7" />
-              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
-            </svg>
-            <span class="nav-label">Lấy kịch bản YTB</span>
-          </div>
+      <div class="nav-section">
+        <div class="nav-section-title">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="#ff0000">
+            <path
+              d="M22.54 6.42a2.78 2.78 0 0 0-1.95-1.96C18.88 4 12 4 12 4s-6.88 0-8.59.46a2.78 2.78 0 0 0-1.95 1.96A29 29 0 0 0 1 12a29 29 0 0 0 .46 5.58 2.78 2.78 0 0 0 1.95 1.96C5.12 20 12 20 12 20s6.88 0 8.59-.46a2.78 2.78 0 0 0 1.95-1.96A29 29 0 0 0 23 12a29 29 0 0 0-.46-5.58z" />
+            <polygon points="9.75 15.02 15.5 12 9.75 8.98 9.75 15.02" fill="white" />
+          </svg>
+          YOUTUBE
         </div>
+        <div class="nav-item" data-tab="view-hunter">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="11" cy="11" r="8" />
+            <line x1="21" y1="21" x2="16.65" y2="16.65" />
+          </svg>
+          <span class="nav-label">YTB Key Hunter</span>
+        </div>
+        <div class="nav-item" data-tab="master-script">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polygon points="23 7 16 12 23 17 23 7" />
+            <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
+          </svg>
+          <span class="nav-label">Lấy kịch bản YTB</span>
+        </div>
+      </div>
 
     </nav>
     <!-- Sidebar footer — pinned outside scroll area so it always stays at bottom -->
@@ -260,7 +230,7 @@
     <div id="main">
       <!-- Topbar -->
       <div id="topbar">
-        <span id="topbar-title" class="topbar-title">Text to Video</span>
+        <span id="topbar-title" class="topbar-title">Studio</span>
         <div class="topbar-spacer"></div>
         <span id="license-status" style="font-size:11px;color:var(--text3);">DEV MODE</span>
       </div>
@@ -269,7 +239,7 @@
       <div id="content">
 
         <!-- ═══════════════════════════════ TEXT TO VIDEO ═════════════════════════════ -->
-        <div id="tab-text-to-video" class="tab-panel active veo-page">
+        <div id="tab-text-to-video" class="tab-panel veo-page">
           <div class="t2v-toolbar">
             <button id="t2v-gen-all" class="btn btn-primary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -1348,7 +1318,7 @@
         </div>
 
         <!-- STUDIO -->
-        <div id="tab-studio" class="tab-panel">
+        <div id="tab-studio" class="tab-panel active">
           <div class="studio-page">
 
             <!-- ══ STICKY TOOLBAR ══ -->
@@ -1528,7 +1498,7 @@
                   <label class="studio-bar-toggle t2v-toggle-label" title="Tự lưu video khi xong">
                     <input type="checkbox" id="studio-auto-download">
                     <span class="t2v-toggle-track"></span>
-                    Auto Lưu
+                    <span id="studio-auto-download-label">Auto Lưu (chưa chọn folder)</span>
                   </label>
                   <button id="studio-choose-folder" class="btn btn-secondary btn-sm studio-folder-btn"
                     title="Chọn folder lưu video">
@@ -1568,6 +1538,12 @@
                         <span class="studio-filter-dot running"></span>
                         <span class="studio-filter-text">Đang chạy</span>
                         <span id="studio-filter-running-count" class="studio-filter-count">0</span>
+                      </button>
+                      <button class="studio-filter-menu-item" data-studio-filter="processing" type="button"
+                        onclick="Studio.setFilter('processing')">
+                        <span class="studio-filter-dot img-processing"></span>
+                        <span class="studio-filter-text">Đang xử lý</span>
+                        <span id="studio-filter-processing-count" class="studio-filter-count">0</span>
                       </button>
                       <button class="studio-filter-menu-item" data-studio-filter="completed" type="button"
                         onclick="Studio.setFilter('completed')">
@@ -1614,7 +1590,7 @@
             <div id="studio-empty" class="studio-empty">
               <div class="studio-empty-icon">+</div>
               <div class="studio-empty-title">Studio đang trống</div>
-              <div class="studio-empty-text">Import prompt, import ảnh hoặc bấm "Thêm cụm" để tạo card thao tác.</div>
+              <div class="studio-empty-text">Import prompt, import ảnh hoặc bấm "Thêm cụm" để tạo cụm thao tác.</div>
             </div>
 
             <div id="studio-cards" class="studio-cards"></div>
@@ -2078,7 +2054,7 @@
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <!-- Scripts -->
   <script src="/static/js/api.js?v=2"></script>
-  <script src="/static/js/app.js?v=4"></script>
+  <script src="/static/js/app.js?v=5"></script>
   <script src="/static/js/tabs/t2v.js?v=4"></script>
   <script src="/static/js/tabs/i2v.js?v=4"></script>
   <script src="/static/js/tabs/consistent_video.js?v=5"></script>
@@ -2086,7 +2062,7 @@
   <script src="/static/js/tabs/consistent_video_ui.js?v=2"></script>
   <script src="/static/js/tabs/settings.js?v=7"></script>
   <script src="/static/js/tabs/other.js?v=6"></script>
-  <script src="/static/js/tabs/studio_unified.js?v=19"></script>
+  <script src="/static/js/tabs/studio_unified.js?v=24"></script>
 </body>
 
 </html>
