@@ -19,11 +19,19 @@
       "Bash(ls -d /c/Users/PC/Downloads/veo/VEO_PACK/extension*)",
       "Bash(python -c ' *)",
       "Bash(python3 -c \"from pathlib import Path; p = Path\\('c:/Users/PC/Desktop/Veo3Tool/NOVA FRAME/routers/youtube.py'\\); print\\(\\(p.parent.parent.parent / 'masterPromt.md'\\).resolve\\(\\)\\)\")",
-      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('GEMINI_API_KEY:', repr\\(d.get\\('GEMINI_API_KEY'\\)\\)\\); print\\('GEMINI_API_KEYS:', repr\\(d.get\\('GEMINI_API_KEYS'\\)\\)\\)\")"
+      "Bash(python3 -c \"import sys,json; d=json.load\\(sys.stdin\\); print\\('GEMINI_API_KEY:', repr\\(d.get\\('GEMINI_API_KEY'\\)\\)\\); print\\('GEMINI_API_KEYS:', repr\\(d.get\\('GEMINI_API_KEYS'\\)\\)\\)\")",
+      "WebSearch",
+      "Bash(timeout 600 gemini -m gemini-2.5-flash -p \"Research license key format design best practices 2024 2025. Focus on: human-readable XXXX-XXXX-XXXX-XXXX format standards, metadata encoding in keys \\(type, expiry hints\\), checksum validation methods \\(Luhn-like algorithms\\), key generation approaches \\(UUID-based vs random vs HMAC-derived\\). Include security best practices and real-world examples from SaaS license systems.\")",
+      "Bash(timeout 600 gemini -m gemini-2.5-flash -p \"Research PostgreSQL schema design for license management best practices 2024 2025. Focus on: optimal table structure for licenses, activations, admins, audit_log; critical fields per table; index strategies for performance; row-level security with PostgREST; multi-tenant considerations if applicable; schema design patterns for SaaS license systems.\")",
+      "Bash(timeout 600 gemini -m gemini-2.5-flash -p \"Research REST API design for license validation best practices 2024 2025. Focus on: POST /api/validate endpoint design accepting {key, machine_id, nonce}; POST /api/activate for first-time activation; admin CRUD endpoints; viewing activations and analytics; rate limiting strategies \\(per IP, per key, global\\); security best practices; response formats and error handling.\")",
+      "Bash(wait)",
+      "Bash(go mod *)",
+      "Bash(python scripts/generate-keypair.py)"
     ],
     "additionalDirectories": [
       "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1",
-      "C:\\Users\\PC\\Downloads\\veo\\VEO_PACK\\extension-treov-v0.12-code - ok"
+      "C:\\Users\\PC\\Downloads\\veo\\VEO_PACK\\extension-treov-v0.12-code - ok",
+      "C:\\Users\\PC\\Downloads\\data\\FE\\static\\css"
     ]
   }
 }

@@ -44,10 +44,43 @@
     };
   }
 
+  let _activeFilter = 'all';
+
+  function applyFilter() {
+    const container = document.getElementById('i2v-cards');
+    if (!container) return;
+    container.querySelectorAll('.t2v-card').forEach(el => {
+      const card = cards.find(c => 'card-' + c.id === el.id);
+      if (!card) return;
+      if (_activeFilter === 'all') { el.style.display = ''; return; }
+      if (_activeFilter === 'running') {
+        el.style.display = (card.status === 'running') ? '' : 'none';
+      } else if (_activeFilter === 'completed') {
+        el.style.display = card.outputs.length > 0 ? '' : 'none';
+      } else {
+        el.style.display = card.status === _activeFilter ? '' : 'none';
+      }
+    });
+  }
+
   function refreshStats() {
-    $('i2v-pending-count').textContent = cards.filter(c => c.status === 'idle').length;
-    $('i2v-saved-count').textContent = cards.filter(c => c.outputs.length > 0).length;
+    const idle = cards.filter(c => c.status === 'idle').length;
+    const running = cards.filter(c => c.status === 'running').length;
+    const done = cards.filter(c => c.outputs.length > 0).length;
+    const failed = cards.filter(c => c.status === 'failed').length;
+    $('i2v-pending-count').textContent = idle;
+    $('i2v-saved-count').textContent = done;
     $('i2v-empty').style.display = cards.length ? 'none' : '';
+    const totalEl = $('i2v-total-count'); if (totalEl) totalEl.textContent = cards.length;
+    const idleEl = $('i2v-idle-count'); if (idleEl) idleEl.textContent = idle;
+    const runEl = $('i2v-running-count'); if (runEl) runEl.textContent = running;
+    const doneEl = $('i2v-done-count'); if (doneEl) doneEl.textContent = done;
+    const failEl = $('i2v-failed-count'); if (failEl) failEl.textContent = failed;
+    ['all','idle','running','completed','failed'].forEach(f => {
+      const el = $('i2v-filter-' + f);
+      if (el) el.classList.toggle('active', _activeFilter === f);
+    });
+    applyFilter();
   }
 
   function resultHtml(card) {
@@ -133,21 +166,32 @@
     downloadUrl(url, filename);
   }
 
+  function _setFolderLabel(text) {
+    const el = $('i2v-folder-label');
+    if (!el) return;
+    el.textContent = text || 'Chưa chọn folder';
+    el.title = text || '';
+    el.style.color = text ? 'var(--accent)' : 'var(--text2)';
+  }
+
   async function chooseFolder() {
     if (window.showDirectoryPicker) {
       try {
         CFG._saveHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
         CFG.saveFolder = CFG._saveHandle.name;
-        $('i2v-folder-label').textContent = CFG.saveFolder;
+        _setFolderLabel(CFG._saveHandle.name);
+        toast('Đã chọn folder: ' + CFG._saveHandle.name, 'success');
         return;
       } catch (e) {
+        if (e.name !== 'AbortError') toast('Không thể chọn folder', 'error');
         return;
       }
     }
-    const path = prompt('Nh?p ???ng d?n folder l?u video:', CFG.saveFolder || 'D:\\Downloads\\Videos');
+    const path = prompt('Nhập đường dẫn folder lưu video:', CFG.saveFolder || 'D:\\Downloads\\Videos');
     if (path) {
       CFG.saveFolder = path;
-      $('i2v-folder-label').textContent = path;
+      _setFolderLabel(path);
+      toast('Đã lưu folder: ' + path, 'success');
     }
   }
 
@@ -171,15 +215,22 @@
     const reader = new FileReader();
     reader.onload = e => {
       const text = String(e.target.result || '').trim();
-      if (!text) return toast('File tr?ng', 'error');
-      const prompts = /^SCENE\s+\d+[:\s]/im.test(text) ? parsePromptFile(text) : text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
-      prompts.forEach(prompt => {
-        const card = newCard(prompt);
-        cards.push(card);
-        renderCard(card, true);
-      });
+      if (!text) return toast('File trống', 'error');
+      let prompts = [];
+      // JSON: mỗi object → stringify toàn bộ làm prompt
+      if (text.startsWith('[') || text.startsWith('{')) {
+        try {
+          const data = JSON.parse(text);
+          const list = Array.isArray(data) ? data : [data];
+          prompts = list.map(item => typeof item === 'string' ? item.trim() : JSON.stringify(item, null, 2)).filter(Boolean);
+        } catch (_) {}
+      }
+      if (!prompts.length) {
+        prompts = /^SCENE\s+\d+[:\s]/im.test(text) ? parsePromptFile(text) : text.split(/\r?\n/).map(s => s.trim()).filter(Boolean);
+      }
+      prompts.forEach(prompt => { const card = newCard(prompt); cards.push(card); renderCard(card, true); });
       refreshStats();
-      toast('?? import ' + prompts.length + ' prompt', 'success');
+      toast('Đã import ' + prompts.length + ' prompt', 'success');
     };
     reader.readAsText(file, 'utf-8');
   }
@@ -254,7 +305,8 @@
         return;
       }
       card.jobId = res.job_id;
-      pollJob(res.job_id, '/api/veo/job', async job => {
+      // await pollJob đến khi completed/failed — semaphore giữ slot đúng
+      await pollJob(res.job_id, '/api/veo/job', async job => {
         if (stopFlag) {
           card.status = 'idle';
           renderCard(card, false);
@@ -264,13 +316,13 @@
           const outs = Array.isArray(job.outputs) ? job.outputs : (job.outputs?.videos || []);
           card.outputs = outs.filter(Boolean);
           card.status = card.outputs.length ? 'completed' : 'failed';
-          card.error = card.outputs.length ? '' : 'Kh?ng c? video';
+          card.error = card.outputs.length ? '' : 'Không có video';
           renderCard(card, false);
           if (CFG.autoUpscale && card.outputs.length) await upscale(card, 0);
           if (CFG.autoDownload && card.outputs.length) await autoDownloadCard(card);
         } else if (job.status === 'failed') {
           card.status = 'failed';
-          card.error = job.error || 'Th?t b?i';
+          card.error = job.error || 'Thất bại';
           renderCard(card, false);
         }
       });
@@ -281,19 +333,73 @@
     }
   }
 
+  function makeSemaphore(n) {
+    let running = 0;
+    const queue = [];
+    return async function run(fn) {
+      if (running >= n) await new Promise(r => queue.push(r));
+      running++;
+      try { return await fn(); }
+      finally { running--; if (queue.length) queue.shift()(); }
+    };
+  }
+
   async function genAll() {
     const pending = cards.filter(c => c.status === 'idle');
-    if (!pending.length) return toast('Kh?ng c? card n?o ch? t?o', 'error');
+    if (!pending.length) return toast('Không có card nào chờ tạo', 'error');
     stopFlag = false;
     $('i2v-gen-all').style.display = 'none';
     $('i2v-stop').style.display = '';
-    for (const card of pending) {
-      if (stopFlag) break;
-      await genOne(card);
+
+    // Lấy accounts + maxConcurrent từ config
+    let accountIndices = [null], maxConcurrent = 3;
+    try {
+      const cfgRes = await API.get('/api/settings/config-full');
+      const d = (cfgRes && cfgRes.data) ? cfgRes.data : cfgRes;
+      const idxs = [];
+      for (let i = 1; i <= 10; i++) {
+        const acc = d[`account${i}`];
+        if (acc && (acc.ACCESS_TOKEN || acc.COOKIE)) idxs.push(i);
+      }
+      if (idxs.length > 1) accountIndices = idxs;
+      maxConcurrent = Math.min(10, Math.max(1, parseInt(d.MAX_CONCURRENT || '3', 10) || 3));
+    } catch (_) {}
+
+    const sleep = ms => new Promise(r => setTimeout(r, ms));
+    const n = accountIndices.length;
+    toast(n > 1
+      ? `Chạy ${pending.length} card với ${n} tài khoản (tối đa ${maxConcurrent} job/tài khoản)`
+      : `Bắt đầu tạo ${pending.length} video (tối đa ${maxConcurrent} cùng lúc)`, 'info');
+
+    if (n <= 1) {
+      const sem = makeSemaphore(maxConcurrent);
+      let cardIdx = 0;
+      await Promise.all(pending.map(card => sem(async () => {
+        if (stopFlag) return;
+        const myIdx = cardIdx++;
+        if (myIdx > 0) await sleep(2000 + Math.random() * 1000);
+        await genOne(card);
+      })));
+    } else {
+      const buckets = accountIndices.map(() => []);
+      pending.forEach((card, i) => buckets[i % n].push(card));
+      await Promise.all(buckets.map(async (bucket, bi) => {
+        const accIdx = accountIndices[bi]; // i2v genOne chưa nhận accIdx — dự phòng tương lai
+        if (bi > 0) await sleep(bi * 1000);
+        const sem = makeSemaphore(maxConcurrent);
+        let cardIdx = 0;
+        await Promise.all(bucket.map(card => sem(async () => {
+          if (stopFlag) return;
+          const myIdx = cardIdx++;
+          if (myIdx > 0) await sleep(2000 + Math.random() * 1000);
+          await genOne(card);
+        })));
+      }));
     }
+
     $('i2v-gen-all').style.display = '';
     $('i2v-stop').style.display = 'none';
-    $('i2v-stop').textContent = 'D\u1eebng to\u00e0n b\u1ed9';
+    $('i2v-stop').textContent = 'Dừng toàn bộ';
     stopFlag = false;
   }
 
@@ -309,6 +415,7 @@
   }
 
   window.I2V = {
+    setFilter: f => { _activeFilter = f; refreshStats(); },
     genOne: id => { const card = cards.find(c => c.id === id); if (card) genOne(card); },
     remove: id => { cards = cards.filter(c => c.id !== id); $('card-' + id)?.remove(); refreshStats(); },
     prev: id => { const card = cards.find(c => c.id === id); if (card && card.currentIdx > 0) { card.currentIdx--; renderCard(card, false); } },
@@ -360,7 +467,10 @@
     }));
     $('i2v-model').addEventListener('change', e => { CFG.model = e.target.value; });
     $('i2v-auto-upscale').addEventListener('change', e => { CFG.autoUpscale = e.target.checked; });
-    $('i2v-auto-download').addEventListener('change', e => { CFG.autoDownload = e.target.checked; });
+    $('i2v-auto-download').addEventListener('change', async e => {
+      CFG.autoDownload = e.target.checked;
+      if (CFG.autoDownload && !CFG.saveFolder) await chooseFolder();
+    });
     $('i2v-choose-folder').addEventListener('click', chooseFolder);
     $('i2v-import-images').addEventListener('click', () => $('i2v-images-file').click());
     $('i2v-images-file').addEventListener('change', e => {

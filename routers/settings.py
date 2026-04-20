@@ -24,6 +24,7 @@ class SaveAccountRequest(BaseModel):
 @router.get("/config")
 async def get_config():
     cfg = load_config()
+    # Sanitize: mask tokens for display
     safe = dict(cfg)
     for key in list(safe.keys()):
         if key.startswith("account"):
@@ -51,6 +52,7 @@ async def save_config_route(req: SaveConfigRequest):
 @router.get("/accounts")
 async def list_accounts():
     accounts = get_all_accounts()
+    # Mask tokens
     safe_accounts = []
     for acc in accounts:
         a = dict(acc)
@@ -64,6 +66,7 @@ async def list_accounts():
 
 @router.post("/account")
 async def save_account_route(req: SaveAccountRequest):
+    # JS sends 0-based index; config uses 1-based keys (account1, account2...)
     save_account(req.index + 1, req.account)
     return {"ok": True}
 
@@ -73,6 +76,10 @@ async def save_value(body: dict):
     """Save a single config key-value."""
     cfg = load_config()
     cfg[body["key"]] = body["value"]
+    # Keep GEMINI_API_KEY in sync with first key from GEMINI_API_KEYS
+    if body["key"] == "GEMINI_API_KEYS":
+        first = next((k.strip() for k in str(body["value"]).splitlines() if k.strip()), "")
+        cfg["GEMINI_API_KEY"] = first
     save_config(cfg)
     return {"ok": True}
 
@@ -84,7 +91,9 @@ class CollectTokenRequest(BaseModel):
 @router.post("/collect-token")
 async def collect_token(req: CollectTokenRequest):
     """Trigger Playwright token collection for an account."""
+    import asyncio
     from services.token.token_collector import collect_token_for_account
+    from services.config_service import get_all_accounts, save_account
     accounts = get_all_accounts()
     if req.account_index >= len(accounts):
         from fastapi import HTTPException
@@ -93,7 +102,7 @@ async def collect_token(req: CollectTokenRequest):
     logs = []
     updated = await collect_token_for_account(account, log_callback=lambda m: logs.append(m))
     if updated.get("ACCESS_TOKEN") and updated["ACCESS_TOKEN"] != account.get("ACCESS_TOKEN"):
-        save_account(req.account_index + 1, updated)
+        save_account(req.account_index + 1, updated)  # 1-based
         return {"ok": True, "message": "Thu token thành công", "logs": logs}
     return {"ok": False, "message": "Không thu được token", "logs": logs}
 
@@ -105,9 +114,13 @@ class CookieToTokenRequest(BaseModel):
 
 @router.post("/cookie-to-token")
 async def cookie_to_token(req: CookieToTokenRequest):
-    """Nhận cookie string → lấy access_token → lưu vào account."""
+    """
+    Nhận cookie string từ user → tự động lấy access_token → lưu vào account.
+    Không cần extension hay Playwright.
+    """
     from fastapi import HTTPException
     from services.cookie_token_service import get_token_from_cookie
+    from services.config_service import get_all_accounts, save_account, load_config
 
     cookie = req.cookie_string.strip()
     if not cookie:
@@ -122,10 +135,12 @@ async def cookie_to_token(req: CookieToTokenRequest):
     except Exception as e:
         return {"ok": False, "message": str(e), "logs": logs, "status": "error"}
 
+    # Load current account data để merge (giữ các field khác)
     cfg = load_config()
     acc_key = f"account{req.account_index + 1}"
     current = dict(cfg.get(acc_key, {}))
 
+    # Cập nhật các field mới
     current["ACCESS_TOKEN"] = result["access_token"]
     current["COOKIE"] = cookie
     if result.get("email"):
@@ -159,7 +174,9 @@ async def check_cookie(body: dict):
 
 @router.get("/account-credits")
 async def get_account_credits(account_index: int = 0):
-    """Lấy credits từ aisandbox API bằng access_token của account."""
+    """Lấy credits từ aisandbox API bằng access_token của account.
+    account_index là 0-based từ JS (_index = i-1).
+    """
     import httpx
     cfg = load_config()
     acc_key = f"account{account_index + 1}"
@@ -231,7 +248,7 @@ async def refresh_token_from_cookie(body: dict):
 @router.post("/auto-refresh-all")
 async def auto_refresh_all():
     """
-    Startup endpoint: scan tất cả accounts có COOKIE → refresh token.
+    Startup endpoint: scan tất cả accounts có COOKIE → refresh token song song.
     Gọi 1 lần khi app khởi động và mỗi khi frontend detect token hết hạn.
     """
     from services.cookie_token_service import get_token_from_cookie
@@ -252,7 +269,6 @@ async def auto_refresh_all():
                 current["EMAIL"] = result["email"]
             if result.get("project_id"):
                 current["PROJECT_ID"] = result["project_id"]
-            # Extract index từ key "account1" → 1
             idx = int(acc_key.replace("account", ""))
             save_account(idx, current)
             return {"key": acc_key, "ok": True, "email": result.get("email")}

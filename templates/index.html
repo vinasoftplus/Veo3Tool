@@ -4,26 +4,75 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NOVA FRAME</title>
-  <link rel="stylesheet" href="/static/css/app.css?v=7">
+  <title>DreamForge</title>
+  <meta name="theme-color" content="#0b0d18">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap"
+    rel="stylesheet">
+  <link rel="stylesheet" href="/static/css/app.css?v=19">
 </head>
 
 <body>
 
   <!-- License Screen -->
-  <div id="license-screen">
-    <div class="license-box">
-      <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="1.5"
-        style="margin:0 auto 16px;display:block;">
-        <rect x="3" y="11" width="18" height="11" rx="2" />
-        <path d="M7 11V7a5 5 0 0 1 10 0v4" />
-      </svg>
-      <h2>Kích hoạt NOVA FRAME</h2>
-      <p>Nhập license key để sử dụng phần mềm</p>
-      <div class="form-group">
-        <input type="text" id="license-input" placeholder="Nhập license key..." style="text-align:center;">
+  <div id="license-screen"
+    style="position:fixed;inset:0;z-index:9999;background:rgba(10,10,20,.92);display:flex;align-items:center;justify-content:center;backdrop-filter:blur(6px);">
+    <div
+      style="background:var(--bg2,#1e1e2e);border:1px solid var(--border,#2d2d3f);border-radius:20px;padding:40px 36px;width:460px;max-width:95vw;box-shadow:0 32px 80px rgba(0,0,0,.6);text-align:center;">
+
+      <!-- Spinner / Icon động -->
+      <div id="license-icon-area" style="margin-bottom:20px;">
+        <div class="spinner"
+          style="margin:0 auto;width:48px;height:48px;border-width:3px;border-color:var(--accent,#ec4899) transparent transparent transparent;">
+        </div>
       </div>
-      <button class="btn btn-primary" id="license-submit-btn" style="width:100%;">Kích hoạt</button>
+
+      <h2 style="margin:0 0 8px;font-size:20px;" id="license-title">Đang kiểm tra license...</h2>
+      <p id="license-message" style="color:var(--text2,#94a3b8);font-size:13px;margin:0 0 24px;">Vui lòng chờ trong giây
+        lát</p>
+
+      <!-- UUID của máy — ẩn lúc loading, hiện khi hết hạn/lỗi -->
+      <div id="license-uuid-box"
+        style="display:none;background:var(--bg3,#16162a);border:1px solid var(--border,#2d2d3f);border-radius:10px;padding:12px 14px;margin-bottom:20px;">
+        <div style="font-size:11px;color:var(--text3,#64748b);margin-bottom:4px;font-weight:600;letter-spacing:.5px;">
+          UUID (gửi admin để cấp license)</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <code id="license-machine-uuid"
+            style="flex:1;font-size:12px;color:var(--text,#e2e8f0);word-break:break-all;font-family:monospace;letter-spacing:.5px;">Đang lấy...</code>
+          <button
+            onclick="navigator.clipboard.writeText(document.getElementById('license-machine-uuid').textContent).then(()=>toast('Đã copy','success'))"
+            style="background:none;border:1px solid var(--border,#2d2d3f);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:11px;color:var(--text2,#94a3b8);white-space:nowrap;">
+            Copy
+          </button>
+        </div>
+      </div>
+
+      <!-- Ô nhập license key — hiện khi chưa có key hoặc lỗi -->
+      <div id="license-key-box" style="display:none;margin-bottom:16px;">
+        <div style="display:flex;gap:8px;">
+          <input id="license-key-input" type="text" placeholder="XXXX-XXXX-XXXX-XXXX"
+            style="flex:1;background:var(--bg3,#16162a);border:1px solid var(--border,#2d2d3f);border-radius:10px;padding:11px 14px;font-size:14px;color:var(--text,#e2e8f0);outline:none;font-family:monospace;letter-spacing:1px;"
+            maxlength="19"
+            oninput="this.value=this.value.toUpperCase().replace(/[^A-Z0-9]/g,'').replace(/(.{4})/g,'$1-').slice(0,19)" />
+          <button onclick="submitLicenseKey()"
+            style="background:var(--accent,#ec4899);color:#fff;border:none;border-radius:10px;padding:11px 20px;font-size:14px;font-weight:600;cursor:pointer;white-space:nowrap;">
+            Kích hoạt
+          </button>
+        </div>
+        <p id="license-key-error" style="display:none;font-size:12px;color:#f87171;margin:8px 0 0;text-align:left;"></p>
+      </div>
+
+      <!-- Nút thử lại — chỉ hiện khi lỗi/hết hạn -->
+      <button id="license-retry-btn" onclick="checkLicense({ forceRecheck: true })" class="btn btn-primary"
+        style="display:none;width:100%;padding:12px;font-size:14px;border-radius:10px;">
+        Thử lại
+      </button>
+
+      <p id="license-contact-hint" style="display:none;font-size:11px;color:var(--text3,#64748b);margin:16px 0 0;">
+        Liên hệ admin để được cấp license cho máy này.
+      </p>
     </div>
   </div>
 
@@ -32,10 +81,26 @@
     <!-- Sidebar -->
     <nav id="sidebar">
       <div class="sidebar-logo">
-        <svg width="28" height="28" viewBox="0 0 24 24" fill="var(--accent)">
-          <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+          <path d="M12 2.75 4.5 6v5.45c0 4.05 2.7 7.72 7.5 9.8 4.8-2.08 7.5-5.75 7.5-9.8V6L12 2.75Z"
+            fill="url(#dreamforgeShield)" stroke="currentColor" stroke-width="1.2" />
+          <path
+            d="M12 6.8c-.58 1.35-1.72 2.22-1.72 3.62 0 1.23.89 2.11 1.72 2.66.83-.55 1.72-1.43 1.72-2.66 0-1.4-1.14-2.27-1.72-3.62Z"
+            fill="url(#dreamforgeFlame)" />
+          <path d="M9.4 14.2c.88.6 1.75.96 2.6.96.84 0 1.71-.36 2.6-.96" stroke="rgba(255,255,255,.75)"
+            stroke-linecap="round" />
+          <defs>
+            <linearGradient id="dreamforgeShield" x1="4.5" y1="2.75" x2="20" y2="21.25" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#1f2a4a" />
+              <stop offset="1" stop-color="#10172e" />
+            </linearGradient>
+            <linearGradient id="dreamforgeFlame" x1="10.28" y1="6.8" x2="14.2" y2="12.6" gradientUnits="userSpaceOnUse">
+              <stop stop-color="#fbbf24" />
+              <stop offset="1" stop-color="#f97316" />
+            </linearGradient>
+          </defs>
         </svg>
-        <span>NOVA FRAME</span>
+        <span>DreamForge</span>
         <button id="sidebar-toggle" class="sidebar-toggle" title="Thu gọn">&lsaquo;</button>
       </div>
 
@@ -64,14 +129,6 @@
           </svg>
           <span class="nav-label">Video đồng nhất</span>
         </div>
-        <div class="nav-item" data-tab="image-to-video">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <rect x="3" y="3" width="18" height="18" rx="2" />
-            <path d="m3 9 4-4 4 4 4-4 4 4" />
-            <circle cx="8.5" cy="13.5" r="1.5" />
-          </svg>
-          <span class="nav-label">Ảnh → Video</span>
-        </div>
         <div class="nav-item" data-tab="startend-video">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3" />
@@ -84,24 +141,7 @@
               <path
                 d="M21 19V5c0-1.1-.9-2-2-2H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2zM8.5 13.5l2.5 3.01L14.5 12l4.5 6H5l3.5-4.5z" />
             </svg>
-            HÌNH ẢNH
-          </div>
-          <div class="nav-item" data-tab="workflow">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="18" cy="5" r="3" />
-              <circle cx="6" cy="12" r="3" />
-              <circle cx="18" cy="19" r="3" />
-              <path d="m8.59 13.51 6.83 3.98M15.41 6.51l-6.82 3.98" />
-            </svg>
-            <span class="nav-label">Workflow</span>
-            <span class="nav-badge pro">PRO</span>
-          </div>
-          <div class="nav-item" data-tab="gen-image-banana">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <path d="M3 9h18M3 15h18M9 3v18M15 3v18" />
-            </svg>
-            <span class="nav-label">Ảnh theo kịch bản (banana)</span>
+            Tool đa năng
           </div>
           <div class="nav-item" data-tab="studio">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -110,7 +150,6 @@
               <circle cx="15.5" cy="15.5" r="2.5" />
             </svg>
             <span class="nav-label">Studio</span>
-            <span class="nav-badge new">NEW</span>
           </div>
         </div>
 
@@ -129,51 +168,93 @@
               <line x1="21" y1="21" x2="16.65" y2="16.65" />
             </svg>
             <span class="nav-label">YTB Key Hunter</span>
-            <span class="nav-badge new">NEW</span>
           </div>
-          <div class="nav-item" data-tab="script-analyzer">
+          <div class="nav-item" data-tab="master-script">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
-              <polyline points="14 2 14 8 20 8" />
-              <line x1="16" y1="13" x2="8" y2="13" />
-              <line x1="16" y1="17" x2="8" y2="17" />
+              <polygon points="23 7 16 12 23 17 23 7" />
+              <rect x="1" y="5" width="15" height="14" rx="2" ry="2" />
             </svg>
-            <span class="nav-label">L&#7845;y k&#7883;ch b&#7843;n YTB</span>
+            <span class="nav-label">Lấy kịch bản YTB</span>
           </div>
         </div>
 
-        <div class="sidebar-footer">
-          <button id="dark-mode-btn" class="nav-item dark-mode-btn" onclick="toggleDarkMode()" title="Chuyển chế độ tối/sáng">
-            <svg id="dark-mode-icon-moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"/>
-            </svg>
-            <svg id="dark-mode-icon-sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="display:none;">
-              <circle cx="12" cy="12" r="5"/>
-              <line x1="12" y1="1" x2="12" y2="3"/><line x1="12" y1="21" x2="12" y2="23"/>
-              <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"/><line x1="18.36" y1="18.36" x2="19.78" y2="19.78"/>
-              <line x1="1" y1="12" x2="3" y2="12"/><line x1="21" y1="12" x2="23" y2="12"/>
-              <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"/><line x1="18.36" y1="5.64" x2="19.78" y2="4.22"/>
-            </svg>
-            <span class="nav-label">Chế độ tối</span>
-          </button>
-          <div class="nav-item" data-tab="character">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <rect x="3" y="3" width="18" height="18" rx="2" />
-              <circle cx="8.5" cy="8.5" r="1.5" />
-              <polyline points="21 15 16 10 5 21" />
-            </svg>
-            <span class="nav-label">Thư viện nhân vật</span>
-          </div>
-          <div class="nav-item" data-tab="settings">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-              <circle cx="12" cy="12" r="3" />
-              <path d="M19.07 4.93A10 10 0 0 0 4.93 4.93M4.93 19.07A10 10 0 0 0 19.07 19.07" />
-              <path d="M12 2v2M12 20v2M2 12h2M20 12h2" />
-            </svg>
-            <span class="nav-label">Cài đặt</span>
-          </div>
-        </div>
     </nav>
+    <!-- Sidebar footer — pinned outside scroll area so it always stays at bottom -->
+    <div class="sidebar-footer" id="sidebar-footer-pinned">
+      <div class="theme-switcher">
+        <div class="theme-switcher-head">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"
+            aria-hidden="true">
+            <path
+              d="M12 3v2M12 19v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M3 12h2M19 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" />
+            <circle cx="12" cy="12" r="4" />
+          </svg>
+          <span class="nav-label">Giao diện</span>
+        </div>
+        <div class="theme-slider" id="theme-slider" data-theme="night" role="radiogroup" aria-label="Chế độ giao diện">
+          <input type="radio" name="theme-mode" id="theme-mode-dawn" value="dawn">
+          <label for="theme-mode-dawn" title="Hồng" aria-label="Hồng">
+            <span class="theme-icon theme-icon-dawn" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="none">
+                <circle cx="12" cy="12" r="1.8" fill="currentColor" />
+                <circle cx="12" cy="7.2" r="2.15" fill="currentColor" opacity=".78" />
+                <circle cx="16.2" cy="9.9" r="2.15" fill="currentColor" opacity=".78" />
+                <circle cx="14.7" cy="14.6" r="2.15" fill="currentColor" opacity=".78" />
+                <circle cx="9.3" cy="14.6" r="2.15" fill="currentColor" opacity=".78" />
+                <circle cx="7.8" cy="9.9" r="2.15" fill="currentColor" opacity=".78" />
+              </svg>
+            </span>
+          </label>
+          <input type="radio" name="theme-mode" id="theme-mode-mist" value="mist">
+          <label for="theme-mode-mist" title="Trắng" aria-label="Trắng">
+            <span class="theme-icon theme-icon-mist" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+                stroke-linejoin="round">
+                <circle cx="12" cy="12" r="3.1"></circle>
+                <path
+                  d="M12 3.5v2.1M12 18.4v2.1M5.6 5.6l1.5 1.5M16.9 16.9l1.5 1.5M3.5 12h2.1M18.4 12h2.1M5.6 18.4l1.5-1.5M16.9 7.1l1.5-1.5">
+                </path>
+              </svg>
+            </span>
+          </label>
+          <input type="radio" name="theme-mode" id="theme-mode-night" value="night" checked>
+          <label for="theme-mode-night" title="Đen" aria-label="Đen">
+            <span class="theme-icon theme-icon-night" aria-hidden="true">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"
+                stroke-linejoin="round">
+                <path d="M15.25 3.5a8.95 8.95 0 1 0 5.25 15.95A7.4 7.4 0 1 1 15.25 3.5z"></path>
+                <path d="M17.8 5.2v1.6M17 6h1.6"></path>
+              </svg>
+            </span>
+          </label>
+          <span class="theme-slider-thumb" aria-hidden="true"></span>
+        </div>
+      </div>
+      <div class="nav-item" data-tab="character">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          <circle cx="8.5" cy="8.5" r="1.5" />
+          <polyline points="21 15 16 10 5 21" />
+        </svg>
+        <span class="nav-label">Thư viện</span>
+      </div>
+      <div class="nav-item" data-tab="settings">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3" />
+          <path d="M19.07 4.93A10 10 0 0 0 4.93 4.93M4.93 19.07A10 10 0 0 0 19.07 19.07" />
+          <path d="M12 2v2M12 20v2M2 12h2M20 12h2" />
+        </svg>
+        <span class="nav-label">Cài đặt</span>
+      </div>
+      <a href="https://t.me/haovipscan" target="_blank" class="tg-btn" title="Liên hệ Telegram">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="currentColor">
+          <path
+            d="M12 0C5.373 0 0 5.373 0 12s5.373 12 12 12 12-5.373 12-12S18.627 0 12 0zm5.562 8.248-1.97 9.289c-.145.658-.537.818-1.084.508l-3-2.21-1.447 1.394c-.16.16-.295.295-.605.295l.213-3.053 5.56-5.023c.242-.213-.054-.333-.373-.12L7.48 13.607l-2.95-.924c-.64-.203-.653-.64.136-.953l11.57-4.461c.537-.194 1.006.131.827.979z" />
+        </svg>
+        <span class="nav-label">@haovipscan</span>
+      </a>
+      <div class="copyright"><span class="nav-label">© Bản quyền thuộc Võ Hoàn Hảo</span></div>
+    </div>
 
     <!-- Main -->
     <div id="main">
@@ -188,7 +269,7 @@
       <div id="content">
 
         <!-- ═══════════════════════════════ TEXT TO VIDEO ═════════════════════════════ -->
-        <div id="tab-text-to-video" class="tab-panel active">
+        <div id="tab-text-to-video" class="tab-panel active veo-page">
           <div class="t2v-toolbar">
             <button id="t2v-gen-all" class="btn btn-primary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -277,6 +358,19 @@
             </button>
           </div>
 
+          <div class="tab-filter-bar">
+            <span class="studio-filter-chip active" id="t2v-filter-all" onclick="T2V.setFilter('all')">Tất cả (<span
+                id="t2v-total-count">0</span>)</span>
+            <span class="studio-filter-chip" id="t2v-filter-idle" onclick="T2V.setFilter('idle')">Chờ (<span
+                id="t2v-idle-count">0</span>)</span>
+            <span class="studio-filter-chip" id="t2v-filter-running" onclick="T2V.setFilter('running')">Đang chạy (<span
+                id="t2v-running-count">0</span>)</span>
+            <span class="studio-filter-chip" id="t2v-filter-completed" onclick="T2V.setFilter('completed')">Xong (<span
+                id="t2v-done-count">0</span>)</span>
+            <span class="studio-filter-chip studio-filter-failed" id="t2v-filter-failed"
+              onclick="T2V.setFilter('failed')">Lỗi (<span id="t2v-failed-count">0</span>)</span>
+          </div>
+
           <div id="t2v-cards"></div>
 
           <div id="t2v-empty" style="text-align:center;padding:60px 20px;color:var(--text3);">
@@ -289,7 +383,7 @@
         </div>
 
         <!-- IMAGE TO VIDEO ════════════════════════════ -->
-        <div id="tab-image-to-video" class="tab-panel">
+        <div id="tab-image-to-video" class="tab-panel veo-page">
           <div class="t2v-toolbar">
             <button id="i2v-gen-all" class="btn btn-primary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -354,6 +448,20 @@
             <input type="file" id="i2v-import-file" accept=".txt" style="display:none;">
             <button id="i2v-add-card" class="btn btn-secondary">Thêm card</button>
           </div>
+
+          <div class="tab-filter-bar">
+            <span class="studio-filter-chip active" id="i2v-filter-all" onclick="I2V.setFilter('all')">Tất cả (<span
+                id="i2v-total-count">0</span>)</span>
+            <span class="studio-filter-chip" id="i2v-filter-idle" onclick="I2V.setFilter('idle')">Chờ (<span
+                id="i2v-idle-count">0</span>)</span>
+            <span class="studio-filter-chip" id="i2v-filter-running" onclick="I2V.setFilter('running')">Đang chạy (<span
+                id="i2v-running-count">0</span>)</span>
+            <span class="studio-filter-chip" id="i2v-filter-completed" onclick="I2V.setFilter('completed')">Xong (<span
+                id="i2v-done-count">0</span>)</span>
+            <span class="studio-filter-chip studio-filter-failed" id="i2v-filter-failed"
+              onclick="I2V.setFilter('failed')">Lỗi (<span id="i2v-failed-count">0</span>)</span>
+          </div>
+
           <div id="i2v-cards"></div>
           <div id="i2v-empty" style="text-align:center;padding:60px 20px;color:var(--text3);">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
@@ -365,7 +473,7 @@
         </div>
 
         <!-- START-END VIDEO ════════════════════════════ -->
-        <div id="tab-startend-video" class="tab-panel">
+        <div id="tab-startend-video" class="tab-panel veo-page">
           <div class="t2v-toolbar">
             <button id="se-gen-all" class="btn btn-primary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -417,6 +525,7 @@
             <input type="file" id="se-import-file" accept=".txt" style="display:none;">
             <button id="se-add-card" class="btn btn-secondary">Thêm card</button>
           </div>
+
           <div id="se-cards"></div>
           <div id="se-empty" style="text-align:center;padding:60px 20px;color:var(--text3);">
             <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
@@ -428,7 +537,7 @@
         </div>
 
         <!-- CONSISTENT VIDEO ═══════════════════════════ -->
-        <div id="tab-consistent-video" class="tab-panel">
+        <div id="tab-consistent-video" class="tab-panel veo-page">
           <div class="t2v-toolbar">
             <button id="cv-gen-all" class="btn btn-primary">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
@@ -480,21 +589,36 @@
             <input type="file" id="cv-import-file" accept=".txt" style="display:none;">
             <button id="cv-add-card" class="btn btn-secondary">Thêm card</button>
           </div>
+
+          <div class="tab-filter-bar">
+            <span class="studio-filter-chip active" id="cv-filter-all" onclick="CV.setFilter('all')">Tất cả (<span
+                id="cv-total-count">0</span>)</span>
+            <span class="studio-filter-chip" id="cv-filter-idle" onclick="CV.setFilter('idle')">Chờ (<span
+                id="cv-idle-count">0</span>)</span>
+            <span class="studio-filter-chip" id="cv-filter-running" onclick="CV.setFilter('running')">Đang chạy (<span
+                id="cv-running-count">0</span>)</span>
+            <span class="studio-filter-chip" id="cv-filter-completed" onclick="CV.setFilter('completed')">Xong (<span
+                id="cv-done-count">0</span>)</span>
+            <span class="studio-filter-chip studio-filter-failed" id="cv-filter-failed"
+              onclick="CV.setFilter('failed')">Lỗi (<span id="cv-failed-count">0</span>)</span>
+          </div>
+
           <div class="card">
             <div class="card-title"
               style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
-              <span>Thư viện nhân vật dung chung</span>
-              <button id="cv-apply-chars" class="btn btn-secondary">Áp dụng nhân vật</button>
+              <span>Nhân vật mặc định / đang chọn (tối đa 3)</span>
+              <button id="cv-open-vault" class="btn btn-secondary btn-sm" title="Kho lưu trữ ảnh — chọn nhân vật">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                  style="vertical-align:-2px;margin-right:4px;">
+                  <rect x="2" y="7" width="20" height="14" rx="2" />
+                  <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
+                </svg>
+                Kho lưu trữ
+              </button>
             </div>
-            <div class="form-group">
-              <label class="form-label">Nhân vật mặc định / đang chọn (tối đa 3)</label>
-              <div id="cv-char-grid" class="char-grid">
-                <div class="loading">
-                  <div class="spinner"></div>
-                </div>
+            <div id="cv-char-grid" class="char-grid">
+              <div style="color:var(--text3);font-size:12px;grid-column:1/-1;">Chưa có nhân vật. Mở kho lưu trữ để chọn.
               </div>
-              <div id="cv-char-help" style="margin-top:8px;font-size:12px;color:var(--text2);">Bấm "Áp dụng nhân vật" để
-                chọn nhân vật và gán cho các card.</div>
             </div>
           </div>
           <div id="cv-cards"></div>
@@ -508,43 +632,27 @@
         </div>
 
         <!-- CHARACTER LIBRARY ══════════════════════════ -->
-        <div id="tab-character" class="tab-panel">
+        <div id="tab-character" class="tab-panel lib-tab-panel">
           <!-- Toolbar -->
           <div class="lib-toolbar">
-            <!-- Loại filter tabs -->
+            <!-- Thể loại filter tabs (cố định) -->
             <div class="lib-type-tabs" id="lib-type-tabs">
               <button class="lib-type-btn active" data-type="all">Tất cả</button>
-              <button class="lib-type-btn" data-type="character">Nhân vật</button>
-              <button class="lib-type-btn" data-type="asset">Vật phẩm</button>
+              <button class="lib-type-btn" data-type="nhanvat">Nhân Vật</button>
+              <button class="lib-type-btn" data-type="vatpham">Vật Phẩm</button>
               <button class="lib-type-btn" data-type="style">Style</button>
               <button class="lib-type-btn" data-type="background">Background</button>
-              <button class="lib-type-btn" data-type="phoi">Phối</button>
             </div>
-            <div class="lib-toolbar-sep"></div>
-            <!-- Nhóm dropdown -->
-            <select id="lib-group-filter" class="t2v-select" style="min-width:140px;">
-              <option value="all">Nhóm: Tất cả</option>
-            </select>
             <!-- Action buttons -->
             <div style="margin-left:auto;display:flex;gap:6px;align-items:center;flex-wrap:wrap;">
-              <button id="lib-load-sel-btn" class="btn btn-secondary btn-sm">
+              <button id="lib-upload-btn" class="btn btn-primary btn-sm">
                 <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                  <polyline points="7 10 12 15 17 10" />
-                  <line x1="12" y1="15" x2="12" y2="3" />
+                  <polyline points="16 16 12 12 8 16" />
+                  <line x1="12" y1="12" x2="12" y2="21" />
+                  <path d="M20.39 18.39A5 5 0 0018 9h-1.26A8 8 0 103 16.3" />
                 </svg>
-                Load tải về
+                Upload
               </button>
-              <button id="lib-add-btn" class="btn btn-primary btn-sm">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                  <line x1="12" y1="5" x2="12" y2="19" />
-                  <line x1="5" y1="12" x2="19" y2="12" />
-                </svg>
-                Thêm nhiều hình
-              </button>
-              <button id="char-sync-selected-btn" class="btn btn-secondary btn-sm">Sync đã chọn</button>
-              <button id="char-sync-all-btn" class="btn btn-secondary btn-sm">Load nhanh</button>
-              <button id="lib-delete-all-btn" class="btn btn-danger btn-sm">Xóa ALL</button>
             </div>
           </div>
 
@@ -553,9 +661,7 @@
             <!-- Sidebar nhóm -->
             <div class="lib-sidebar">
               <div class="lib-sidebar-head">Nhóm</div>
-              <div id="lib-group-list" class="lib-group-list">
-                <!-- rendered by JS -->
-              </div>
+              <div id="lib-group-list" class="lib-group-list"><!-- rendered by JS --></div>
               <button id="lib-add-group-btn" class="lib-add-group-btn">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
                   <line x1="12" y1="5" x2="12" y2="19" />
@@ -567,30 +673,6 @@
 
             <!-- Grid ảnh -->
             <div class="lib-grid-wrap">
-              <!-- Upload bar nhỏ -->
-              <div class="lib-upload-bar" id="lib-upload-bar" style="display:none;">
-                <div class="upload-zone lib-upload-zone" id="char-upload-zone">
-                  <input type="file" id="char-file" accept="image/*" multiple>
-                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  <span>Kéo thả hoặc click để thêm ảnh</span>
-                </div>
-                <!-- Preview strip nhiều ảnh -->
-                <div id="lib-preview-strip" class="lib-preview-strip"></div>
-                <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
-                  <input type="text" id="char-name" placeholder="Tên (1 ảnh) hoặc tự động theo tên file..." value=""
-                    style="flex:1;min-width:150px;">
-                  <select id="char-upload-category" class="t2v-select">
-                    <option value="">Nhân vật (mặc định)</option>
-                  </select>
-                  <button id="char-upload-btn" class="btn btn-primary btn-sm">Upload</button>
-                  <button id="lib-upload-cancel" class="btn btn-secondary btn-sm">Hủy</button>
-                </div>
-              </div>
-
               <!-- Info bar -->
               <div class="lib-info-bar">
                 <span id="lib-count-label" style="font-size:12px;color:var(--text2);">0 mục</span>
@@ -615,6 +697,143 @@
                 </div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- UPLOAD WIZARD POPUP ══════════════════════════════ -->
+        <div id="lib-upload-popup" class="lib-popup-overlay" style="display:none;">
+          <div class="lib-popup-box lib-upload-wizard">
+            <div class="lib-popup-head">
+              <span>Upload ảnh vào thư viện</span>
+              <button class="lib-popup-close" id="lib-upload-wizard-close">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <!-- Step 1: Chọn nhóm -->
+            <div class="lib-wizard-step" id="lib-wiz-step1">
+              <div class="lib-wizard-label">Bước 1: Chọn Nhóm</div>
+              <div id="lib-wiz-group-list" class="lib-wiz-group-grid"></div>
+              <button id="lib-wiz-new-group-btn" class="btn btn-secondary btn-sm" style="margin-top:10px;width:100%;">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <line x1="12" y1="5" x2="12" y2="19" />
+                  <line x1="5" y1="12" x2="19" y2="12" />
+                </svg>
+                Tạo nhóm mới
+              </button>
+            </div>
+            <!-- Step 2: Chọn thể loại + upload -->
+            <div class="lib-wizard-step" id="lib-wiz-step2" style="display:none;">
+              <div style="display:flex;align-items:center;gap:8px;margin-bottom:14px;">
+                <button id="lib-wiz-back-btn" class="btn btn-secondary btn-sm">← Quay lại</button>
+                <div style="font-size:13px;font-weight:600;color:var(--text);">Nhóm: <span id="lib-wiz-group-name"
+                    style="color:var(--accent);">—</span></div>
+              </div>
+              <div class="lib-wizard-label">Bước 2: Chọn Thể Loại</div>
+              <div class="lib-wiz-type-row" id="lib-wiz-type-row">
+                <button class="lib-wiz-type-btn active" data-type="nhanvat">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <path d="M20 21v-2a4 4 0 00-4-4H8a4 4 0 00-4 4v2" />
+                    <circle cx="12" cy="7" r="4" />
+                  </svg>
+                  Nhân Vật
+                </button>
+                <button class="lib-wiz-type-btn" data-type="vatpham">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <rect x="2" y="7" width="20" height="14" rx="2" />
+                    <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
+                  </svg>
+                  Vật Phẩm
+                </button>
+                <button class="lib-wiz-type-btn" data-type="style">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <circle cx="13.5" cy="6.5" r="2.5" />
+                    <circle cx="19" cy="14" r="2" />
+                    <circle cx="6" cy="12" r="2" />
+                    <circle cx="10" cy="19" r="2" />
+                  </svg>
+                  Style
+                </button>
+                <button class="lib-wiz-type-btn" data-type="background">
+                  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                    <rect x="3" y="3" width="18" height="18" rx="2" />
+                    <circle cx="8.5" cy="8.5" r="1.5" />
+                    <polyline points="21 15 16 10 5 21" />
+                  </svg>
+                  Background
+                </button>
+              </div>
+              <!-- Upload zone -->
+              <div class="upload-zone lib-upload-zone" id="lib-wiz-zone" style="margin-top:14px;">
+                <input type="file" id="lib-wiz-file" accept="image/*" multiple>
+                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                  <polyline points="17 8 12 3 7 8" />
+                  <line x1="12" y1="3" x2="12" y2="15" />
+                </svg>
+                <span>Kéo thả hoặc click để chọn ảnh</span>
+              </div>
+              <div id="lib-wiz-preview" class="lib-preview-strip" style="margin-top:8px;"></div>
+              <div style="display:flex;gap:8px;align-items:center;margin-top:10px;flex-wrap:wrap;">
+                <input type="text" id="lib-wiz-name" placeholder="Tên ảnh (tùy chọn, áp dụng cho 1 ảnh)..."
+                  style="flex:1;min-width:150px;">
+                <button id="lib-wiz-upload-btn" class="btn btn-primary btn-sm" style="min-width:80px;">Upload</button>
+                <button id="lib-wiz-cancel-btn" class="btn btn-secondary btn-sm">Hủy</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- RIGHT-CLICK CONTEXT MENU ══════════════════════════ -->
+        <div id="lib-context-menu" class="lib-ctx-menu" style="display:none;">
+          <div class="lib-ctx-item lib-ctx-delete" id="lib-ctx-delete">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+            </svg>
+            Xóa các mục đã chọn
+          </div>
+          <div class="lib-ctx-item" id="lib-ctx-move">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M5 12h14" />
+              <path d="M12 5l7 7-7 7" />
+            </svg>
+            Chuyển sang nhóm khác
+          </div>
+        </div>
+        <!-- Right-click on group -->
+        <div id="lib-group-context-menu" class="lib-ctx-menu" style="display:none;">
+          <div class="lib-ctx-item" id="lib-ctx-group-rename">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M11 4H4a2 2 0 00-2 2v14a2 2 0 002 2h14a2 2 0 002-2v-7" />
+              <path d="M18.5 2.5a2.121 2.121 0 013 3L12 15l-4 1 1-4 9.5-9.5z" />
+            </svg>
+            Đổi tên nhóm
+          </div>
+          <div class="lib-ctx-item lib-ctx-delete" id="lib-ctx-group-delete">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+            </svg>
+            Xóa nhóm (phải trống)
+          </div>
+        </div>
+        <!-- Move to group submenu -->
+        <div id="lib-move-group-menu" class="lib-ctx-menu" style="display:none;">
+          <div class="lib-ctx-head">Chọn nhóm đích:</div>
+          <div id="lib-move-group-list"></div>
+        </div>
+
+        <!-- RENAME INLINE INPUT (floating) -->
+        <div id="lib-rename-wrap"
+          style="display:none;position:fixed;z-index:10000;background:#fff;border:1.5px solid var(--accent);border-radius:8px;padding:8px 10px;box-shadow:0 4px 20px rgba(236,72,153,.2);min-width:200px;">
+          <input type="text" id="lib-rename-input"
+            style="width:100%;border:none;outline:none;font-size:13px;font-weight:500;" placeholder="Nhập tên mới...">
+          <div style="display:flex;gap:6px;margin-top:8px;justify-content:flex-end;">
+            <button id="lib-rename-cancel" class="btn btn-secondary btn-sm" style="padding:3px 10px;">Hủy</button>
+            <button id="lib-rename-ok" class="btn btn-primary btn-sm" style="padding:3px 10px;">OK</button>
           </div>
         </div>
 
@@ -864,7 +1083,7 @@
           </div>
         </div>
 
-        <div id="tab-view-hunter" class="tab-panel">
+        <div id="tab-view-hunter" class="tab-panel utility-page">
           <div class="card">
             <div class="card-title">YTB Key Hunter</div>
             <div class="two-col">
@@ -904,9 +1123,22 @@
             <button id="vh-search-btn" class="btn btn-primary">T&#236;m ki&#7871;m</button>
           </div>
           <div id="vh-results" style="margin-top:16px;"></div>
+          <!-- Channel Analyzer -->
+          <div class="card" style="margin-top:20px;">
+            <div class="card-title">Channel Analyzer</div>
+            <div style="display:flex;gap:8px;">
+              <input type="text" id="ca-url" placeholder="https://www.youtube.com/@channel hoặc /channel/UC..."
+                style="flex:1;">
+              <button id="ca-search-btn" class="btn btn-primary" style="white-space:nowrap;flex-shrink:0;">Phân tích
+                kênh</button>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:6px;">Hỗ trợ: @handle, /channel/UC..., /c/name,
+              link video của kênh</div>
+          </div>
+          <div id="ca-results" style="margin-top:16px;"></div>
         </div>
 
-        <div id="tab-script-analyzer" class="tab-panel">
+        <div id="tab-script-analyzer" class="tab-panel utility-page">
           <div class="two-col" style="align-items:start;">
             <div class="card">
               <div class="card-title">L&#7845;y k&#7883;ch b&#7843;n YTB</div>
@@ -958,6 +1190,81 @@
           </div>
         </div>
 
+        <!-- MASTER SCRIPT -->
+        <div id="tab-master-script" class="tab-panel utility-page">
+          <div class="two-col" style="align-items:start;">
+
+            <!-- Cột trái: 2 form -->
+            <div style="display:flex;flex-direction:column;gap:16px;">
+
+              <!-- Form 1: Auto Master Prompt -->
+              <div class="card">
+                <div class="card-title">✨ Auto Master Prompt</div>
+                <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.7;">
+                  Nhập ý tưởng → AI tự tạo Master Prompt hoàn chỉnh theo đúng format.
+                </p>
+                <div class="form-group">
+                  <label class="form-label">Idea / Ý tưởng video</label>
+                  <textarea id="amp-idea" rows="3"
+                    placeholder="VD: Chú chó con lạc đường trong rừng tìm về nhà..."></textarea>
+                </div>
+                <div class="input-row">
+                  <div class="form-group">
+                    <label class="form-label">Số Scenes</label>
+                    <input type="number" id="amp-scenes" min="1" max="200" step="1" placeholder="20"
+                      style="width:90px;">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Độ dài video (phút)</label>
+                    <input type="number" id="amp-duration" min="1" step="1" placeholder="5" style="width:110px;">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Loại video</label>
+                    <select id="amp-type">
+                      <option value="youtube_long">YouTube Long</option>
+                      <option value="short_tiktok">Short / TikTok</option>
+                    </select>
+                  </div>
+                </div>
+                <button id="amp-submit" class="btn btn-primary" style="width:100%;margin-top:4px;">✨ Tạo Master
+                  Prompt</button>
+              </div>
+
+              <!-- Form 2: Lấy kịch bản từ YTB -->
+              <div class="card">
+                <div class="card-title">🎬 Lấy kịch bản từ video YTB</div>
+                <p style="font-size:12px;color:var(--text2);margin-bottom:14px;line-height:1.7;">
+                  Nhập link video YouTube → AI xem video và viết lại Master Prompt theo đúng format.
+                </p>
+                <div class="form-group">
+                  <label class="form-label">YouTube URL</label>
+                  <input type="text" id="ms-url" placeholder="https://www.youtube.com/watch?v=..."
+                    style="font-family:monospace;font-size:12px;">
+                </div>
+                <button id="ms-submit" class="btn btn-primary" style="width:100%;margin-top:4px;">🎬 Lấy kịch
+                  bản</button>
+              </div>
+            </div>
+
+            <!-- Cột phải: kết quả chung -->
+            <div>
+              <div id="ms-result-card" class="card" style="display:none;">
+                <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;">
+                  <div class="card-title" style="margin:0;">Kết quả</div>
+                  <div id="ms-actions" style="display:none;gap:8px;">
+                    <button id="ms-copy-btn" class="btn btn-secondary btn-sm">📋 Copy</button>
+                    <button id="ms-download-btn" class="btn btn-secondary btn-sm">⬇️ Tải .md</button>
+                  </div>
+                </div>
+                <div id="ms-status" style="font-size:12px;color:var(--text2);margin-bottom:10px;"></div>
+                <pre id="ms-output"
+                  style="white-space:pre-wrap;font-size:11px;line-height:1.7;color:var(--text2);max-height:60vh;overflow-y:auto;background:var(--bg3);border-radius:8px;padding:14px;margin:0;"></pre>
+              </div>
+            </div>
+
+          </div>
+        </div>
+
         <div id="tab-settings" class="tab-panel">
           <div class="two-col" style="align-items:start;">
             <div>
@@ -973,22 +1280,64 @@
                     <textarea id="cfg-gemini-keys" rows="4" placeholder="AIza...&#10;AIza..."></textarea>
                   </div>
                   <div class="form-group">
-                    <label class="form-label">FFmpeg Path (để trống nếu đã cài sẵn)</label>
-                    <input type="text" id="cfg-ffmpeg-path" placeholder="C:\ffmpeg\bin\ffmpeg.exe">
+                    <label class="form-label">Max Concurrent Video mỗi tài khoản (1–10)</label>
+                    <input type="number" id="cfg-max-concurrent" min="1" max="10" step="1" placeholder="3"
+                      style="width:80px;">
+                    <div style="font-size:11px;color:var(--text3);margin-top:4px;">Số video tạo cùng lúc tối đa trên 1
+                      tài khoản khi bấm Tạo tất cả</div>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">Max Concurrent Ảnh mỗi tài khoản (1–5)</label>
+                    <input type="number" id="cfg-max-concurrent-image" min="1" max="5" step="1" placeholder="2"
+                      style="width:80px;">
+                    <div style="font-size:11px;color:var(--text3);margin-top:4px;">Số ảnh tạo cùng lúc — nên để 1-2, tạo
+                      ảnh dễ bị block hơn video</div>
                   </div>
                   <button id="save-general-btn" class="btn btn-primary">Lưu cài đặt chung</button>
+                </div>
+              </div>
+
+              <!-- License Info Card -->
+              <div class="card" style="margin-top:16px;">
+                <div class="settings-section">
+                  <h3>License</h3>
+                  <div class="form-group">
+                    <label class="form-label">UUID Máy này</label>
+                    <div style="display:flex;gap:6px;">
+                      <input type="text" id="cfg-machine-uuid" readonly
+                        style="flex:1;font-family:monospace;font-size:11px;background:var(--bg3);cursor:default;"
+                        placeholder="Đang lấy...">
+                      <button class="btn btn-secondary btn-sm" style="flex-shrink:0;"
+                        onclick="navigator.clipboard.writeText(document.getElementById('cfg-machine-uuid').value).then(()=>toast('Đã copy UUID','success'))">
+                        Copy
+                      </button>
+                    </div>
+                    <div style="font-size:11px;color:var(--text3);margin-top:4px;">Gửi UUID này cho admin để được cấp
+                      license key.</div>
+                  </div>
+                  <div class="form-group" style="margin-bottom:0;">
+                    <label class="form-label">Trạng thái</label>
+                    <div id="license-status-detail"
+                      style="font-size:13px;color:var(--text2);padding:8px 12px;background:var(--bg3);border-radius:8px;">
+                      Đang kiểm tra...</div>
+                  </div>
                 </div>
               </div>
             </div>
             <div>
               <div class="card">
                 <div class="settings-section">
-                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                  <div
+                    style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
                     <h3 style="margin:0;">Google Labs Accounts</h3>
                     <div style="display:flex;gap:8px;">
-                      <button class="btn btn-secondary btn-sm" onclick="Settings.openManualTokenModal('new')" style="white-space:nowrap;">&#x270F;&#xFE0F; Nh&#7853;p Token</button>
-                      <button class="btn btn-sm" onclick="Settings.openCookieModal('new')"
-                        style="background:linear-gradient(135deg,#ec4899,#f43f5e);color:#fff;border:none;white-space:nowrap;">&#x1F36A; Load Cookie</button>
+                      <button class="btn btn-secondary btn-sm" onclick="Settings.openManualTokenModal('new')"
+                        style="white-space:nowrap;">&#x270F;&#xFE0F; Nh&#7853;p Token</button>
+                      <button class="btn btn-primary btn-sm" onclick="Settings.openCookieModal('new')"
+                        style="white-space:nowrap;">&#x1F36A;
+                        Load Cookie</button>
+                      <button class="btn btn-secondary btn-sm" onclick="Settings.openImportAccountsModal()"
+                        style="white-space:nowrap;">&#x1F4C2; Import File</button>
                     </div>
                   </div>
                   <div id="accounts-container"></div>
@@ -1004,167 +1353,261 @@
 
             <!-- ══ STICKY TOOLBAR ══ -->
             <div id="studio-sticky-bar" class="studio-sticky-bar">
-              <!-- Row 1: Actions -->
-              <div class="studio-bar-row">
-                <!-- Tạo / Dừng -->
-                <button id="studio-gen-all-images" class="btn btn-primary btn-sm">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <polyline points="21 15 16 10 5 21" />
-                  </svg>
-                  Tạo tất cả hình
-                </button>
-                <button id="studio-gen-all-videos" class="btn btn-primary btn-sm">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <polygon points="23 7 16 12 23 17 23 7" />
-                    <rect x="1" y="5" width="15" height="14" rx="2" />
-                  </svg>
-                  Tạo tất cả video (<span id="studio-pending-count">0</span>)
-                </button>
-                <button id="studio-stop-all" class="btn btn-danger btn-sm" style="display:none;">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                  </svg>
-                  Dừng
-                </button>
-                <button id="studio-save-all" class="btn btn-secondary btn-sm">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                    <polyline points="7 10 12 15 17 10" />
-                    <line x1="12" y1="15" x2="12" y2="3" />
-                  </svg>
-                  Lưu (<span id="studio-saved-count">0</span>)
-                </button>
-                <button id="studio-clear-all" class="btn btn-secondary btn-sm">Xóa tất cả cụm</button>
-                <button id="studio-clear-images-btn" class="btn btn-secondary btn-sm"
-                  title="Xóa tất cả ảnh đã tạo, ảnh tham chiếu và nhân vật khỏi mọi cụm">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <line x1="3" y1="21" x2="21" y2="3" stroke-width="2.5" />
-                  </svg>
-                  Xóa hình ảnh
-                </button>
-                <button id="studio-auto-char-all-btn" class="btn btn-secondary btn-sm"
-                  title="Tự động gắn nhân vật cho tất cả cụm theo prompt">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <circle cx="12" cy="8" r="4"/><path d="M4 20c0-4 3.6-7 8-7s8 3 8 7"/>
-                    <path d="M19 3l1.5 1.5L17 8" stroke-width="2.5"/>
-                  </svg>
-                  Auto nhân vật
-                </button>
-
-              </div>
-
-              <!-- Row 2: Settings + Tools -->
-              <div class="studio-bar-row studio-bar-row--settings">
-                <!-- Aspect -->
-                <div class="studio-aspect-group">
-                  <button type="button" class="studio-aspect-btn active" data-val="VIDEO_ASPECT_RATIO_LANDSCAPE"
-                    title="Ngang 16:9">16:9</button>
-                  <button type="button" class="studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_PORTRAIT"
-                    title="Dọc 9:16">9:16</button>
-                  <button type="button" class="studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_SQUARE"
-                    title="Vuông 1:1">1:1</button>
+              <div class="studio-toolbar-top">
+                <div class="studio-toolbar-top-left">
+                  <button id="studio-gen-all-images" class="btn btn-primary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    Tạo tất cả hình
+                  </button>
+                  <button id="studio-gen-all-videos" class="btn btn-primary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="23 7 16 12 23 17 23 7" />
+                      <rect x="1" y="5" width="15" height="14" rx="2" />
+                    </svg>
+                    Tạo tất cả video (<span id="studio-pending-count">0</span>)
+                  </button>
+                  <button id="studio-stop-all" class="btn btn-danger btn-sm" style="display:none;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                    </svg>
+                    Dừng
+                  </button>
                 </div>
-
-                <select id="studio-model" class="studio-bar-select" title="Model video">
-                  <option value="auto">Veo: Auto</option>
-                  <option value="flow_fast_relaxed">Veo: Fast+</option>
-                  <option value="flow_fast_no_ultra">Veo: Fast</option>
-                  <option value="flow_fast">Veo: Base</option>
-                </select>
-
-                <select id="studio-image-model" class="studio-bar-select" title="Model tạo ảnh">
-                  <option value="Nano Banana 2">Img: BN2</option>
-                  <option value="Nano Banana pro">Img: BNPro</option>
-                  <option value="Imagen 4">Img: Img4</option>
-                  <option value="Nano Banana">Img: BN</option>
-                </select>
-
-                <select id="studio-image-count" class="studio-bar-select" title="Số ảnh / cụm">
-                  <option value="1">Ảnh×1</option>
-                  <option value="2">Ảnh×2</option>
-                  <option value="4">Ảnh×4</option>
-                </select>
-
-                <select id="studio-video-count" class="studio-bar-select" title="Số video / cụm">
-                  <option value="1">Vid×1</option>
-                  <option value="2">Vid×2</option>
-                </select>
-
-                <label class="studio-bar-toggle t2v-toggle-label" title="Auto upscale 1080p khi xong">
-                  <input type="checkbox" id="studio-auto-upscale">
-                  <span class="t2v-toggle-track"></span>
-                  1080p
-                </label>
-                <label class="studio-bar-toggle t2v-toggle-label" title="Tự lưu video khi xong">
-                  <input type="checkbox" id="studio-auto-download">
-                  <span class="t2v-toggle-track"></span>
-                  Lưu
-                </label>
-
-                <div class="studio-bar-sep"></div>
-
-                <!-- Công cụ -->
-                <button id="studio-choose-folder" class="btn btn-secondary btn-sm studio-folder-btn"
-                  title="Chọn folder lưu video">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="var(--orange)" stroke="none">
-                    <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
-                  </svg>
-                  <span id="studio-folder-label">Folder</span>
-                </button>
-                <button id="studio-open-library-manager" class="btn btn-secondary btn-sm">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <rect x="3" y="3" width="18" height="18" rx="2" />
-                    <circle cx="8.5" cy="8.5" r="1.5" />
-                    <polyline points="21 15 16 10 5 21" />
-                  </svg>
-                  Kho ảnh
-                </button>
-                <button id="studio-import-images" class="btn btn-secondary btn-sm">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-                    <polyline points="17 8 12 3 7 8" />
-                    <line x1="12" y1="3" x2="12" y2="15" />
-                  </svg>
-                  Import ảnh
-                </button>
-                <button id="studio-import-prompts" class="btn btn-secondary btn-sm">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
-                    <polyline points="14 2 14 8 20 8" />
-                    <line x1="16" y1="13" x2="8" y2="13" />
-                    <line x1="16" y1="17" x2="8" y2="17" />
-                    <polyline points="10 9 9 9 8 9" />
-                  </svg>
-                  Import Prompt
-                </button>
-                <button id="studio-add-card" class="btn btn-primary btn-sm">
-                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                    <line x1="12" y1="5" x2="12" y2="19" />
-                    <line x1="5" y1="12" x2="19" y2="12" />
-                  </svg>
-                  Thêm cụm
-                </button>
-
-                <!-- Hidden file inputs -->
-                <input type="file" id="studio-images-file" accept="image/*" multiple style="display:none;">
-                <input type="file" id="studio-prompts-file-txt" accept=".txt" style="display:none;">
-                <input type="file" id="studio-prompts-file-json" accept=".json" style="display:none;">
-              </div>
-
-              <!-- Row 3: Status pill -->
-              <div class="studio-bar-status">
-                <span class="studio-bar-status-text" id="studio-status-text">Chưa có batch. Import prompt hoặc thêm
-                  cụm.</span>
-                <div class="studio-bar-metrics">
-                  <span id="studio-metric-total">0 card</span>
-                  <span id="studio-metric-running">0 đang chạy</span>
-                  <span id="studio-metric-done">0 xong</span>
+                <div class="studio-toolbar-top-right">
+                  <button id="studio-import-images" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Import ảnh
+                  </button>
+                  <button id="studio-import-prompts" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                      <polyline points="10 9 9 9 8 9" />
+                    </svg>
+                    Import Prompt
+                  </button>
+                  <button id="studio-save-images-btn" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    Lưu ảnh
+                  </button>
+                  <div class="studio-save-split">
+                    <button id="studio-save-all" class="btn btn-secondary btn-sm">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                        stroke-width="2">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                        <polyline points="7 10 12 15 17 10" />
+                        <line x1="12" y1="15" x2="12" y2="3" />
+                      </svg>
+                      Lưu video (<span id="studio-saved-count">0</span>)
+                    </button>
+                    <div class="studio-save-quality-wrap">
+                      <button id="studio-save-quality-toggle" class="btn btn-secondary btn-sm"
+                        title="Chọn chất lượng">1080p ▾</button>
+                      <div id="studio-save-quality-menu">
+                        <div class="studio-quality-opt" data-q="1080">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#ec4899)"
+                            stroke-width="2.5">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                          1080p (Upscale)
+                        </div>
+                        <div class="studio-quality-opt" data-q="720">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#ec4899)"
+                            stroke-width="2.5" style="opacity:0;">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                          720p (Gốc)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <button id="studio-toggle-toolbar" class="btn btn-secondary btn-sm"
+                    title="Ẩn/hiện phần cài đặt toolbar">
+                    Ẩn Toolbar
+                  </button>
                 </div>
               </div>
+
+              <div class="studio-toolbar-mid">
+                <div class="studio-toolbar-mid-head">TỶ LỆ KHUNG HÌNH</div>
+                <div class="studio-toolbar-mid-row">
+                  <button id="studio-vault-btn" class="btn btn-secondary btn-sm"
+                    title="Kho lưu trữ ảnh — chọn và thêm vào cụm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="2" y="7" width="20" height="14" rx="2" />
+                      <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
+                      <line x1="12" y1="12" x2="12" y2="16" />
+                      <line x1="10" y1="14" x2="14" y2="14" />
+                    </svg>
+                    Thư viện
+                  </button>
+                  <button id="studio-layout-toggle" class="btn btn-secondary btn-sm"
+                    title="Chuyển bố cục cụm ngang/dọc">
+                    <svg id="studio-layout-icon" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="8" height="18" rx="1" />
+                      <rect x="13" y="3" width="8" height="18" rx="1" />
+                    </svg>
+                    <span class="studio-layout-toggle-label">Cụm ngang</span>
+                  </button>
+                  <button id="studio-add-card" class="btn btn-primary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2.5">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Thêm cụm
+                  </button>
+                  <div class="studio-aspect-group">
+                    <button type="button" class="studio-aspect-btn active" data-val="VIDEO_ASPECT_RATIO_LANDSCAPE"
+                      title="Ngang 16:9">16:9</button>
+                    <button type="button" class="studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_PORTRAIT"
+                      title="Dọc 9:16">9:16</button>
+                    <button type="button" class="studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_SQUARE"
+                      title="Vuông 1:1">1:1</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="studio-toolbar-models">
+                <div class="studio-model-field">
+                  <div class="studio-model-label">MODEL VIDEO</div>
+                  <select id="studio-model" class="studio-bar-select" title="Model video">
+                    <option value="auto">Veo: Auto</option>
+                    <option value="flow_fast_relaxed">Veo: Fast Relaxed</option>
+                    <option value="flow_fast" selected>Veo: Fast</option>
+                  </select>
+                </div>
+                <div class="studio-model-field">
+                  <div class="studio-model-label">MODEL ẢNH</div>
+                  <select id="studio-image-model" class="studio-bar-select" title="Model tạo ảnh">
+                    <option value="Nano Banana 2">Nano Banana 2</option>
+                    <option value="Nano Banana pro" selected>Nano Banana pro</option>
+                    <option value="Imagen 4">Imagen 4</option>
+                    <option value="Nano Banana">Nano Banana</option>
+                  </select>
+                </div>
+                <div class="studio-model-field">
+                  <div class="studio-model-label">ẢNH / CỤM</div>
+                  <select id="studio-image-count" class="studio-bar-select" title="Số ảnh / cụm">
+                    <option value="1">Ảnh×1</option>
+                    <option value="2">Ảnh×2</option>
+                    <option value="4">Ảnh×4</option>
+                  </select>
+                </div>
+                <div class="studio-model-field">
+                  <div class="studio-model-label">VIDEO / CỤM</div>
+                  <select id="studio-video-count" class="studio-bar-select" title="Số video / cụm">
+                    <option value="1">Vid×1</option>
+                    <option value="2">Vid×2</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="studio-toolbar-bottom">
+                <div class="studio-toolbar-bottom-left">
+                  <label class="studio-bar-toggle t2v-toggle-label" title="Auto upscale 1080p khi xong">
+                    <input type="checkbox" id="studio-auto-upscale">
+                    <span class="t2v-toggle-track"></span>
+                    1080p
+                  </label>
+                  <label class="studio-bar-toggle t2v-toggle-label" title="Tự lưu video khi xong">
+                    <input type="checkbox" id="studio-auto-download">
+                    <span class="t2v-toggle-track"></span>
+                    Auto Lưu
+                  </label>
+                  <button id="studio-choose-folder" class="btn btn-secondary btn-sm studio-folder-btn"
+                    title="Chọn folder lưu video">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="var(--orange)" stroke="none">
+                      <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+                    </svg>
+                    <span id="studio-folder-label">Folder</span>
+                  </button>
+                </div>
+                <div class="studio-toolbar-bottom-right">
+                  <button id="studio-clear-images-btn" class="btn btn-secondary btn-sm"
+                    title="Xóa tất cả ảnh tham chiếu khỏi các cụm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <line x1="3" y1="21" x2="21" y2="3" stroke-width="2.5" />
+                    </svg>
+                    Xóa hình khỏi cụm
+                  </button>
+                  <button id="studio-clear-all" class="btn btn-secondary btn-sm">Xóa tất cả cụm</button>
+                  <div class="studio-filter-wrap">
+                    <button id="studio-filter-toggle" class="studio-filter-toggle" aria-expanded="false" type="button">
+                      <span class="studio-filter-toggle-top">BỘ LỌC</span>
+                      <span id="studio-filter-current" class="studio-filter-toggle-value">Tất cả cụm : 0</span>
+                      <span class="studio-filter-caret">▾</span>
+                    </button>
+                    <div id="studio-filter-menu" class="studio-filter-menu">
+                      <button class="studio-filter-menu-item active" data-studio-filter="all" type="button"
+                        onclick="Studio.setFilter('all')">
+                        <span class="studio-filter-dot total"></span>
+                        <span class="studio-filter-text">Tất cả cụm</span>
+                        <span id="studio-filter-total-count" class="studio-filter-count">0</span>
+                      </button>
+                      <div class="studio-filter-group-label">VIDEO</div>
+                      <button class="studio-filter-menu-item" data-studio-filter="running" type="button"
+                        onclick="Studio.setFilter('running')">
+                        <span class="studio-filter-dot running"></span>
+                        <span class="studio-filter-text">Đang chạy</span>
+                        <span id="studio-filter-running-count" class="studio-filter-count">0</span>
+                      </button>
+                      <button class="studio-filter-menu-item" data-studio-filter="completed" type="button"
+                        onclick="Studio.setFilter('completed')">
+                        <span class="studio-filter-dot completed"></span>
+                        <span class="studio-filter-text">Xong</span>
+                        <span id="studio-filter-done-count" class="studio-filter-count">0</span>
+                      </button>
+                      <button class="studio-filter-menu-item" data-studio-filter="failed" type="button"
+                        onclick="Studio.setFilter('failed')">
+                        <span class="studio-filter-dot failed"></span>
+                        <span class="studio-filter-text">Lỗi</span>
+                        <span id="studio-filter-failed-count" class="studio-filter-count">0</span>
+                      </button>
+                      <div class="studio-filter-group-label">HÌNH ẢNH</div>
+                      <button class="studio-filter-menu-item" data-studio-filter="img-running" type="button">
+                        <span class="studio-filter-dot img-processing"></span>
+                        <span class="studio-filter-text">Ảnh đang chạy</span>
+                        <span id="studio-filter-image-running-count" class="studio-filter-count">0</span>
+                      </button>
+                      <button class="studio-filter-menu-item" data-studio-filter="img-completed" type="button">
+                        <span class="studio-filter-dot img-completed"></span>
+                        <span class="studio-filter-text">Ảnh hoàn tất</span>
+                        <span id="studio-filter-image-done-count" class="studio-filter-count">0</span>
+                      </button>
+                      <button class="studio-filter-menu-item" data-studio-filter="img-failed" type="button">
+                        <span class="studio-filter-dot img-failed"></span>
+                        <span class="studio-filter-text">Ảnh lỗi</span>
+                        <span id="studio-filter-image-failed-count" class="studio-filter-count">0</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Hidden file inputs -->
+              <input type="file" id="studio-images-file" accept="image/*" multiple style="display:none;">
+              <input type="file" id="studio-prompts-file-txt" accept=".txt" style="display:none;">
+              <input type="file" id="studio-prompts-file-json" accept=".json" style="display:none;">
+              <input type="file" id="studio-prompts-file-xlsx" accept=".xlsx,.xls" style="display:none;">
+
             </div>
             <!-- /STICKY TOOLBAR -->
 
@@ -1187,35 +1630,126 @@
   <div id="toast-container"></div>
 
   <!-- Studio image popup (shared) -->
-  <div id="studio-img-popup" class="studio-popup-overlay" style="display:none;" onclick="if(event.target===this)Studio.closePopup()">
-    <div style="position:relative;display:flex;flex-direction:column;max-width:92vw;max-height:92vh;background:var(--bg2);border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55);">
+  <div id="studio-img-popup" class="studio-popup-overlay" style="display:none;"
+    onclick="if(event.target===this)Studio.closePopup()">
+    <div
+      style="position:relative;display:flex;flex-direction:column;max-width:92vw;max-height:92vh;background:var(--bg2);border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55);">
 
       <!-- Top bar -->
-      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px;flex-shrink:0;">
-        <span id="studio-popup-caption-text" style="font-size:12px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Ảnh xem trước</span>
+      <div
+        style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px;flex-shrink:0;">
+        <span id="studio-popup-caption-text"
+          style="font-size:12px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Ảnh
+          xem trước</span>
         <div style="display:flex;gap:6px;flex-shrink:0;">
-          <button class="btn btn-primary btn-sm" onclick="Studio.addToCard()" title="Dùng ảnh này làm ảnh tham chiếu cho cụm">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><path d="M12 5v14M5 12h14"/></svg>Thêm vào cụm
+          <button class="btn btn-primary btn-sm" onclick="Studio.addToCard()"
+            title="Dùng ảnh này làm ảnh tham chiếu cho cụm">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              style="vertical-align:-2px;margin-right:4px;">
+              <path d="M12 5v14M5 12h14" />
+            </svg>Thêm vào cụm
           </button>
-          <button class="btn btn-secondary btn-sm" onclick="Studio.saveToLib()" title="Lưu vào thư viện kho">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v14a2 2 0 01-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Lưu kho
+          <!-- Lưu kho (1k auto) -->
+          <button class="btn btn-secondary btn-sm" onclick="Studio.saveToLib()" title="Lưu vào kho (chất lượng 1k)">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              style="vertical-align:-2px;margin-right:4px;">
+              <path d="M19 21H5a2 2 0 01-2-2V5a2 2 0 012-2h11l5 5v14a2 2 0 01-2 2z" />
+              <polyline points="17 21 17 13 7 13 7 21" />
+              <polyline points="7 3 7 8 15 8" />
+            </svg>Lưu kho
           </button>
-          <button class="btn btn-secondary btn-sm" onclick="Studio.downloadImg()" title="Tải ảnh về máy">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>Tải về
+          <!-- Tải về với chọn chất lượng -->
+          <div style="position:relative;display:inline-flex;">
+            <button class="btn btn-secondary btn-sm" onclick="Studio.downloadImg('1k')" title="Tải ảnh 1k về máy"
+              style="border-radius:8px 0 0 8px;border-right:none;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                style="vertical-align:-2px;margin-right:4px;">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>Tải về
+            </button>
+            <button class="btn btn-secondary btn-sm" id="studio-popup-dl-menu-btn" onclick="Studio.togglePopupDlMenu()"
+              title="Chọn chất lượng" style="border-radius:0 8px 8px 0;padding:0 7px;">▾</button>
+            <div id="studio-popup-dl-menu"
+              style="display:none;position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;z-index:100;min-width:110px;box-shadow:0 8px 24px rgba(0,0,0,.3);overflow:hidden;">
+              <div onclick="Studio.downloadImg('1k');Studio.closePopupDlMenu()"
+                style="padding:9px 14px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg3)'"
+                onmouseout="this.style.background=''">Tải 1K (gốc)</div>
+              <div onclick="Studio.downloadImg('2k');Studio.closePopupDlMenu()"
+                style="padding:9px 14px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg3)'"
+                onmouseout="this.style.background=''">Tải 2K</div>
+              <div onclick="Studio.downloadImg('4k');Studio.closePopupDlMenu()"
+                style="padding:9px 14px;cursor:pointer;font-size:13px;" onmouseover="this.style.background='var(--bg3)'"
+                onmouseout="this.style.background=''">Tải 4K</div>
+            </div>
+          </div>
+          <button class="btn btn-danger btn-sm" onclick="Studio.deletePopupItem()" title="Xóa ảnh này khỏi cụm"
+            id="studio-popup-delete-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              style="vertical-align:-2px;margin-right:4px;">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4h6v2" />
+            </svg>Xóa
           </button>
-          <button onclick="Studio.closePopup()" title="Đóng" style="background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:18px;color:var(--text2);display:flex;align-items:center;justify-content:center;line-height:1;">×</button>
+          <button onclick="Studio.closePopup()" title="Đóng"
+            style="background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:18px;color:var(--text2);display:flex;align-items:center;justify-content:center;line-height:1;">×</button>
         </div>
       </div>
 
       <!-- Image area -->
-      <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;">
-        <img id="studio-popup-img" src="" alt="" style="max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;display:block;">
+      <div
+        style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;">
+        <img id="studio-popup-img" src="" alt=""
+          style="max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;display:block;">
       </div>
 
     </div>
   </div>
 
-  <!-- Library Picker -->
+  <!-- Studio video popup -->
+  <div id="studio-video-popup" class="studio-popup-overlay" style="display:none;"
+    onclick="if(event.target===this)Studio.closeVideoPopup()">
+    <div
+      style="position:relative;display:flex;flex-direction:column;max-width:92vw;max-height:92vh;background:var(--bg2);border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55);">
+      <div
+        style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px;flex-shrink:0;">
+        <span id="studio-video-popup-caption"
+          style="font-size:12px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Video
+          xem trước</span>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="btn btn-secondary btn-sm" onclick="Studio.downloadVideoPopup()" title="Tải video về máy">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              style="vertical-align:-2px;margin-right:4px;">
+              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+              <polyline points="7 10 12 15 17 10" />
+              <line x1="12" y1="15" x2="12" y2="3" />
+            </svg>Tải về
+          </button>
+          <button class="btn btn-danger btn-sm" onclick="Studio.deleteVideoPopup()" title="Xóa video này khỏi cụm">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+              style="vertical-align:-2px;margin-right:4px;">
+              <polyline points="3 6 5 6 21 6" />
+              <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+              <path d="M10 11v6M14 11v6" />
+              <path d="M9 6V4h6v2" />
+            </svg>Xóa
+          </button>
+          <button onclick="Studio.closeVideoPopup()"
+            style="background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:18px;color:var(--text2);display:flex;align-items:center;justify-content:center;line-height:1;">×</button>
+        </div>
+      </div>
+      <div
+        style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;">
+        <video id="studio-video-popup-player" controls
+          style="max-width:100%;max-height:75vh;border-radius:8px;display:block;"></video>
+      </div>
+    </div>
+  </div>
+
+  <!-- Library Picker (legacy, kept for openLibraryPicker) -->
   <div id="studio-library-picker" class="studio-popup-overlay" style="display:none;">
     <div class="studio-modal">
       <div class="studio-modal-header">
@@ -1225,6 +1759,9 @@
         </div>
         <div style="display:flex;align-items:center;gap:10px;">
           <select id="studio-library-category-filter" class="t2v-select" style="min-width:160px;"></select>
+          <button id="studio-delete-category-btn" class="btn btn-sm"
+            style="display:none;background:var(--red,#ef4444);color:#fff;border:none;"
+            onclick="Studio.deleteCurrentCategory()">Xóa nhóm</button>
           <button class="studio-modal-close" onclick="Studio.closeLibraryPicker()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -1235,6 +1772,146 @@
       </div>
       <div class="studio-modal-body">
         <div id="studio-library-grid" class="studio-library-grid"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- KHO LUU TRU POPUP (dùng trong Studio toolbar) -->
+  <div id="studio-vault-popup" class="studio-popup-overlay" style="display:none;"
+    onclick="if(event.target===this)Studio.closeVault()">
+    <div class="studio-vault-box">
+      <!-- Header -->
+      <div class="studio-vault-head">
+        <div style="font-size:15px;font-weight:700;color:var(--text);">Kho Lưu Trữ</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <!-- Filter: Thể loại -->
+          <select id="vault-type-filter" class="t2v-select" style="min-width:130px;">
+            <option value="all">Tất cả thể loại</option>
+            <option value="nhanvat">Nhân Vật</option>
+            <option value="vatpham">Vật Phẩm</option>
+            <option value="style">Style</option>
+            <option value="background">Background</option>
+          </select>
+          <!-- Filter: Nhóm -->
+          <select id="vault-group-filter" class="t2v-select" style="min-width:130px;">
+            <option value="all">Tất cả nhóm</option>
+          </select>
+          <button class="studio-modal-close" onclick="Studio.closeVault()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </div>
+
+      <!-- Grid ảnh -->
+      <div class="studio-vault-grid-wrap">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
+          <span id="vault-count-label" style="font-size:12px;color:var(--text2);">0 ảnh</span>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);cursor:pointer;">
+            <input type="checkbox" id="vault-select-all"> Chọn tất cả
+          </label>
+        </div>
+        <div id="vault-grid" class="studio-vault-grid"></div>
+      </div>
+
+      <!-- Footer actions -->
+      <div class="studio-vault-foot">
+        <span id="vault-sel-count" style="font-size:12px;color:var(--text2);">Đã chọn: 0</span>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button id="vault-load-quick-btn" class="btn btn-secondary btn-sm">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+            Load nhanh (theo prompt)
+          </button>
+          <button id="vault-add-to-card-btn" class="btn btn-primary btn-sm">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Thêm vào cụm
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Vault right-click context menu -->
+  <div id="vault-ctx-menu" class="lib-ctx-menu" style="display:none;">
+    <div class="lib-ctx-item lib-ctx-delete" id="vault-ctx-delete">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polyline points="3 6 5 6 21 6" />
+        <path d="M19 6l-1 14a2 2 0 01-2 2H8a2 2 0 01-2-2L5 6" />
+      </svg>
+      Xóa khỏi tất cả cụm
+    </div>
+    <div class="lib-ctx-item" id="vault-ctx-add-to-card">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <line x1="12" y1="5" x2="12" y2="19" />
+        <line x1="5" y1="12" x2="19" y2="12" />
+      </svg>
+      Thêm vào cụm số...
+    </div>
+  </div>
+  <!-- Vault add-to-card submenu -->
+  <div id="vault-add-card-menu" class="lib-ctx-menu" style="display:none;">
+    <div class="lib-ctx-head">Chọn cụm để thêm:</div>
+    <div id="vault-card-list"></div>
+  </div>
+
+  <!-- CV VAULT POPUP (dùng trong tab Video Đồng Nhất) -->
+  <div id="cv-vault-popup" class="studio-popup-overlay" style="display:none;"
+    onclick="if(event.target===this)CV.closeVault()">
+    <div class="studio-vault-box">
+      <div class="studio-vault-head">
+        <div style="font-size:15px;font-weight:700;color:var(--text);">Kho Lưu Trữ — Áp dụng nhân vật</div>
+        <div style="display:flex;gap:8px;align-items:center;">
+          <select id="cv-vault-type-filter" class="t2v-select" style="min-width:130px;">
+            <option value="all">Tất cả thể loại</option>
+            <option value="nhanvat">Nhân Vật</option>
+            <option value="vatpham">Vật Phẩm</option>
+            <option value="style">Style</option>
+            <option value="background">Background</option>
+          </select>
+          <select id="cv-vault-group-filter" class="t2v-select" style="min-width:130px;">
+            <option value="all">Tất cả nhóm</option>
+          </select>
+          <button class="studio-modal-close" onclick="CV.closeVault()">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <line x1="18" y1="6" x2="6" y2="18" />
+              <line x1="6" y1="6" x2="18" y2="18" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      <div class="studio-vault-grid-wrap">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;flex-shrink:0;">
+          <span id="cv-vault-count-label" style="font-size:12px;color:var(--text2);">0 ảnh</span>
+          <label style="display:flex;align-items:center;gap:5px;font-size:12px;color:var(--text2);cursor:pointer;">
+            <input type="checkbox" id="cv-vault-select-all"> Chọn tất cả
+          </label>
+        </div>
+        <div id="cv-vault-grid" class="studio-vault-grid"></div>
+      </div>
+      <div class="studio-vault-foot">
+        <span id="cv-vault-sel-count" style="font-size:12px;color:var(--text2);">Đã chọn: 0</span>
+        <div style="display:flex;gap:8px;margin-left:auto;">
+          <button id="cv-vault-auto-btn" class="btn btn-secondary btn-sm">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
+            </svg>
+            AUTO (theo prompt)
+          </button>
+          <button id="cv-vault-apply-btn" class="btn btn-primary btn-sm">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <line x1="12" y1="5" x2="12" y2="19" />
+              <line x1="5" y1="12" x2="19" y2="12" />
+            </svg>
+            Áp dụng nhân vật
+          </button>
+        </div>
       </div>
     </div>
   </div>
@@ -1276,6 +1953,15 @@
             <span class="studio-import-mode-name">JSON Scene</span>
             <span class="studio-import-mode-desc">Mảng scene với prompt,<br>characters, attachments...</span>
           </button>
+          <button id="studio-import-xlsx-btn" class="studio-import-mode-btn" type="button">
+            <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+              <rect x="3" y="3" width="18" height="18" rx="2" />
+              <path d="M3 9h18M9 21V9" />
+              <path d="m7 13 2 2-2 2M13 13l2 2-2 2" />
+            </svg>
+            <span class="studio-import-mode-name">Excel</span>
+            <span class="studio-import-mode-desc">File .xlsx/.xls<br>mỗi hàng = 1 prompt</span>
+          </button>
         </div>
         <div class="studio-import-replace-hint" id="studio-import-replace-hint" style="display:none;">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -1286,6 +1972,80 @@
           Đang có <strong id="studio-import-card-count">0</strong> cụm. Import sẽ <strong>thay thế prompt</strong> giữ
           nguyên ảnh/video — số prompt phải khớp số cụm.
         </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Save Images Popup -->
+  <div id="studio-save-images-popup" class="studio-popup-overlay" style="display:none;">
+    <div class="studio-modal" style="max-width:860px;max-height:90vh;display:flex;flex-direction:column;">
+      <div class="studio-modal-header" style="flex-shrink:0;">
+        <div>
+          <div class="studio-modal-title">Lưu ảnh đã tạo</div>
+          <div class="studio-modal-subtitle">Chọn ảnh muốn lưu vào kho hoặc tải về máy</div>
+        </div>
+        <button class="studio-modal-close"
+          onclick="document.getElementById('studio-save-images-popup').style.display='none'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div
+        style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" id="studio-save-images-select-all">Chọn tất cả</button>
+        <button class="btn btn-secondary btn-sm" id="studio-save-images-deselect">Bỏ chọn</button>
+        <span style="font-size:12px;color:var(--text3);">Đã chọn: <span id="studio-save-images-count">0</span>
+          ảnh</span>
+        <div style="flex:1;"></div>
+        <button class="btn btn-secondary btn-sm" id="studio-save-images-add-to-card">Thêm vào cụm</button>
+        <!-- Lưu kho -->
+        <button class="btn btn-secondary btn-sm" id="studio-save-images-to-lib">Lưu vào kho (1K)</button>
+        <!-- Tải về với chọn quality -->
+        <div style="position:relative;display:inline-flex;">
+          <button class="btn btn-primary btn-sm" id="studio-save-images-to-disk"
+            style="border-radius:8px 0 0 8px;border-right:none;">Tải về (1K)</button>
+          <button class="btn btn-primary btn-sm" id="studio-save-images-quality-btn"
+            onclick="Studio.toggleSaveImgQualityMenu()" style="border-radius:0 8px 8px 0;padding:0 7px;">▾</button>
+          <div id="studio-save-images-quality-menu"
+            style="display:none;position:absolute;top:100%;right:0;margin-top:4px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;z-index:200;min-width:160px;box-shadow:0 8px 24px rgba(0,0,0,.3);overflow:hidden;">
+            <div
+              style="padding:6px 10px;font-size:11px;color:var(--text3);font-weight:600;border-bottom:1px solid var(--border);">
+              CHẤT LƯỢNG TẢI VỀ</div>
+            <div data-quality="1k" class="simg-q-opt" style="padding:9px 14px;cursor:pointer;font-size:13px;"
+              onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">1K — Gốc (nhanh)
+            </div>
+            <div data-quality="2k" class="simg-q-opt" style="padding:9px 14px;cursor:pointer;font-size:13px;"
+              onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">2K — Upscale</div>
+            <div data-quality="4k" class="simg-q-opt" style="padding:9px 14px;cursor:pointer;font-size:13px;"
+              onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">4K — Upscale</div>
+            <div
+              style="border-top:1px solid var(--border);padding:6px 10px;font-size:11px;color:var(--text3);font-weight:600;">
+              CHẤT LƯỢNG LƯU KHO</div>
+            <div data-lib-quality="1k" class="simg-lq-opt" style="padding:9px 14px;cursor:pointer;font-size:13px;"
+              onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">1K — Gốc</div>
+            <div data-lib-quality="2k" class="simg-lq-opt" style="padding:9px 14px;cursor:pointer;font-size:13px;"
+              onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">2K — Upscale</div>
+            <div data-lib-quality="4k" class="simg-lq-opt" style="padding:9px 14px;cursor:pointer;font-size:13px;"
+              onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">4K — Upscale</div>
+          </div>
+        </div>
+      </div>
+      <!-- Progress bar -->
+      <div id="studio-save-images-progress"
+        style="display:none;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;">
+            <div id="studio-save-images-progress-bar"
+              style="height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width .3s;"></div>
+          </div>
+          <span id="studio-save-images-progress-text" style="font-size:12px;color:var(--text2);white-space:nowrap;">0 /
+            0</span>
+        </div>
+      </div>
+      <div id="studio-save-images-grid"
+        style="overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,140px);justify-content:start;gap:10px;padding:14px;max-height:calc(90vh - 160px);">
       </div>
     </div>
   </div>
@@ -1314,28 +2074,19 @@
     </div>
   </div>
 
+  <!-- SheetJS for Excel import -->
+  <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <!-- Scripts -->
   <script src="/static/js/api.js?v=2"></script>
-  <script src="/static/js/app.js?v=3"></script>
-  <script src="/static/js/tabs/t2v.js?v=2"></script>
-  <script src="/static/js/tabs/i2v.js?v=2"></script>
-  <script src="/static/js/tabs/consistent_video.js?v=2"></script>
-  <script src="/static/js/tabs/character.js?v=2"></script>
+  <script src="/static/js/app.js?v=4"></script>
+  <script src="/static/js/tabs/t2v.js?v=4"></script>
+  <script src="/static/js/tabs/i2v.js?v=4"></script>
+  <script src="/static/js/tabs/consistent_video.js?v=5"></script>
+  <script src="/static/js/tabs/character.js?v=4"></script>
   <script src="/static/js/tabs/consistent_video_ui.js?v=2"></script>
-  <script src="/static/js/tabs/settings.js?v=5"></script>
-  <script src="/static/js/tabs/other.js?v=2"></script>
-  <script src="/static/js/tabs/studio_unified.js?v=3"></script>
-  <script>
-    function toggleDarkMode() {
-      const isDark = document.documentElement.classList.toggle('dark');
-      document.getElementById('dark-mode-icon-moon').style.display = isDark ? 'none' : '';
-      document.getElementById('dark-mode-icon-sun').style.display = isDark ? '' : 'none';
-      document.getElementById('dark-mode-btn').querySelector('.nav-label').textContent = isDark ? 'Chế độ sáng' : 'Chế độ tối';
-      localStorage.setItem('darkMode', isDark ? '1' : '0');
-    }
-    // Restore on load
-    if (localStorage.getItem('darkMode') === '1') toggleDarkMode();
-  </script>
+  <script src="/static/js/tabs/settings.js?v=7"></script>
+  <script src="/static/js/tabs/other.js?v=6"></script>
+  <script src="/static/js/tabs/studio_unified.js?v=19"></script>
 </body>
 
 </html>

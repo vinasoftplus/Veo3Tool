@@ -12,9 +12,23 @@ from typing import Any
 
 
 def _resolve_base_dir() -> Path:
+    # Nuitka onefile set env var NUITKA_ONEFILE_PARENT trỏ đúng về exe gốc
+    nuitka_parent = os.environ.get("NUITKA_ONEFILE_PARENT", "")
+    if nuitka_parent:
+        base = Path(nuitka_parent).resolve().parent
+        print(f"[config] Nuitka onefile → BASE_DIR={base!r}", flush=True)
+        return base
+
+    # PyInstaller
     if getattr(sys, "frozen", False):
-        return Path(sys.executable).resolve().parent
-    return Path(__file__).resolve().parent.parent
+        base = Path(sys.executable).resolve().parent
+        print(f"[config] PyInstaller frozen → BASE_DIR={base!r}", flush=True)
+        return base
+
+    # Dev mode
+    base = Path(__file__).resolve().parent.parent
+    print(f"[config] Dev mode → BASE_DIR={base!r}", flush=True)
+    return base
 
 
 BASE_DIR = _resolve_base_dir()
@@ -46,6 +60,7 @@ _DEFAULT_CONFIG: dict = {
     "TOKEN_OPTION": "Option 1",
     "LICENSE_TOKEN": "",
     "MAX_CONCURRENT": 3,
+    "MAX_CONCURRENT_IMAGE": 2,
 }
 
 _DEFAULT_SETTINGS: dict = {
@@ -134,7 +149,7 @@ def save_account(index: int, account_data: dict) -> None:
 def get_gemini_keys() -> list[str]:
     """Return list of Gemini API keys (support multiple keys, newline-separated)."""
     cfg = load_config()
-    raw = cfg.get("GEMINI_API_KEY", "")
+    raw = cfg.get("GEMINI_API_KEYS") or cfg.get("GEMINI_API_KEY") or ""
     return [k.strip() for k in str(raw).splitlines() if k.strip()]
 
 

@@ -58,6 +58,16 @@ def create_app() -> FastAPI:
 
     @app.on_event("startup")
     async def on_startup():
+        # Auto-validate saved license token
+        try:
+            from services.license import validate_license
+            from services.config_service import load_config
+            saved = load_config().get("LICENSE_TOKEN", "").strip()
+            if saved:
+                validate_license(saved)
+        except Exception:
+            pass
+
         await init_db()
         from services.character_service import init_characters_table
         from services.library_service import init_library_tables, ensure_default_category
@@ -74,6 +84,13 @@ def create_app() -> FastAPI:
         # Mount studio-images after startup so the directory exists
         app.mount("/studio-images", StaticFiles(directory=str(APP_BASE / "data" / "studio"), html=False), name="studio-images")
         app.mount("/library-images", StaticFiles(directory=str(APP_BASE / "data" / "library"), html=False), name="library-images")
+
+        # Start auto token refresh background task
+        try:
+            from services.token_refresh_service import start_auto_refresh
+            start_auto_refresh()
+        except Exception:
+            pass
 
     # --- Routers ---
     from routers import ui, settings, license_router, veo, image, subtitle, workflow, youtube, character, extension

@@ -20,6 +20,14 @@ const API = {
     const r = await fetch(path, { method: 'DELETE' });
     return r.json();
   },
+  async patch(path, data) {
+    const r = await fetch(path, {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(data),
+    });
+    return r.json();
+  },
 };
 
 function toast(msg, type = 'info', duration = 3500) {

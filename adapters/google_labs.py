@@ -9,6 +9,7 @@ import asyncio
 import json
 import logging
 import random
+import re
 import urllib.error
 import urllib.request
 import uuid
@@ -50,9 +51,12 @@ _I2V_MODEL_KEYS = {
     ("PRO", "portrait"): "veo_3_1_i2v_s_fast_portrait",
 }
 _REF_MODEL_KEYS = {
-    "ULTRA": "veo_3_1_r2v_fast_portrait_ultra",
-    "NORMAL": "veo_3_1_r2v_fast_portrait",
-    "PRO": "veo_3_1_r2v_fast_portrait",
+    ("ULTRA", "landscape"): "veo_3_1_r2v_fast_landscape_ultra",
+    ("ULTRA", "portrait"): "veo_3_1_r2v_fast_portrait_ultra",
+    ("NORMAL", "landscape"): "veo_3_1_r2v_fast_landscape",
+    ("NORMAL", "portrait"): "veo_3_1_r2v_fast_portrait",
+    ("PRO", "landscape"): "veo_3_1_r2v_fast_landscape",
+    ("PRO", "portrait"): "veo_3_1_r2v_fast_portrait",
 }
 _IMG_MODEL_MAP = {
     "Imagen 4": "IMAGEN_3_5",
@@ -68,6 +72,8 @@ _PAYGATE = {
 
 DEFAULT_SEED = 9797
 logger = logging.getLogger("veo.google_labs")
+
+_UUID_PAT = re.compile(r'^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', re.I)
 
 
 # ---------------------------------------------------------------------------
@@ -143,15 +149,21 @@ def _resolve_video_model_key(kind: str, account: dict, aspect_ratio: str, model:
         return _I2V_MODEL_KEYS.get((acc_type, orient), "veo_3_1_i2v_s_fast_ultra")
 
     if kind == "r2v":
+        relaxed_map = {
+            "landscape": "veo_3_1_r2v_fast_landscape_ultra_relaxed",
+            "portrait": "veo_3_1_r2v_fast_portrait_ultra_relaxed",
+        }
         if normalized == "flow_fast_relaxed":
-            return "veo_3_1_r2v_fast_portrait_ultra_relaxed" if acc_type == "ULTRA" else _REF_MODEL_KEYS.get("NORMAL", "veo_3_1_r2v_fast_portrait")
+            if acc_type == "ULTRA":
+                return relaxed_map.get(orient, "veo_3_1_r2v_fast_landscape_ultra_relaxed")
+            return _REF_MODEL_KEYS.get(("NORMAL", orient), "veo_3_1_r2v_fast_portrait")
         if normalized == "flow_fast_no_ultra":
-            return _REF_MODEL_KEYS.get("NORMAL", "veo_3_1_r2v_fast_portrait")
+            return _REF_MODEL_KEYS.get(("NORMAL", orient), "veo_3_1_r2v_fast_portrait")
         if normalized in ("flow_fast", "flow_quality"):
-            return _REF_MODEL_KEYS.get(acc_type, _REF_MODEL_KEYS.get("NORMAL", "veo_3_1_r2v_fast_portrait"))
+            return _REF_MODEL_KEYS.get((acc_type, orient), _REF_MODEL_KEYS.get(("NORMAL", orient), "veo_3_1_r2v_fast_portrait"))
         if normalized.startswith("veo_"):
             return model
-        return _REF_MODEL_KEYS.get(acc_type, "veo_3_1_r2v_fast_portrait_ultra")
+        return _REF_MODEL_KEYS.get((acc_type, orient), "veo_3_1_r2v_fast_landscape_ultra")
 
     return model or ""
 
@@ -207,7 +219,28 @@ def _send_request(url: str, payload: dict, token: str, cookie: str = "", method:
 
 
 async def _async_send(url: str, payload: dict, token: str, cookie: str = "") -> dict:
-    return await asyncio.to_thread(_send_request, url, payload, token, cookie)
+    result = await asyncio.to_thread(_send_request, url, payload, token, cookie)
+    # Auto-refresh: nếu 401 và account có cookie → refresh token rồi retry 1 lần
+    if result.get("status") == 401 and token:
+        try:
+            from services.config_service import load_config, save_account
+            from services.token_refresh_service import refresh_account_token
+            cfg = load_config()
+            for i in range(1, 11):
+                acc = cfg.get(f"account{i}", {})
+                if acc.get("ACCESS_TOKEN", "").strip() == token.strip() and acc.get("COOKIE", "").strip():
+                    logger.info("🔄 [AutoRefresh] 401 detected — refreshing account #%s token...", i)
+                    ok = await refresh_account_token(i)
+                    if ok:
+                        # Lấy token mới vừa lưu
+                        new_token = load_config().get(f"account{i}", {}).get("ACCESS_TOKEN", "")
+                        if new_token and new_token != token:
+                            logger.info("🔄 [AutoRefresh] Retrying request with new token...")
+                            result = await asyncio.to_thread(_send_request, url, payload, new_token, cookie)
+                    break
+        except Exception as _e:
+            logger.warning("[AutoRefresh] Error during 401 auto-refresh: %s", _e)
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -348,7 +381,6 @@ class GoogleLabsAdapter:
                 "rawImageBytes": base64_image,
                 "mimeType": mime_type,
                 "isUserUploaded": True,
-                "aspectRatio": "IMAGE_ASPECT_RATIO_LANDSCAPE",
             },
             "clientContext": {
                 "sessionId": str(uuid.uuid4()),
@@ -526,7 +558,7 @@ class GoogleLabsAdapter:
         reference_media_ids: list[str],
         prompt: str,
         account: dict,
-        aspect_ratio: str = "VIDEO_ASPECT_RATIO_PORTRAIT",
+        aspect_ratio: str = "VIDEO_ASPECT_RATIO_LANDSCAPE",
         output_count: int = 1,
         model: str = "auto",
         seed: int | None = None,
@@ -605,7 +637,7 @@ class GoogleLabsAdapter:
         reference_media_ids: list[str],
         prompt: str,
         account: dict,
-        aspect_ratio: str = "VIDEO_ASPECT_RATIO_PORTRAIT",
+        aspect_ratio: str = "VIDEO_ASPECT_RATIO_LANDSCAPE",
         output_count: int = 1,
         model: str = "auto",
         seed: int | None = None,
@@ -646,29 +678,40 @@ class GoogleLabsAdapter:
         return await _async_send(URL_STATUS, payload, token)
 
     # --- Upscale video ---
-    async def upscale_video(self, operation_name: str, token: str) -> dict:
-        candidate_payloads = [
-            {"operationName": operation_name},
-            {"name": operation_name},
-            {"operation": {"name": operation_name}},
-            {"videoOperationName": operation_name},
-            {"operationNames": [operation_name]},
-            {"operations": [{"operation": {"name": operation_name}}]},
-        ]
+    def _resolve_upscale_media_id(self, operation_name: str, media_id: str) -> str:
+        """UUID operation_name thực ra là mediaId."""
+        if operation_name and _UUID_PAT.match(operation_name.strip()) and not media_id:
+            return operation_name
+        return media_id
 
-        last_result = {"ok": False, "status": 0, "body": "No payload attempted"}
-        for payload in candidate_payloads:
-            result = await _async_send(URL_UPSCALE_VIDEO, payload, token)
-            last_result = result
-            body = str(result.get("body", "") or "")
-            if result.get("ok"):
-                return result
-            if result.get("status") != 400:
-                return result
-            if "Unknown name" not in body and "Invalid JSON payload received" not in body:
-                return result
+    def build_upscale_payload(self, media_id: str, account: dict | None = None, recaptcha_token: str = "") -> dict:
+        UPSCALE_MODEL = "veo_3_1_upsampler_1080p"
+        return {
+            "clientContext": {
+                "sessionId": str(uuid.uuid4()),
+                "tool": "PINHOLE",
+                "projectId": _project_id(account) if account else "",
+                "userPaygateTier": _paygate(account) if account else "PAYGATE_TIER_ONE",
+                "recaptchaContext": {"token": recaptcha_token},
+            },
+            "requests": [{
+                "resolution": "VIDEO_RESOLUTION_1080P",
+                "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
+                "seed": _random_seed(),
+                "videoModelKey": UPSCALE_MODEL,
+                "metadata": {"workflowId": str(uuid.uuid4())},
+                "videoInput": {"mediaId": media_id},
+            }],
+        }
 
-        return last_result
+    async def upscale_video(self, operation_name: str, token: str, media_id: str = "", account: dict | None = None, recaptcha_token: str = "") -> dict:
+        """Upscale video lên 1080p — direct API call (Option 1 only)."""
+        media_id = self._resolve_upscale_media_id(operation_name, media_id)
+        if not media_id:
+            return {"ok": False, "status": 0, "body": "Missing mediaId for upscale"}
+        payload = self.build_upscale_payload(media_id, account=account, recaptcha_token=recaptcha_token)
+        logger.info("[Upscale] mediaId=%s recaptcha=%s", media_id, bool(recaptcha_token))
+        return await _async_send(URL_UPSCALE_VIDEO, payload, token)
 
     # --- Generate images (Banana / Imagen) ---
     async def generate_images(
@@ -764,8 +807,31 @@ class GoogleLabsAdapter:
         return await _async_send(url, payload, _token(account), _cookie(account))
 
     # --- Upscale image ---
-    async def upscale_image(self, media_id: str, token: str) -> dict:
-        payload = {"mediaId": media_id}
+    def build_upscale_image_payload(self, media_id: str, quality: str = "2k", recaptcha_token: str = "", account: dict | None = None) -> dict:
+        ctx: dict = {
+            "recaptchaContext": {"token": recaptcha_token},
+            "sessionId": str(uuid.uuid4()),
+            "tool": "PINHOLE",
+        }
+        if account:
+            pid = _project_id(account)
+            if pid:
+                ctx["projectId"] = pid
+            ctx["userPaygateTier"] = _paygate(account)
+        payload: dict = {"mediaId": media_id, "clientContext": ctx}
+        if quality == "2k":
+            payload["targetResolution"] = "UPSAMPLE_IMAGE_RESOLUTION_2K"
+        elif quality == "4k":
+            payload["targetResolution"] = "UPSAMPLE_IMAGE_RESOLUTION_4K"
+        return payload
+
+    async def upscale_image(self, media_id: str, token: str, quality: str = "1k", recaptcha_token: str = "") -> dict:
+        """
+        quality: "1k" = gốc (không upscale, chỉ lấy URL redirect),
+                 "2k" = UPSAMPLE_IMAGE_RESOLUTION_2K,
+                 "4k" = UPSAMPLE_IMAGE_RESOLUTION_4K
+        """
+        payload = self.build_upscale_image_payload(media_id, quality=quality, recaptcha_token=recaptcha_token)
         return await _async_send(URL_UPSCALE_IMAGE, payload, token)
 
     # ---------------------------------------------------------------------------
@@ -848,8 +914,10 @@ class GoogleLabsAdapter:
             if isinstance(obj, dict):
                 url = obj.get("downloadUrl") or obj.get("uri") or obj.get("fifeUrl")
                 if url:
+                    mid = obj.get("mediaId") or obj.get("mediaGenerationId") or obj.get("name", "")
+                    logger.info("[Imagen] url_found media_id=%r obj_keys=%s", mid, list(obj.keys()))
                     medias.append({
-                        "mediaId": obj.get("mediaId") or obj.get("mediaGenerationId") or obj.get("name", ""),
+                        "mediaId": mid,
                         "downloadUrl": url,
                         "mimeType": obj.get("mimeType", "image/jpeg"),
                     })

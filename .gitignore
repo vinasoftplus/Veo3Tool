@@ -26,5 +26,7 @@ NOVA FRAME/*.log
 NOVA FRAME/Thumbs.db
 NOVA FRAME/chrome_user_data/
 NOVA FRAME/data/
+NOVA FRAME/build/
+NOVA FRAME/exemple/
 *.log
 Thumbs.db

@@ -8,6 +8,7 @@ import logging
 import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from services import job_store
@@ -21,17 +22,25 @@ logger = logging.getLogger("veo.router")
 # Helpers
 # ---------------------------------------------------------------------------
 
+_rr_counter: int = 0  # server-side round-robin counter
+
+
 def _get_account_or_raise(preferred_index: int | None = None):
+    global _rr_counter
     accounts = get_active_accounts()
     if not accounts:
         raise HTTPException(400, "Chua co account nao co token. Vao Cai dat de lay token.")
 
-    if preferred_index:
+    if preferred_index is not None and preferred_index > 0:
         for account in accounts:
             if int(account.get("_index") or 0) == int(preferred_index):
                 return account
+        # preferred not found — fall through to round-robin
 
-    return accounts[0]
+    # No preference → round-robin across all active accounts
+    idx = _rr_counter % len(accounts)
+    _rr_counter += 1
+    return accounts[idx]
 
 
 def _account_display(account: dict) -> str:
@@ -81,8 +90,9 @@ async def _get_recaptcha_token(job_type: str = "video", account_index: int = 1) 
         logger.warning("⚠️ Lỗi reCAPTCHA: %s — thử không có token", exc)
         return ""
 
-async def _poll_video_job(job_id: str, token: str, project_id: str, operations: list):
+async def _poll_video_job(job_id: str, token: str, operations: list, account_index: int = 0):
     from adapters.google_labs import GoogleLabsAdapter
+    from services.config_service import load_config
 
     adapter = GoogleLabsAdapter()
     max_polls = 120
@@ -90,7 +100,12 @@ async def _poll_video_job(job_id: str, token: str, project_id: str, operations: 
     for attempt in range(1, max_polls + 1):
         await asyncio.sleep(5)
         try:
-            result = await adapter.check_video_status(operations, token)
+            live_token = token
+            if account_index:
+                cfg = load_config()
+                acc = cfg.get(f"account{account_index}", {})
+                live_token = acc.get("ACCESS_TOKEN", "") or token
+            result = await adapter.check_video_status(operations, live_token)
             if result.get("ok"):
                 videos = adapter.parse_video_results(result.get("body", ""))
                 if videos:
@@ -101,20 +116,18 @@ async def _poll_video_job(job_id: str, token: str, project_id: str, operations: 
                             op_name = ((operations[0] or {}).get("operation") or {}).get("name", "")
                         elif idx < len(operations):
                             op_name = ((operations[idx] or {}).get("operation") or {}).get("name", "")
-                        outputs.append(
-                            {
-                                "video_url": v.get("videoUrl") or v.get("fifeUrl", ""),
-                                "media_id": v.get("mediaId", ""),
-                                "operation_name": v.get("operationName") or op_name,
-                            }
-                        )
+                        outputs.append({
+                            "video_url": v.get("videoUrl") or v.get("fifeUrl", ""),
+                            "media_id": v.get("mediaId", ""),
+                            "operation_name": v.get("operationName") or op_name,
+                        })
                     await job_store.update_job(job_id, "completed", outputs=outputs, progress=100)
                     logger.info("🎉 Job %s hoàn thành | outputs=%s", job_id[:8], len(outputs))
                     return
 
                 body = result.get("body", "")
                 if "MEDIA_GENERATION_STATUS_FAILED" in body or "FAILED" in body:
-                    logger.warning("❌ Job %s thất bại | %s", job_id[:8], body[:400].replace("\n", " "))
+                    logger.warning("❌ Job %s generation FAILED", job_id[:8])
                     await job_store.update_job(job_id, "failed", error="Generation failed")
                     return
 
@@ -123,15 +136,21 @@ async def _poll_video_job(job_id: str, token: str, project_id: str, operations: 
             else:
                 status = result.get("status")
                 body = str(result.get("body", ""))
-                if status in (401, 403):
-                    logger.warning("❌ Job %s bị từ chối | HTTP %s | %s", job_id[:8], status, body[:400].replace("\n", " "))
-                    await job_store.update_job(job_id, "failed", error="Token het han hoac khong hop le")
+                if status in (401, 403) and account_index:
+                    logger.warning("⚠️ Job %s HTTP %s — thử refresh token...", job_id[:8], status)
+                    from services.token_refresh_service import refresh_account_token
+                    refreshed = await refresh_account_token(account_index)
+                    if refreshed:
+                        logger.info("✅ Refresh token OK account #%s — tiếp tục poll", account_index)
+                        continue
+                    logger.warning("❌ Job %s refresh token thất bại", job_id[:8])
+                    await job_store.update_job(job_id, "failed", error="Token het han, refresh that bai")
                     return
-                logger.warning("⚠️ Job %s poll HTTP lỗi | status=%s | %s", job_id[:8], status, body[:300].replace("\n", " "))
+                logger.warning("⚠️ Job %s poll lỗi | status=%s | %s", job_id[:8], status, body[:300].replace("\n", " "))
         except Exception as exc:
-            logger.warning("⚠️ Poll job %s gặp exception: %s", job_id[:8], exc)
+            logger.warning("⚠️ Poll job %s exception: %s", job_id[:8], exc)
 
-    logger.warning("⏰ Job %s timeout sau %s láº§n poll", job_id[:8], max_polls)
+    logger.warning("⏰ Job %s timeout sau %s lần poll", job_id[:8], max_polls)
     await job_store.update_job(job_id, "failed", error="Timeout - khong nhan duoc video")
 
 
@@ -145,6 +164,7 @@ class T2VRequest(BaseModel):
     output_count: int = 1
     model: str = "auto"
     seed: int | None = None
+    account_index: int | None = None
 
 
 @router.post("/text-to-video")
@@ -152,7 +172,7 @@ async def text_to_video(req: T2VRequest):
     from adapters.google_labs import GoogleLabsAdapter, URL_T2V
     from routers.extension import request_browser_submit
 
-    account = _get_account_or_raise()
+    account = _get_account_or_raise(preferred_index=req.account_index)
     account_index = int(account.get("_index") or 1)
     adapter = GoogleLabsAdapter()
     logger.info("Using %s for text-to-video generation", _account_display(account))
@@ -225,7 +245,7 @@ async def text_to_video(req: T2VRequest):
                 },
             )
             logger.info("[JOB] text_to_video %s created | operations=%s", job_id[:8], len(operations))
-            asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), account.get("PROJECT_ID", ""), operations))
+            asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), operations, int(account.get("_index") or 0)))
             job_ids.append(job_id)
         except Exception as exc:
             job_id = await job_store.create_job("text_to_video", {"prompt": prompt})
@@ -247,11 +267,12 @@ async def image_to_video(
     aspect_ratio: str = Form("VIDEO_ASPECT_RATIO_LANDSCAPE"),
     output_count: int = Form(1),
     model: str = Form("auto"),
+    account_index: int = Form(0),
 ):
     from adapters.google_labs import GoogleLabsAdapter, URL_I2V
     from routers.extension import request_browser_submit
 
-    account = _get_account_or_raise()
+    account = _get_account_or_raise(preferred_index=account_index or None)
     account_index = int(account.get("_index") or 1)
     adapter = GoogleLabsAdapter()
     logger.info("Using %s for image-to-video generation", _account_display(account))
@@ -328,7 +349,7 @@ async def image_to_video(
         },
     )
     logger.info("[JOB] image_to_video %s created | operations=%s", job_id[:8], len(operations))
-    asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), account.get("PROJECT_ID", ""), operations))
+    asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), operations, int(account.get("_index") or 0)))
     return {"ok": True, "job_id": job_id}
 
 
@@ -435,7 +456,7 @@ async def startend_video(
         },
     )
     logger.info("📹 Tạo job startend_video %s | operations=%s", job_id[:8], len(operations))
-    asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), account.get("PROJECT_ID", ""), operations))
+    asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), operations, int(account.get("_index") or 0)))
     return {"ok": True, "job_id": job_id}
 
 
@@ -443,70 +464,86 @@ async def startend_video(
 # Reference/Consistent Video
 # ---------------------------------------------------------------------------
 
-class ConsistentVideoRequest(BaseModel):
-    prompt: str
-    character_ids: list[str]
-    aspect_ratio: str = "VIDEO_ASPECT_RATIO_PORTRAIT"
-    output_count: int = 1
-    model: str = "auto"
-    seed: int | None = None
-
-
 @router.post("/consistent-video")
-async def consistent_video(req: ConsistentVideoRequest):
-    from adapters.google_labs import GoogleLabsAdapter
-    from services.character_service import get_media_ids_for_account
+async def consistent_video(
+    prompt: str = Form(""),
+    aspect_ratio: str = Form("VIDEO_ASPECT_RATIO_PORTRAIT"),
+    output_count: int = Form(1),
+    model: str = Form("auto"),
+    seed: int | None = Form(None),
+    character_images: list[UploadFile] = File([]),
+    account_index: int = Form(0),
+):
+    """Tạo consistent video — upload ảnh nhân vật trực tiếp, không cần sync."""
+    from adapters.google_labs import GoogleLabsAdapter, URL_REF_VIDEO
+    from routers.extension import request_browser_submit, request_browser_upload_post
 
-    account = _get_account_or_raise()
+    account = _get_account_or_raise(preferred_index=account_index)
     account_index = int(account.get("_index") or 1)
     adapter = GoogleLabsAdapter()
     logger.info("Using %s for consistent-video generation", _account_display(account))
-    logger.info(
-        "🔑 consistent-video token/project | account #%s | token=%s | project=%s",
-        account_index,
-        _token_preview(account),
-        account.get("PROJECT_ID", ""),
-    )
     token_option = _token_option()
     recaptcha_token = "" if token_option == "Option 2" else await _get_recaptcha_token("video", account_index=account_index)
 
-    media_ids = await get_media_ids_for_account(req.character_ids, account)
-    if not media_ids:
-        raise HTTPException(400, "Cac character chua duoc sync len Labs. Vao trang Character de sync.")
+    # Upload ảnh nhân vật → lấy media_id từng ảnh
+    uploaded: list[tuple[str, str]] = []  # (b64, mime)
+    for img in character_images[:3]:
+        raw = await img.read()
+        if not raw:
+            continue
+        uploaded.append((base64.b64encode(raw).decode(), img.content_type or "image/jpeg"))
+
+    if not uploaded:
+        raise HTTPException(400, "Cần ít nhất 1 ảnh nhân vật")
 
     if token_option == "Option 2":
-        from adapters.google_labs import URL_REF_VIDEO
-        from routers.extension import request_browser_submit
+        # Extension upload+post: ảnh được upload qua extension, media_id điền tự động
         payload = adapter.build_reference_video_payload(
-            reference_media_ids=media_ids[:3],
-            prompt=req.prompt,
+            reference_media_ids=["__PLACEHOLDER_REF__"] * len(uploaded),
+            prompt=prompt,
             account=account,
-            aspect_ratio=req.aspect_ratio,
-            output_count=req.output_count,
-            model=req.model,
-            seed=req.seed,
+            aspect_ratio=aspect_ratio,
+            output_count=output_count,
+            model=model,
+            seed=seed,
             recaptcha_token="",
         )
-        browser_job_id = str(uuid.uuid4())
-        result = await request_browser_submit(
-            browser_job_id,
+        uploads = [
+            {"base64": b64, "mimeType": mime, "payloadPath": f"requests[0].referenceImages[{i}].mediaId"}
+            for i, (b64, mime) in enumerate(uploaded)
+        ]
+        result = await request_browser_upload_post(
+            str(uuid.uuid4()),
             job_type="video",
             url=URL_REF_VIDEO,
             payload=payload,
+            uploads=uploads,
             access_token=account.get("ACCESS_TOKEN", ""),
             account_index=account_index,
         )
     else:
+        # Option 1: upload ảnh trực tiếp qua API, lấy media_id
+        media_ids = []
+        for b64, mime in uploaded:
+            upload_result = await adapter.upload_image(b64, mime, account)
+            if not upload_result.get("ok"):
+                raise HTTPException(400, f"Upload ảnh nhân vật thất bại: {upload_result.get('body', '')}")
+            mid = adapter.parse_upload_media_id(upload_result.get("body", ""))
+            if mid:
+                media_ids.append(mid)
+        if not media_ids:
+            raise HTTPException(400, "Không upload được ảnh nhân vật")
         result = await adapter.reference_video(
             reference_media_ids=media_ids[:3],
-            prompt=req.prompt,
+            prompt=prompt,
             account=account,
-            aspect_ratio=req.aspect_ratio,
-            output_count=req.output_count,
-            model=req.model,
-            seed=req.seed,
+            aspect_ratio=aspect_ratio,
+            output_count=output_count,
+            model=model,
+            seed=seed,
             recaptcha_token=recaptcha_token,
         )
+
     if not result.get("ok"):
         logger.warning("❌ consistent-video API lỗi | %s", str(result.get("body", ""))[:400].replace("\n", " "))
         raise HTTPException(400, f"API error: {result.get('body', '')}")
@@ -515,9 +552,8 @@ async def consistent_video(req: ConsistentVideoRequest):
     job_id = await job_store.create_job(
         "consistent_video",
         {
-            "prompt": req.prompt,
-            "character_ids": req.character_ids,
-            "model": req.model,
+            "prompt": prompt,
+            "model": model,
             "operations": operations,
             "token": account.get("ACCESS_TOKEN", ""),
             "project_id": account.get("PROJECT_ID", ""),
@@ -526,7 +562,7 @@ async def consistent_video(req: ConsistentVideoRequest):
         },
     )
     logger.info("📹 Tạo job consistent_video %s | operations=%s", job_id[:8], len(operations))
-    asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), account.get("PROJECT_ID", ""), operations))
+    asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), operations, int(account.get("_index") or 0)))
     return {"ok": True, "job_id": job_id}
 
 
@@ -538,14 +574,16 @@ async def studio_video(
     model: str = Form("auto"),
     seed: int | None = Form(None),
     character_ids_json: str = Form("[]"),
+    ref_media_ids_json: str = Form("[]"),
     reference_images: list[UploadFile] = File([]),
+    account_index: int = Form(0),
 ):
     from adapters.google_labs import GoogleLabsAdapter, URL_REF_VIDEO, URL_I2V, URL_T2V
     from routers.extension import request_browser_submit, request_browser_upload_post
     from services.character_service import get_media_ids_for_account
 
-    account = _get_account_or_raise()
-    account_index = int(account.get("_index") or 1)
+    account = _get_account_or_raise(preferred_index=account_index)
+    account_index = int(account.get("_index") or 0)
     adapter = GoogleLabsAdapter()
     token_option = _token_option()
     recaptcha_token = "" if token_option == "Option 2" else await _get_recaptcha_token("video", account_index=account_index)
@@ -557,7 +595,21 @@ async def studio_video(
     except Exception:
         character_ids = []
 
+    try:
+        ref_media_ids = json.loads(ref_media_ids_json or "[]")
+        if not isinstance(ref_media_ids, list):
+            ref_media_ids = []
+        ref_media_ids = [str(x) for x in ref_media_ids if x]
+    except Exception:
+        ref_media_ids = []
+
+    logger.info("[StudioVideo] ref_media_ids=%s character_ids=%s", ref_media_ids, character_ids)
     media_ids = await get_media_ids_for_account([str(x) for x in character_ids], account)
+    # Thêm media_id từ refs có sẵn (ảnh gen đã upload lên Google, không cần upload lại)
+    for mid in ref_media_ids:
+        if mid not in media_ids:
+            media_ids.append(mid)
+    logger.info("[StudioVideo] final media_ids=%s uploaded_refs_count=pending", media_ids)
 
     uploaded_refs: list[tuple[str, str, str]] = []
     for ref in reference_images[:6]:
@@ -572,7 +624,7 @@ async def studio_video(
             )
         )
 
-    if token_option == "Option 2" and (media_ids or len(uploaded_refs) > 1):
+    if token_option == "Option 2" and (media_ids or len(uploaded_refs) >= 1):
         payload = adapter.build_reference_video_payload(
             reference_media_ids=(media_ids + ["__PLACEHOLDER_REF__"] * len(uploaded_refs))[:3],
             prompt=prompt,
@@ -705,7 +757,7 @@ async def studio_video(
             "token_option": token_option,
         },
     )
-    asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), account.get("PROJECT_ID", ""), operations))
+    asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), operations, int(account.get("_index") or 0)))
     return {"ok": True, "job_id": job_id}
 
 
@@ -757,53 +809,128 @@ async def save_job_output(job_id: str, body: dict):
 
 @router.post("/job/{job_id}/upscale")
 async def upscale_job(job_id: str, body: dict):
-    from adapters.google_labs import GoogleLabsAdapter
+    from adapters.google_labs import GoogleLabsAdapter, URL_UPSCALE_VIDEO
+    from routers.extension import request_browser_submit
 
-    account = _get_account_or_raise()
     adapter = GoogleLabsAdapter()
     job = await job_store.get_job(job_id)
     if not job:
         raise HTTPException(404, "Job khong tim thay")
 
-    operation_name = body.get("operation_name", "")
+    # Dùng đúng account đã tạo video — ưu tiên body > job params
+    job_params = job.get("params") or {}
+    body_account_index = body.get("account_index")
+    job_account_index = job_params.get("account_index")
+    preferred = body_account_index if body_account_index is not None else job_account_index
+    account = _get_account_or_raise(preferred_index=int(preferred) if preferred is not None else None)
+    account_index = int(account.get("_index") or 1)
+
+    # Fix 2: lấy aspect_ratio từ job params
+    job_aspect = job_params.get("aspect_ratio") or "VIDEO_ASPECT_RATIO_LANDSCAPE"
+
     output_index = int(body.get("output_index", 0) or 0)
+    operation_name = body.get("operation_name", "")
     if not operation_name:
         outputs = job.get("outputs") or []
         if 0 <= output_index < len(outputs):
             operation_name = outputs[output_index].get("operation_name", "")
     if not operation_name:
-        ops = (job.get("params") or {}).get("operations") or []
+        ops = job_params.get("operations") or []
         if 0 <= output_index < len(ops):
             operation_name = ((ops[output_index] or {}).get("operation") or {}).get("name", "")
         elif ops:
             operation_name = ((ops[0] or {}).get("operation") or {}).get("name", "")
-    if not operation_name:
+
+    media_id = ""
+    outputs = job.get("outputs") or []
+    if 0 <= output_index < len(outputs):
+        media_id = outputs[output_index].get("media_id", "")
+
+    if not operation_name and not media_id:
         raise HTTPException(400, "Missing operation_name")
 
-    result = await adapter.upscale_video(operation_name, account.get("ACCESS_TOKEN", ""))
-    if not result.get("ok"):
-        return {"ok": False, "body": result.get("body", "")}
+    resolved_media_id = adapter._resolve_upscale_media_id(operation_name, media_id)
+    if not resolved_media_id:
+        raise HTTPException(400, "Missing mediaId for upscale")
+
+    logger.info("[Upscale] mediaId=%r account=#%s aspect=%s", resolved_media_id, account_index, job_aspect)
+
+    # Fix 3: retry tự động tối đa 3 lần khi 403/500
+    result = None
+    for attempt in range(3):
+        upscale_payload = adapter.build_upscale_payload(resolved_media_id, account=account, recaptcha_token="")
+        # Patch aspect_ratio đúng theo video gốc
+        if upscale_payload.get("requests"):
+            upscale_payload["requests"][0]["aspectRatio"] = job_aspect
+
+        browser_job_id = str(uuid.uuid4())
+        result = await request_browser_submit(
+            browser_job_id,
+            job_type="video",
+            url=URL_UPSCALE_VIDEO,
+            payload=upscale_payload,
+            access_token=account.get("ACCESS_TOKEN", ""),
+            account_index=account_index,
+        )
+        status = result.get("status", 0)
+        if result.get("ok"):
+            break
+        if status in (403, 401):
+            logger.warning("[Upscale] attempt %s/%s → HTTP %s, retry...", attempt + 1, 3, status)
+            await asyncio.sleep(2)
+            continue
+        # 500 hoặc lỗi khác — retry luôn
+        logger.warning("[Upscale] attempt %s/%s → status=%s body=%s, retry...", attempt + 1, 3, status, str(result.get("body", ""))[:200])
+        await asyncio.sleep(2)
+
+    if not result or not result.get("ok"):
+        return {"ok": False, "body": result.get("body", "") if result else "No result"}
 
     upscale_operations = adapter.parse_operations(result.get("body", ""))
     if not upscale_operations:
         return {"ok": True, "started": True, "message": "Upscale request accepted"}
 
-    for _ in range(60):
+    for _ in range(80):
         await asyncio.sleep(3)
         status_result = await adapter.check_video_status(upscale_operations, account.get("ACCESS_TOKEN", ""))
         if not status_result.get("ok"):
             continue
         videos = adapter.parse_video_results(status_result.get("body", ""))
         if videos:
-            outputs = []
+            upscaled = []
             for v in videos:
-                outputs.append(
-                    {
-                        "video_url": v.get("videoUrl") or v.get("fifeUrl", ""),
-                        "media_id": v.get("mediaId", ""),
-                        "operation_name": v.get("operationName") or (((upscale_operations[0] or {}).get("operation") or {}).get("name", "")),
-                    }
-                )
-            return {"ok": True, "completed": True, "outputs": outputs}
+                upscaled.append({
+                    "video_url": v.get("videoUrl") or v.get("fifeUrl", ""),
+                    "media_id": v.get("mediaId", ""),
+                    "operation_name": v.get("operationName") or (((upscale_operations[0] or {}).get("operation") or {}).get("name", "")),
+                })
+            return {"ok": True, "completed": True, "outputs": upscaled}
 
     return {"ok": True, "started": True, "message": "Upscale da duoc gui, nhung chua co ket qua kip thoi gian cho"}
+
+
+# ---------------------------------------------------------------------------
+# Proxy download — tránh CORS khi tải video từ Google
+# ---------------------------------------------------------------------------
+@router.get("/proxy-download")
+async def proxy_download(url: str, filename: str = "video.mp4"):
+    import httpx
+    from fastapi.responses import StreamingResponse
+    import urllib.parse
+
+    if not url:
+        raise HTTPException(400, "Missing url")
+
+    async def stream():
+        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
+            async with client.stream("GET", url) as resp:
+                resp.raise_for_status()
+                async for chunk in resp.aiter_bytes(65536):
+                    yield chunk
+
+    safe_name = urllib.parse.quote(filename)
+    return StreamingResponse(
+        stream(),
+        media_type="video/mp4",
+        headers={"Content-Disposition": f'attachment; filename*=UTF-8\'\'{safe_name}'},
+    )

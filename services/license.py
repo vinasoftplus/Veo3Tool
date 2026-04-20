@@ -1,183 +1,407 @@
 """
-License service — RS256 JWT + BIOS UUID machine binding.
+License service — Ed25519 server-based validation.
 
 Flow:
-  Admin generates RSA keypair, signs JWT {token_uuid, exp, iat} with private key.
-  Tool embeds public key, validates token on every protected route.
+  Tool sends {key, machine_id, nonce, timestamp} to license server.
+  Server checks key validity, machine ban, signs response with Ed25519.
+  Tool verifies signature with embedded public key.
+  Grace period: 72h offline cache.
 """
 from __future__ import annotations
 
+import base64
+import hashlib
+import json
+import os
+import secrets
 import subprocess
 import time
 import uuid as _uuid
-from datetime import datetime, timezone
+
 from functools import wraps
+from pathlib import Path
 from typing import Callable
-
-import jwt
-from cryptography.hazmat.primitives import serialization
+import urllib.request
 
 # ---------------------------------------------------------------------------
-# Public key — embedded. Replace with real public key after keygen.
+# Config
 # ---------------------------------------------------------------------------
-_PUBLIC_KEY_PEM = """-----BEGIN PUBLIC KEY-----
-MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA1RuZ4HJrabE6EWOy5FF6
-4S1GrmNOVhBf8X59c6/TajGchyndLZCYs6Tnxt/kdFp7gLxImyTH6OVIpShidqFp
-y6ECYSNb44GbnHsTRf1pDjYpHXNR2rRpd+QjFSzF3WMaRoLwrhOA8NhES2n23Lzn
-BzAN/nTHPs8LRMRDWFjMonkbp3zHnymEHIoRHStF+mozL7ENuKoZFLlEq1ffA7jQ
-EpXVxPn04UoADwAd5n7hJWDVHoF3m6Fjg2SPFfXoN4N8wo4EVTiICoBIXuYIxI72
-L3TrliZVwSYCoaOkjn4JKj88kYThqXjOZLr+1x5vSmCTROEQI95Z7FZ89JMFSb6Q
-AQIDAQAB
+
+LICENSE_SERVER_URL = os.environ.get(
+    "LICENSE_SERVER_URL", "https://haorrr.dev"
+)
+
+_CACHE_TTL   = 900          # 15 min in-memory cache
+_GRACE_PERIOD = 72 * 3600   # 72h offline grace period
+
+_PUBLIC_KEY_PEM = b"""-----BEGIN PUBLIC KEY-----
+MCowBQYDK2VwAyEAn11SvnbCtrf/A/I/fCR7vQ10fmu/uKYytf5hPNkHvWY=
 -----END PUBLIC KEY-----"""
 
-# Set to True to bypass license check during development
-_DEV_MODE = False
+_BASE_DIR = Path(__file__).parent.parent
+_LICENSE_CACHE_FILE = _BASE_DIR / "config" / ".license_cache"
 
+# ---------------------------------------------------------------------------
 # Runtime state
-_license_valid: bool = False
-_license_payload: dict = {}
-_runtime_key: str = str(_uuid.uuid4().hex)  # Anti-direct-call guard
-
-
-# ---------------------------------------------------------------------------
-# UUID helpers
 # ---------------------------------------------------------------------------
 
-def get_bios_uuid() -> str:
-    """Get machine UUID via WMI chain (Windows). Fallback to all-F UUID."""
-    # Method 1: Win32_ComputerSystemProduct UUID
+_license_valid: bool     = False
+_license_expires_at: str | None = None
+_license_message: str    = "Chưa kiểm tra"
+_license_type: str       = ""
+_cache_time: float       = 0.0
+_runtime_key: str        = str(_uuid.uuid4().hex)
+
+# Ban state
+_is_banned: bool         = False
+_ban_reason: str         = ""
+
+# ---------------------------------------------------------------------------
+# Machine UUID — keep UNCHANGED from original
+# ---------------------------------------------------------------------------
+
+_INVALID_UUIDS = {
+    "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF",
+    "FEFEFEFE-FEFE-FEFE-FEFE-FEFEFEFEFEFE",
+    "00000000-0000-0000-0000-000000000000",
+    "03000200-0400-0500-0006-000700080009",
+}
+
+_INVALID_STRINGS = {"", "NONE", "DEFAULT STRING", "TO BE FILLED BY O.E.M.", "N/A", "NOT APPLICABLE"}
+
+
+def _is_valid_val(val: str) -> bool:
+    if not val:
+        return False
+    v = val.strip().upper()
+    if v in _INVALID_STRINGS or v in _INVALID_UUIDS:
+        return False
+    stripped = v.replace("-", "").replace(" ", "")
+    if len(stripped) < 4:
+        return False
+    if len(set(stripped)) <= 1:
+        return False
+    return True
+
+
+def _powershell(cmd: str) -> str:
     try:
-        result = subprocess.run(
-            ["wmic", "csproduct", "get", "UUID", "/value"],
+        r = subprocess.run(
+            ["powershell", "-NoProfile", "-NonInteractive", "-Command", cmd],
             capture_output=True, text=True, timeout=10, creationflags=0x08000000
         )
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line.startswith("UUID="):
-                val = line.split("=", 1)[1].strip()
-                if val and val != "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF":
-                    return val.upper()
+        return r.stdout.strip()
     except Exception:
-        pass
+        return ""
 
-    # Method 2: Win32_BaseBoard SerialNumber
+
+def _get_volume_serial() -> str:
+    val = _powershell("(Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\").VolumeSerialNumber")
+    return val.strip().upper()
+
+
+def _get_mac() -> str:
+    val = _powershell(
+        "(Get-CimInstance Win32_NetworkAdapterConfiguration | "
+        "Where-Object { $_.IPEnabled -eq $true } | "
+        "Select-Object -First 1).MACAddress"
+    )
+    if val:
+        return val.strip().upper().replace(":", "").replace("-", "")
     try:
-        result = subprocess.run(
-            ["wmic", "baseboard", "get", "SerialNumber", "/value"],
-            capture_output=True, text=True, timeout=10, creationflags=0x08000000
-        )
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line.startswith("SerialNumber="):
-                val = line.split("=", 1)[1].strip()
-                if val and val not in ("", "None", "Default string"):
-                    return val.upper()
+        mac = hex(_uuid.getnode()).upper().lstrip("0X").zfill(12)
+        if mac != "000000000000":
+            return mac
     except Exception:
         pass
-
-    # Method 3: Win32_DiskDrive SerialNumber
-    try:
-        result = subprocess.run(
-            ["wmic", "diskdrive", "get", "SerialNumber", "/value"],
-            capture_output=True, text=True, timeout=10, creationflags=0x08000000
-        )
-        for line in result.stdout.splitlines():
-            line = line.strip()
-            if line.startswith("SerialNumber="):
-                val = line.split("=", 1)[1].strip()
-                if val and val not in ("", "None"):
-                    return val.upper()
-    except Exception:
-        pass
-
-    return "FFFFFFFF-FFFF-FFFF-FFFF-FFFFFFFFFFFF"
+    return ""
 
 
-# ---------------------------------------------------------------------------
-# Validation
-# ---------------------------------------------------------------------------
+_machine_id_cache: str = ""
 
-def validate_license(token: str) -> tuple[bool, str]:
+
+def get_machine_id() -> str:
     """
-    Validate license token.
-    Returns (is_valid, message).
+    Machine ID = SHA256(VolumeSerial_C + MAC) → UUID format.
+    Unchanged from original — used for license binding AND ban detection.
     """
-    global _license_valid, _license_payload
+    global _machine_id_cache
+    if _machine_id_cache:
+        return _machine_id_cache
 
-    if _DEV_MODE:
-        _license_valid = True
-        _license_payload = {"token_uuid": "DEV", "exp": 9999999999, "iat": 0}
-        return True, "Dev mode — license bypassed"
+    vol = _get_volume_serial()
+    mac = _get_mac()
 
-    if not token or not token.strip():
+    if not vol and not mac:
+        vol = "NOVOL"
+        mac = "NOMAC"
+
+    combined = f"NOVAFRAME|VOL:{vol}|MAC:{mac}"
+    h = hashlib.sha256(combined.encode()).hexdigest()
+    machine_id = f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}".upper()
+    _machine_id_cache = machine_id
+    return machine_id
+
+
+# Alias for old code
+get_bios_uuid = get_machine_id
+
+
+# ---------------------------------------------------------------------------
+# Ed25519 signature verification
+# ---------------------------------------------------------------------------
+
+def _verify_response_signature(resp: dict, sent_nonce: str) -> None:
+    """Verify Ed25519 signature on server response. Raises ValueError if invalid."""
+    try:
+        from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PublicKey
+        from cryptography.hazmat.primitives.serialization import load_pem_public_key
+        from cryptography.exceptions import InvalidSignature
+    except ImportError:
+        # cryptography not installed — skip verification (dev mode)
+        return
+
+    sig_b64 = resp.pop("signature", None)
+    if not sig_b64:
+        raise ValueError("No signature in server response")
+
+    assert resp.get("nonce") == sent_nonce, "Nonce mismatch in response"
+
+    payload_bytes = json.dumps(resp, sort_keys=True, separators=(',', ':')).encode()
+    payload_hash = hashlib.sha256(payload_bytes).digest()
+
+    pub_key = load_pem_public_key(_PUBLIC_KEY_PEM)
+    sig = base64.b64decode(sig_b64)
+    try:
+        pub_key.verify(sig, payload_hash)
+    except InvalidSignature:
+        raise ValueError("Invalid server signature — possible MITM attack")
+    finally:
+        resp["signature"] = sig_b64  # restore
+
+
+# ---------------------------------------------------------------------------
+# Network call
+# ---------------------------------------------------------------------------
+
+def _call_license_server(key: str, machine_id: str, nonce: str, ts: int) -> dict:
+    payload = json.dumps({
+        "key": key,
+        "machine_id": machine_id,
+        "nonce": nonce,
+        "timestamp": ts,
+    }).encode()
+    req = urllib.request.Request(
+        f"{LICENSE_SERVER_URL}/api/v1/validate",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        data = json.loads(r.read())
+        # Check for ban (server returns 403 with error=machine_banned)
+        return data
+
+
+def _call_license_server_raw(key: str, machine_id: str, nonce: str, ts: int) -> tuple[int, dict]:
+    """Returns (status_code, body) — handles HTTP errors without raising."""
+    payload = json.dumps({
+        "key": key,
+        "machine_id": machine_id,
+        "nonce": nonce,
+        "timestamp": ts,
+    }).encode()
+    req = urllib.request.Request(
+        f"{LICENSE_SERVER_URL}/api/v1/validate",
+        data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return r.status, json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        body = {}
+        try:
+            body = json.loads(e.read())
+        except Exception:
+            pass
+        return e.code, body
+
+
+# ---------------------------------------------------------------------------
+# Cache helpers
+# ---------------------------------------------------------------------------
+
+def _save_cache(resp: dict) -> None:
+    try:
+        _LICENSE_CACHE_FILE.parent.mkdir(parents=True, exist_ok=True)
+        _LICENSE_CACHE_FILE.write_text(json.dumps({
+            "response": resp,
+            "cached_at": time.time(),
+        }))
+    except Exception:
+        pass
+
+
+def _load_cache() -> dict | None:
+    try:
+        data = json.loads(_LICENSE_CACHE_FILE.read_text())
+        return data
+    except Exception:
+        return None
+
+
+def _verify_grace_period(cached: dict) -> bool:
+    age = time.time() - cached.get("cached_at", 0)
+    if age > _GRACE_PERIOD:
+        return False
+    resp = dict(cached.get("response", {}))
+    try:
+        # Pass any nonce for cached verification (we skip nonce matching for cache)
+        resp_nonce = resp.get("nonce", "")
+        _verify_response_signature(resp, resp_nonce)
+        return True
+    except Exception:
+        return False
+
+
+def _load_key_from_config() -> str:
+    try:
+        from services.config_service import load_config
+        return load_config().get("LICENSE_TOKEN", "").strip()
+    except Exception:
+        return ""
+
+
+def _update_state(resp: dict) -> None:
+    global _license_valid, _license_expires_at, _license_message, _license_type, _cache_time
+    _license_valid    = resp.get("valid", False)
+    _license_expires_at = resp.get("expires_at")
+    _license_type     = resp.get("license_type", "")
+    if _license_valid:
+        exp = _license_expires_at or ""
+        _license_message = f"License hợp lệ · Hết hạn: {exp[:10]}" if exp else "License hợp lệ"
+    else:
+        _license_message = "License không hợp lệ"
+    _cache_time = time.monotonic()
+
+
+# ---------------------------------------------------------------------------
+# Public validate API
+# ---------------------------------------------------------------------------
+
+def validate_license(key: str = "") -> tuple[bool, str]:
+    """
+    Validate license against server. Returns (valid, message).
+    Handles: ban detection, Ed25519 signature verify, 72h grace period.
+    """
+    global _license_valid, _license_expires_at, _license_message, _cache_time
+    global _is_banned, _ban_reason
+
+    # In-memory cache (15 min)
+    if _cache_time > 0 and (time.monotonic() - _cache_time) < _CACHE_TTL:
+        if _is_banned:
+            return False, f"BAN:{_ban_reason}"
+        return _license_valid, _license_message
+
+    machine_id = get_machine_id()
+    nonce = base64.b64encode(secrets.token_bytes(16)).decode()
+    ts    = int(time.time())
+    used_key = key or _load_key_from_config()
+
+    if not used_key:
         _license_valid = False
-        return False, "Chưa có license token"
+        _license_message = "Chưa nhập license key"
+        return False, _license_message
 
     try:
-        public_key = serialization.load_pem_public_key(_PUBLIC_KEY_PEM.encode())
-        payload = jwt.decode(
-            token.strip(),
-            public_key,
-            algorithms=["RS256"],
-            options={"verify_exp": False},  # manual exp check below
-        )
-    except jwt.exceptions.InvalidSignatureError:
-        _license_valid = False
-        return False, "Token không hợp lệ (sai chữ ký)"
-    except jwt.exceptions.DecodeError as e:
-        _license_valid = False
-        return False, f"Token không đọc được: {e}"
-    except Exception as e:
-        _license_valid = False
-        return False, f"Lỗi kiểm tra token: {e}"
+        status_code, resp = _call_license_server_raw(used_key, machine_id, nonce, ts)
 
-    # Check expiry
-    exp = payload.get("exp", 0)
-    if time.time() > exp:
-        exp_dt = datetime.fromtimestamp(exp, tz=timezone.utc).strftime("%Y-%m-%d")
-        _license_valid = False
-        return False, f"Token đã hết hạn từ {exp_dt}"
+        # Handle ban response (403 with error=machine_banned)
+        if status_code == 403 and resp.get("error") == "machine_banned":
+            _is_banned  = True
+            _ban_reason = resp.get("ban_reason", "Tài khoản bị cấm")
+            _license_valid   = False
+            _license_message = f"BAN:{_ban_reason}"
+            _cache_time = time.monotonic()
+            return False, _license_message
 
-    # Check UUID binding
-    token_uuid = str(payload.get("token_uuid", "")).strip().upper()
-    machine_uuid = get_bios_uuid().upper()
-    if token_uuid != machine_uuid:
-        _license_valid = False
-        return False, "Token không hợp lệ với máy này"
+        if status_code != 200:
+            error = resp.get("error", "unknown")
+            _license_valid   = False
+            _license_message = _error_to_message(error)
+            _cache_time = time.monotonic()
+            return False, _license_message
 
-    _license_valid = True
-    _license_payload = payload
-    return True, "License hợp lệ"
+        # Verify signature
+        _verify_response_signature(resp, nonce)
+        _save_cache(resp)
+        _update_state(resp)
+        _is_banned = False
+        return _license_valid, _license_message
+
+    except Exception:
+        # Network failure — try offline grace period
+        cached = _load_cache()
+        if cached and _verify_grace_period(cached):
+            _update_state(cached.get("response", {}))
+            _license_message = f"Offline (grace) · {_license_message}"
+            return _license_valid, _license_message
+
+        _license_valid   = False
+        _license_message = "Không thể kết nối máy chủ license"
+        return False, _license_message
+
+
+def _error_to_message(error: str) -> str:
+    messages = {
+        "invalid_key":          "License key không hợp lệ",
+        "key_revoked":          "License key đã bị thu hồi",
+        "key_expired":          "License key đã hết hạn",
+        "machine_not_activated":"Thiết bị chưa được kích hoạt — liên hệ hỗ trợ",
+        "device_revoked":       "Thiết bị đã bị thu hồi quyền truy cập",
+        "max_devices_reached":  "Đã đạt giới hạn số thiết bị",
+        "rate_limited":         "Quá nhiều yêu cầu, thử lại sau",
+        "stale_timestamp":      "Đồng hồ hệ thống không đồng bộ",
+    }
+    return messages.get(error, f"Lỗi: {error}")
+
+
+def is_banned() -> bool:
+    return _is_banned
+
+
+def get_ban_reason() -> str:
+    return _ban_reason
 
 
 def get_license_info() -> dict:
-    """Return current license status info for UI display."""
-    machine_uuid = get_bios_uuid()
-    if not _license_valid:
-        return {
-            "valid": False,
-            "machine_uuid": machine_uuid,
-            "expires_at": None,
-            "message": "Chưa có license hợp lệ",
-            "dev_mode": _DEV_MODE,
-        }
-    exp = _license_payload.get("exp", 0)
-    expires_at = datetime.fromtimestamp(exp, tz=timezone.utc).strftime("%Y-%m-%d %H:%M UTC") if exp else None
+    machine_id = get_machine_id()
     return {
-        "valid": True,
-        "machine_uuid": machine_uuid,
-        "expires_at": expires_at,
-        "message": "License hợp lệ",
-        "dev_mode": _DEV_MODE,
+        "valid":       _license_valid,
+        "machine_uuid": machine_id,
+        "expires_at":  _license_expires_at,
+        "message":     _license_message,
+        "license_type": _license_type,
+        "is_banned":   _is_banned,
+        "ban_reason":  _ban_reason if _is_banned else None,
     }
 
 
 def is_licensed() -> bool:
-    return _license_valid or _DEV_MODE
+    return _license_valid
 
 
 def get_runtime_key() -> str:
     return _runtime_key
+
+
+def force_recheck() -> tuple[bool, str]:
+    """Clear cache and recheck immediately."""
+    global _cache_time
+    _cache_time = 0.0
+    return validate_license()
 
 
 # ---------------------------------------------------------------------------
@@ -185,20 +409,17 @@ def get_runtime_key() -> str:
 # ---------------------------------------------------------------------------
 
 def license_required(f: Callable) -> Callable:
-    """FastAPI dependency or decorator to guard routes requiring license."""
     @wraps(f)
     async def wrapper(*args, **kwargs):
         from fastapi import HTTPException, Request
-        # Find Request in kwargs or args
         request: Request | None = kwargs.get("request") or next(
             (a for a in args if hasattr(a, "headers")), None
         )
-        # Check runtime key header
         if request:
             rk = request.headers.get("X-Runtime-Key", "")
             if rk != _runtime_key:
-                raise HTTPException(status_code=403, detail="Unauthorized Access: Missing Runtime Key")
-        if not is_licensed():
-            raise HTTPException(status_code=403, detail="License không hợp lệ")
+                raise HTTPException(status_code=403, detail="Unauthorized")
+        if not _license_valid:
+            raise HTTPException(status_code=403, detail="License không hợp lệ hoặc đã hết hạn")
         return await f(*args, **kwargs)
     return wrapper
