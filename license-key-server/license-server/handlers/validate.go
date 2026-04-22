@@ -14,10 +14,11 @@ import (
 )
 
 type ValidateRequest struct {
-	Key       string `json:"key"`
-	MachineID string `json:"machine_id"`
-	Nonce     string `json:"nonce"`
-	Timestamp int64  `json:"timestamp"`
+	Key         string `json:"key"`
+	MachineID   string `json:"machine_id"`
+	MachineName string `json:"machine_name"`
+	Nonce       string `json:"nonce"`
+	Timestamp   int64  `json:"timestamp"`
 }
 
 func Validate(c *fiber.Ctx) error {
@@ -87,7 +88,7 @@ func Validate(c *fiber.Ctx) error {
 		if count >= license.MaxDevices {
 			return c.Status(403).JSON(fiber.Map{"error": "max_devices_reached"})
 		}
-		if aerr := db.CreateActivation(c.Context(), license.ID, req.MachineID, "", c.IP()); aerr != nil {
+		if aerr := db.CreateActivation(c.Context(), license.ID, req.MachineID, req.MachineName, c.IP()); aerr != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "server_error"})
 		}
 		activation, err = db.GetActivation(c.Context(), license.ID, req.MachineID)
@@ -101,8 +102,8 @@ func Validate(c *fiber.Ctx) error {
 		return c.Status(403).JSON(fiber.Map{"error": "device_revoked"})
 	}
 
-	// 8. Update last_checked
-	go db.UpdateLastChecked(c.Context(), activation.ID, c.IP())
+	// 8. Update last_checked + machine_name
+	go db.UpdateLastChecked(c.Context(), activation.ID, c.IP(), req.MachineName)
 
 	// 9. Build response (without signature)
 	licenseTypeStr := []string{"trial", "standard", "premium"}[license.LicenseType]

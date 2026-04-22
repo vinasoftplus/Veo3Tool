@@ -3,13 +3,12 @@ import type { PageServerLoad, Actions } from './$types';
 
 const BACKEND = process.env.VITE_BACKEND_URL || 'http://license-server:8080';
 
-export const load: PageServerLoad = async ({ cookies, url }) => {
+export const load: PageServerLoad = async ({ cookies }) => {
   const token = cookies.get('session');
   if (!token) throw redirect(302, '/login');
 
-  const licenseId = url.searchParams.get('license_id') || '';
   const res = await fetch(
-    `${BACKEND}/admin/activations${licenseId ? `?license_id=${licenseId}` : ''}`,
+    `${BACKEND}/admin/activations`,
     { headers: { Authorization: `Bearer ${token}` } }
   ).catch(() => null);
 

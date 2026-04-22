@@ -15,6 +15,7 @@
 </head>
 
 <body>
+<script>window.__APP_TOKEN__ = "{{ app_token }}"; window.__APP_VERSION__ = "{{ app_version }}";</script>
 
   <!-- License Screen -->
   <div id="license-screen"
@@ -233,6 +234,18 @@
         <span id="topbar-title" class="topbar-title">Studio</span>
         <div class="topbar-spacer"></div>
         <span id="license-status" style="font-size:11px;color:var(--text3);">DEV MODE</span>
+      </div>
+
+      <!-- Update banner (ẩn mặc định) -->
+      <div id="update-banner" style="display:none;background:linear-gradient(90deg,#7c3aed,#db2777);
+        color:#fff;padding:8px 16px;font-size:12px;display:none;align-items:center;gap:10px;flex-shrink:0;">
+        <span id="update-banner-text"></span>
+        <a id="update-banner-link" href="#" target="_blank"
+          style="background:rgba(255,255,255,0.2);color:#fff;padding:3px 10px;border-radius:20px;
+          font-size:11px;font-weight:600;text-decoration:none;white-space:nowrap;">
+          Tải xuống
+        </a>
+        <span style="margin-left:auto;font-size:10px;opacity:0.7;" id="update-banner-required"></span>
       </div>
 
       <!-- Content -->

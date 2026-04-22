@@ -14,6 +14,7 @@ import hashlib
 import json
 import os
 import secrets
+import socket
 import subprocess
 import time
 import uuid as _uuid
@@ -32,7 +33,7 @@ LICENSE_SERVER_URL = os.environ.get(
 )
 
 _CACHE_TTL   = 900          # 15 min in-memory cache
-_GRACE_PERIOD = 72 * 3600   # 72h offline grace period
+_GRACE_PERIOD = 24 * 3600   # 24h offline grace period
 
 _PUBLIC_KEY_PEM = b"""-----BEGIN PUBLIC KEY-----
 MCowBQYDK2VwAyEAn11SvnbCtrf/A/I/fCR7vQ10fmu/uKYytf5hPNkHvWY=
@@ -208,6 +209,7 @@ def _call_license_server_raw(key: str, machine_id: str, nonce: str, ts: int) -> 
     payload = json.dumps({
         "key": key,
         "machine_id": machine_id,
+        "machine_name": socket.gethostname(),
         "nonce": nonce,
         "timestamp": ts,
     }).encode()

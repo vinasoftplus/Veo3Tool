@@ -40,8 +40,14 @@
     a.click();
   }
 
-  $: if (form?.newKey)   { createdKey = form.newKey; showCreate = false; }
-  $: if (form?.bulkKeys) { bulkKeys = form.bulkKeys; showBulk = false; }
+  let editingDevices: number | null = null;
+  let editDevicesVal: number = 1;
+  function startEditDevices(l: any) { editingDevices = l.id; editDevicesVal = l.max_devices; }
+  function cancelEditDevices() { editingDevices = null; }
+
+  $: if (form?.newKey)        { createdKey = form.newKey; showCreate = false; }
+  $: if (form?.bulkKeys)      { bulkKeys = form.bulkKeys; showBulk = false; }
+  $: if (form?.updatedDevices){ editingDevices = null; }
 
   function confirmRevoke(e: Event) {
     if (!confirm('Thu hồi key này? Hành động không thể hoàn tác.')) {
@@ -134,15 +140,37 @@
               <div class="text-gray-500 text-xs">{l.customer_email || ''}</div>
             </td>
             <td class="px-4 py-3 text-gray-300 text-sm">{l.expires_at?.slice(0, 10) || '—'}</td>
-            <td class="px-4 py-3 text-gray-300 text-center">{l.max_devices}</td>
+            <td class="px-4 py-3 text-center">
+              {#if editingDevices === l.id}
+                <form method="POST" action="?/updateDevices" use:enhance
+                  on:submit={() => { l.max_devices = editDevicesVal; }}
+                  class="flex items-center gap-1 justify-center">
+                  <input type="hidden" name="id" value={l.id} />
+                  <input type="number" name="max_devices" bind:value={editDevicesVal}
+                    min="1" max="100"
+                    class="w-14 text-center bg-gray-700 border border-pink-500 rounded px-1 py-0.5 text-white text-sm focus:outline-none" />
+                  <button type="submit" class="text-green-400 hover:text-green-300 text-xs font-bold px-1">✓</button>
+                  <button type="button" on:click={cancelEditDevices} class="text-gray-500 hover:text-gray-300 text-xs px-1">✕</button>
+                </form>
+              {:else}
+                <span class="text-gray-300 cursor-pointer hover:text-pink-400 transition-colors"
+                  title="Click để sửa"
+                  on:click={() => startEditDevices(l)}>{l.max_devices} ✏️</span>
+              {/if}
+            </td>
             <td class="px-4 py-3">
               {#if l.machine_ids?.length}
-                {#each l.machine_ids as mid}
-                  <div class="font-mono text-xs text-gray-400 truncate max-w-[180px] cursor-pointer hover:text-pink-400 transition-colors"
-                    title="Click để copy: {mid}"
-                    on:click={() => navigator.clipboard.writeText(mid).then(() => alert('Đã copy UUID!'))}
-                  >{mid}</div>
-                {/each}
+                <div class="space-y-1">
+                  {#each l.machine_ids as mid, i}
+                    <div class="flex items-center gap-1">
+                      <span class="text-gray-500 text-xs w-4">{i+1}.</span>
+                      <div class="font-mono text-xs text-gray-400 cursor-pointer hover:text-pink-400 transition-colors"
+                        title="Click để copy: {mid}"
+                        on:click={() => navigator.clipboard.writeText(mid).then(() => alert('Đã copy UUID: ' + mid))}
+                      >{mid}</div>
+                    </div>
+                  {/each}
+                </div>
               {:else}
                 <span class="text-gray-600 text-xs">Chưa kích hoạt</span>
               {/if}

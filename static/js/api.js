@@ -1,29 +1,34 @@
 /* API helpers */
+function _appHeaders(extra) {
+  const h = Object.assign({ 'X-App-Token': window.__APP_TOKEN__ || '' }, extra || {});
+  return h;
+}
+
 const API = {
   async get(path) {
-    const r = await fetch(path);
+    const r = await fetch(path, { headers: _appHeaders() });
     return r.json();
   },
   async post(path, data) {
     const r = await fetch(path, {
       method: 'POST',
-      headers: {'Content-Type': 'application/json'},
+      headers: _appHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify(data),
     });
     return r.json();
   },
   async postForm(path, formData) {
-    const r = await fetch(path, { method: 'POST', body: formData });
+    const r = await fetch(path, { method: 'POST', headers: _appHeaders(), body: formData });
     return r.json();
   },
   async delete(path) {
-    const r = await fetch(path, { method: 'DELETE' });
+    const r = await fetch(path, { method: 'DELETE', headers: _appHeaders() });
     return r.json();
   },
   async patch(path, data) {
     const r = await fetch(path, {
       method: 'PATCH',
-      headers: {'Content-Type': 'application/json'},
+      headers: _appHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify(data),
     });
     return r.json();

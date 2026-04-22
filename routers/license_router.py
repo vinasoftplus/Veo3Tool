@@ -3,7 +3,7 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from services.license import (
-    get_license_info, validate_license, get_runtime_key,
+    get_license_info, validate_license,
     get_machine_id, force_recheck, is_banned, get_ban_reason,
 )
 
@@ -18,11 +18,6 @@ async def license_info():
 @router.get("/machine-uuid")
 async def machine_uuid():
     return {"machine_uuid": get_machine_id()}
-
-
-@router.get("/runtime-key")
-async def runtime_key():
-    return {"runtime_key": get_runtime_key()}
 
 
 @router.get("/auto-check")

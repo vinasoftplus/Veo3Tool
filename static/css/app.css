@@ -329,12 +329,14 @@ select option { background: #fff; color: var(--text); }
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 6px;
   padding: 8px 16px;
   border-radius: var(--radius);
   border: none;
   font-size: 13px;
   font-weight: 600;
+  text-align: center;
   cursor: pointer;
   transition: all var(--transition);
   white-space: nowrap;
@@ -2443,6 +2445,44 @@ html.dark .nav-badge.pro {
   box-shadow: 0 0 0 2px rgba(236,72,153,.15);
 }
 
+/* Upload wizard: center all actionable controls consistently */
+#lib-upload-popup .btn,
+#lib-upload-popup .lib-wiz-type-btn,
+#lib-upload-popup .lib-wiz-group-card,
+#lib-upload-popup .lib-popup-close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1.2;
+}
+
+#lib-upload-popup .btn svg,
+#lib-upload-popup .lib-wiz-type-btn svg,
+#lib-upload-popup .lib-wiz-group-card svg,
+#lib-upload-popup .lib-popup-close svg {
+  flex-shrink: 0;
+}
+
+#lib-upload-popup #lib-wiz-new-group-btn,
+#lib-upload-popup #lib-wiz-upload-btn,
+#lib-upload-popup #lib-wiz-cancel-btn,
+#lib-upload-popup #lib-wiz-back-btn {
+  justify-content: center !important;
+}
+
+#lib-upload-popup .lib-upload-zone {
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+#lib-upload-popup .lib-upload-zone span {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1.25;
+}
+
 /* ══ RIGHT-CLICK CONTEXT MENU ════════════════════════════════════ */
 .lib-ctx-menu {
   position: fixed; z-index: 10001;
@@ -2662,6 +2702,16 @@ body {
   min-height: 36px;
   border-radius: 11px;
   font-weight: 700;
+  justify-content: center;
+  text-align: center;
+}
+
+#license-retry-btn,
+#license-key-box button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .btn-primary {
@@ -2791,6 +2841,18 @@ html.dark .btn-secondary:hover:not(:disabled) {
   .t2v-card:hover {
     transform: none;
   }
+}
+
+/* Keep labels centered in settings + popup action buttons */
+#tab-settings button,
+#tab-settings .btn,
+#tab-settings .account-block button,
+#manual-token-modal button,
+#cookie-modal button,
+.studio-popup button,
+.studio-modal button {
+  text-align: center;
+  justify-content: center;
 }
 
 /* Round 2 polish: YTB tabs + Studio toolflow */
@@ -3725,9 +3787,11 @@ html.theme-dawn #studio-gen-all-videos {
 #studio-sticky-bar .studio-save-split {
   display: inline-flex;
   align-items: stretch;
+  flex-wrap: nowrap;
   border: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
   border-radius: 12px;
   overflow: visible;
+  white-space: nowrap;
 }
 
 #studio-sticky-bar #studio-choose-folder {
@@ -3745,15 +3809,33 @@ html.theme-dawn #studio-gen-all-videos {
 }
 
 #studio-sticky-bar #studio-save-quality-toggle {
-  min-width: 86px;
+  min-width: 72px;
+  padding: 0 10px;
+  font-size: 11px;
   border-radius: 0 !important;
-  border-left: 1px solid color-mix(in srgb, var(--accent) 26%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--accent) 26%, transparent) !important;
 }
 
 #studio-sticky-bar .studio-save-quality-wrap {
   position: relative;
   display: inline-flex;
   align-items: stretch;
+  flex: 0 0 auto;
+}
+
+#studio-sticky-bar #studio-save-all {
+  border-radius: 0 !important;
+  border-right: 0;
+}
+
+#studio-sticky-bar .studio-save-split>#studio-save-all,
+#studio-sticky-bar .studio-save-split .studio-save-quality-wrap>#studio-save-quality-toggle {
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+#studio-sticky-bar .studio-save-split .studio-save-quality-wrap>#studio-save-quality-toggle {
+  border-left: 1px solid color-mix(in srgb, var(--accent) 26%, transparent) !important;
 }
 
 #studio-save-quality-menu {
@@ -4140,6 +4222,18 @@ html.dark #studio-sticky-bar select option {
   box-shadow: 0 10px 22px rgba(79, 70, 229, .28);
 }
 
+html.theme-mist #tab-character.lib-tab-panel .lib-type-btn.active {
+  background: linear-gradient(135deg, #b7791f, #d6a13f);
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(183, 121, 31, .26);
+}
+
+html.theme-dawn #tab-character.lib-tab-panel .lib-type-btn.active {
+  background: linear-gradient(135deg, #ec4899, #be185d);
+  color: #fff;
+  box-shadow: 0 10px 20px rgba(190, 24, 93, .24);
+}
+
 #tab-character.lib-tab-panel .lib-body {
   gap: 14px;
   min-height: 0;
@@ -4279,6 +4373,18 @@ html.theme-dawn #tab-character.lib-tab-panel .lib-type-btn {
   color: #475569;
 }
 
+html.theme-mist #tab-character.lib-tab-panel .lib-group-item.active {
+  background: linear-gradient(135deg, rgba(183, 121, 31, .2), rgba(214, 161, 63, .14));
+  border-color: rgba(183, 121, 31, .34);
+  color: #7a4b12;
+}
+
+html.theme-dawn #tab-character.lib-tab-panel .lib-group-item.active {
+  background: linear-gradient(135deg, rgba(236, 72, 153, .2), rgba(244, 114, 182, .14));
+  border-color: rgba(190, 24, 93, .34);
+  color: #831843;
+}
+
 html.theme-mist #tab-character.lib-tab-panel .lib-card-label,
 html.theme-dawn #tab-character.lib-tab-panel .lib-card-label {
   color: #1f2937;
@@ -4390,10 +4496,6 @@ html.dark #studio-add-card-dialog .studio-modal-close:hover {
 
 .studio-cards.layout-horizontal .studio-card-right .studio-card-actions {
   grid-template-columns: 1fr 1fr;
-}
-
-.studio-cards.layout-horizontal .studio-card-right .studio-card-actions .studio-regenerate-video {
-  grid-column: 1 / -1;
 }
 
 /* Reference panel (both vertical/horizontal) */

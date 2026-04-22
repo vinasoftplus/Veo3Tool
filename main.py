@@ -11,6 +11,27 @@ from pathlib import Path
 BASE_DIR = Path(__file__).resolve().parent
 sys.path.insert(0, str(BASE_DIR))
 
+# Nuitka onefile: __file__ = temp dir, sys.argv[0] = real EXE location
+_EXE_DIR = Path(sys.argv[0]).resolve().parent
+_LOG_FILE = _EXE_DIR / "logs" / "startup.log"
+_LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
+
+def _log(msg: str):
+    ts = time.strftime("%Y-%m-%d %H:%M:%S")
+    line = f"[{ts}] {msg}\n"
+    try:
+        with open(_LOG_FILE, "a", encoding="utf-8") as f:
+            f.write(line)
+    except Exception:
+        pass
+    try:
+        sys.stdout.write(line)
+        sys.stdout.flush()
+    except Exception:
+        pass
+
+_log(f"=== App starting === BASE_DIR={BASE_DIR} EXE_DIR={_EXE_DIR}")
+
 # Ensure data directories exist
 for _d in ("data/jobs", "data/characters", "data/media_cache", "config", "chrome_user_data", "ffmpeg"):
     (BASE_DIR / _d).mkdir(parents=True, exist_ok=True)
@@ -20,7 +41,7 @@ HOST = "127.0.0.1"
 
 
 def kill_port(port: int):
-    """Kill bất kỳ process nào đang giữ port — Windows only."""
+    """Kill bat ky process nao dang giu port - Windows only."""
     try:
         import subprocess
         result = subprocess.run(
@@ -41,10 +62,16 @@ def kill_port(port: int):
 
 
 def start_api_server():
-    import uvicorn
-    from app import create_app
-    app = create_app()
-    uvicorn.run(app, host=HOST, port=PORT, log_level="warning", access_log=False)
+    try:
+        import uvicorn
+        from app import create_app
+        import app as _app_mod
+        _log(f"Starting API server... version={_app_mod.CURRENT_VERSION} path={_app_mod.__file__}")
+        app = create_app()
+        uvicorn.run(app, host=HOST, port=PORT, log_level="warning", access_log=False)
+    except Exception:
+        import traceback
+        _log("API server error:\n" + traceback.format_exc())
 
 
 def wait_for_server(timeout: float = 15.0):
@@ -60,22 +87,27 @@ def wait_for_server(timeout: float = 15.0):
 
 
 def main():
-    # Kill process cũ còn giữ port (nếu có)
+    _log("main() started")
+    # Kill process cu con giu port (neu co)
     kill_port(PORT)
-    time.sleep(0.5)  # Chờ OS release port
+    time.sleep(0.5)  # Cho OS release port
 
     # Start API in background thread
     server_thread = threading.Thread(target=start_api_server, daemon=True)
     server_thread.start()
 
     if not wait_for_server():
-        print("[ERROR] API server failed to start", file=sys.stderr)
+        try:
+            sys.stderr.write("[ERROR] API server failed to start\n")
+            sys.stderr.flush()
+        except Exception:
+            pass
         sys.exit(1)
 
     # Start PyWebView window
     import webview
     window = webview.create_window(
-        title="Dream Forge - Tool tạo video AI tự động",
+        title="Dream Forge - Tool tao video AI tu dong",
         url=f"http://{HOST}:{PORT}/",
         width=1440,
         height=900,

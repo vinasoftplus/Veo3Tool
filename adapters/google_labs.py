@@ -438,11 +438,14 @@ class GoogleLabsAdapter:
 
         def _pick(value: Any) -> str:
             text = str(value or "").strip()
-            if not text:
-                return ""
             if "/" in text:
                 last = text.rsplit("/", 1)[-1].strip()
-                if last:
+                # Keep normalization safe: only collapse resource paths when trailing segment
+                # looks like an ID (UUID-like or alphanumeric token with separators).
+                if last and (
+                    _UUID_PAT.match(last)
+                    or re.fullmatch(r"[A-Za-z0-9][A-Za-z0-9._:-]{5,}", last)
+                ):
                     return last
             return text
 

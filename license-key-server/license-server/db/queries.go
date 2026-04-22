@@ -86,11 +86,12 @@ func CountActiveActivations(ctx context.Context, licenseID int64) (int, error) {
 	return count, err
 }
 
-func UpdateLastChecked(ctx context.Context, activationID int64, ip string) error {
+func UpdateLastChecked(ctx context.Context, activationID int64, ip, machineName string) error {
 	_, err := pool.Exec(ctx, `
-		UPDATE activations SET last_checked_at = NOW(), ip_address = $2
+		UPDATE activations SET last_checked_at = NOW(), ip_address = $2,
+		machine_name = CASE WHEN $3 != '' THEN $3 ELSE machine_name END
 		WHERE id = $1
-	`, activationID, ip)
+	`, activationID, ip, machineName)
 	return err
 }
 

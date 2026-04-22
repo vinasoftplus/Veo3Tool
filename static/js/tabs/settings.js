@@ -5,7 +5,7 @@
 
   // ── Load ──────────────────────────────────────────────────────────────────
   async function loadSettings() {
-    const cfgRes = await API.get('/api/settings/config-full');
+    const cfgRes = await API.get('/api/settings/config');
     cfg = cfgRes.data || {};
 
     // Luôn set TOKEN_OPTION = Option 2 (cố định)

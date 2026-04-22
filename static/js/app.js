@@ -74,12 +74,14 @@ window.toggleDarkMode = function toggleDarkModeCompat() {
 };
 
 function switchTab(tabId) {
-  if (activeTab === tabId) return;
-  activeTab = tabId;
-  NAV_ITEMS.forEach(n => n.classList.toggle('active', n.dataset.tab === tabId));
-  TAB_PANELS.forEach(p => p.classList.toggle('active', p.id === `tab-${tabId}`));
-  document.getElementById('topbar-title').textContent =
-    document.querySelector(`.nav-item[data-tab="${tabId}"] .nav-label`)?.textContent || '';
+  const sameTab = activeTab === tabId;
+  if (!sameTab) {
+    activeTab = tabId;
+    NAV_ITEMS.forEach(n => n.classList.toggle('active', n.dataset.tab === tabId));
+    TAB_PANELS.forEach(p => p.classList.toggle('active', p.id === `tab-${tabId}`));
+    document.getElementById('topbar-title').textContent =
+      document.querySelector(`.nav-item[data-tab="${tabId}"] .nav-label`)?.textContent || '';
+  }
   const fnKey = `init_${tabId.replace(/-/g, '_')}`;
   const initFn = window[fnKey];
   if (typeof initFn === 'function') {
@@ -92,6 +94,9 @@ function switchTab(tabId) {
 NAV_ITEMS.forEach(n => n.addEventListener('click', () => switchTab(n.dataset.tab)));
 initThemeControls();
 switchTab('studio');
+window.addEventListener('load', () => {
+  switchTab(activeTab || 'studio');
+});
 
 document.getElementById('sidebar-toggle')?.addEventListener('click', () => {
   document.getElementById('sidebar')?.classList.toggle('collapsed');
@@ -172,7 +177,8 @@ function setLicenseStatus(info) {
 
   if (info.valid) {
     const exp = info.expires_at ? ` · Hết hạn: ${String(info.expires_at).slice(0, 10)}` : '';
-    if (el)     { el.textContent = `✓ Licensed${exp}`; el.style.color = 'var(--green)'; }
+    const ver = window.__APP_VERSION__ ? ` · v${window.__APP_VERSION__}` : '';
+    if (el)     { el.textContent = `✓ Licensed${exp}${ver}`; el.style.color = 'var(--green)'; }
     if (detail) { detail.textContent = `✓ License hợp lệ${exp}`; detail.style.color = 'var(--green)'; }
   } else {
     if (el)     { el.textContent = 'Chưa kích hoạt'; el.style.color = 'var(--red)'; }
@@ -308,6 +314,76 @@ checkLicense();
 (async () => {
   try {
     await API.post('/api/settings/auto-refresh-all', {});
+  } catch (e) {
+    // silent
+  }
+})();
+
+// Check update
+async function _doUpdate(downloadUrl, version, btnEl) {
+  if (btnEl) { btnEl.textContent = 'Đang tải...'; btnEl.style.pointerEvents = 'none'; }
+  try {
+    await API.post('/api/update/download-and-apply', { download_url: downloadUrl, version });
+    if (btnEl) btnEl.textContent = 'Đang khởi động lại...';
+  } catch (err) {
+    if (btnEl) { btnEl.textContent = 'Lỗi — thử lại'; btnEl.style.pointerEvents = 'auto'; }
+  }
+}
+
+function showUpdateBlockScreen(updateInfo) {
+  const screen   = document.getElementById('license-screen');
+  const iconArea = document.getElementById('license-icon-area');
+  const title    = document.getElementById('license-title');
+  const msg      = document.getElementById('license-message');
+  const retryBtn = document.getElementById('license-retry-btn');
+  const uuidBox  = document.getElementById('license-uuid-box');
+  const hint     = document.getElementById('license-contact-hint');
+  const keyBox   = document.getElementById('license-key-box');
+
+  if (iconArea) iconArea.innerHTML = '<svg width="52" height="52" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#ec4899)" stroke-width="1.5"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>';
+  if (title)    title.textContent = `Bắt buộc cập nhật lên v${updateInfo.version}`;
+  if (msg)      msg.innerHTML = updateInfo.changelog
+    ? `<span style="white-space:pre-line">${updateInfo.changelog}</span>`
+    : 'Phiên bản mới bắt buộc. Vui lòng cập nhật để tiếp tục sử dụng.';
+  if (uuidBox)  uuidBox.style.display  = 'none';
+  if (keyBox)   keyBox.style.display   = 'none';
+  if (hint)     hint.style.display     = 'none';
+
+  // Replace retry btn with update btn
+  if (retryBtn) {
+    retryBtn.textContent = 'Cập nhật ngay';
+    retryBtn.style.display = '';
+    retryBtn.onclick = () => _doUpdate(updateInfo.download_url, updateInfo.version, retryBtn);
+  }
+
+  if (screen) screen.style.display = 'flex';
+}
+
+(async () => {
+  try {
+    const res = await API.get('/api/update-info');
+    if (!res.has_update) return;
+
+    if (res.required) {
+      showUpdateBlockScreen(res);
+      return;
+    }
+
+    // Non-required: show banner
+    const banner = document.getElementById('update-banner');
+    if (!banner) return;
+    document.getElementById('update-banner-text').textContent =
+      `Có bản cập nhật mới: v${res.version} (hiện tại: v${res.current_version})`;
+    const reqEl = document.getElementById('update-banner-required');
+    if (reqEl) reqEl.textContent = '';
+
+    const btn = document.getElementById('update-banner-link');
+    btn.removeAttribute('href');
+    btn.textContent = 'Cập nhật ngay';
+    btn.style.cursor = 'pointer';
+    btn.onclick = (e) => { e.preventDefault(); _doUpdate(res.download_url, res.version, btn); };
+
+    banner.style.display = 'flex';
   } catch (e) {
     // silent
   }

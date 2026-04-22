@@ -51,7 +51,8 @@ async def request_captcha_token(job_id: str, job_type: str = "video", account_in
     try:
         token = await asyncio.wait_for(asyncio.shield(fut), timeout=60.0)
         if token:
-            logger.info("[recaptcha_token] :%s", token)
+            token_preview = f"{token[:20]}..." if len(token) > 20 else token
+            logger.info("[recaptcha_token] :%s", token_preview)
         else:
             logger.warning("⚠️ captcha job_%s trả về token rỗng", job_id[:8])
         return token
@@ -281,6 +282,17 @@ async def submit_browser(req: BrowserSubmitResponse):
             received_account,
             req.status,
         )
+        if (not req.ok) or int(req.status or 0) >= 400:
+            body_preview = str(req.body or "").replace("\n", " ")[:1200]
+            reason_preview = str(req.reason or "").replace("\n", " ")[:300]
+            logger.warning(
+                "❌ [Extension] submit-browser error | job_%s | account #%s | status=%s | reason=%s | body=%s",
+                req.jobId[:8],
+                received_account,
+                req.status,
+                reason_preview,
+                body_preview,
+            )
         fut.set_result(
             {
                 "ok": bool(req.ok),

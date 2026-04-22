@@ -13,6 +13,8 @@ services:
       JWT_SECRET: ${JWT_SECRET}
       TOTP_ENCRYPT_KEY: ${TOTP_ENCRYPT_KEY}
       PORT: ${PORT:-8080}
+    volumes:
+      - downloads_data:/srv/downloads
     depends_on:
       postgres: { condition: service_healthy }
       redis:    { condition: service_healthy }
@@ -29,7 +31,7 @@ services:
       dockerfile: Dockerfile
     restart: always
     environment:
-      BODY_SIZE_LIMIT: "4096"
+      BODY_SIZE_LIMIT: "314572800"
       ORIGIN: https://${DOMAIN}
       VITE_BACKEND_URL: https://${DOMAIN}
     networks: [license_net]
@@ -75,6 +77,7 @@ services:
       - ./docker/Caddyfile:/etc/caddy/Caddyfile
       - caddy_data:/data
       - caddy_config:/config
+      - downloads_data:/srv/downloads
     environment:
       DOMAIN: ${DOMAIN}
     networks: [license_net]
@@ -104,6 +107,7 @@ volumes:
   cache_data:
   caddy_data:
   caddy_config:
+  downloads_data:
 
 networks:
   license_net:

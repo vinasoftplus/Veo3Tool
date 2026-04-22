@@ -36,6 +36,7 @@ func main() {
 	handlers.SetConfig(cfg)
 
 	app := fiber.New(fiber.Config{
+		BodyLimit: 300 * 1024 * 1024, // 300MB cho upload EXE
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		},
@@ -65,16 +66,18 @@ func main() {
 	api.Use(middleware.RateLimitIP(redisclient.Client()))
 	api.Post("/validate", handlers.Validate)
 	api.Post("/activate", handlers.Activate)
+	api.Get("/version", handlers.GetVersion)
 
 	// Admin endpoints (JWT protected)
 	admin := app.Group("/admin")
-	admin.Post("/auth/login", handlers.AdminLogin)
+	admin.Post("/auth/login", middleware.RateLimitLogin(redisclient.Client()), handlers.AdminLogin)
 
 	adminAuth := admin.Group("", middleware.JWTAuth(cfg.JWTSecret))
 	adminAuth.Get("/licenses", handlers.ListLicenses)
 	adminAuth.Post("/licenses", handlers.CreateLicense)
 	adminAuth.Get("/licenses/:id", handlers.GetLicense)
 	adminAuth.Patch("/licenses/:id/revoke", handlers.RevokeLicense)
+	adminAuth.Patch("/licenses/:id/max-devices", handlers.UpdateMaxDevices)
 	adminAuth.Get("/activations", handlers.ListActivations)
 	adminAuth.Post("/activations/:id/revoke", handlers.RevokeActivation)
 	adminAuth.Get("/stats", handlers.GetStats)
@@ -82,6 +85,9 @@ func main() {
 	adminAuth.Get("/bans", handlers.ListBans)
 	adminAuth.Post("/bans", handlers.BanMachine)
 	adminAuth.Delete("/bans/:id", handlers.UnbanMachine)
+	// Update management
+	adminAuth.Get("/update", handlers.GetUpdateInfo)
+	adminAuth.Post("/update/upload", handlers.UploadUpdate)
 
 	log.Printf("License server starting on :%s", cfg.Port)
 	log.Fatal(app.Listen(":" + cfg.Port))

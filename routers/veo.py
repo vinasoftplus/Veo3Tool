@@ -350,7 +350,7 @@ async def image_to_video(
     )
     logger.info("[JOB] image_to_video %s created | operations=%s", job_id[:8], len(operations))
     asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), operations, int(account.get("_index") or 0)))
-    return {"ok": True, "job_id": job_id}
+    return {"ok": True, "job_id": job_id, "account_index": int(account.get("_index") or 0)}
 
 
 # ---------------------------------------------------------------------------
@@ -582,7 +582,8 @@ async def studio_video(
     from routers.extension import request_browser_submit, request_browser_upload_post
     from services.character_service import get_media_ids_for_account
 
-    account = _get_account_or_raise(preferred_index=account_index)
+    requested_account_index = int(account_index or 0)
+    account = _get_account_or_raise(preferred_index=requested_account_index or None)
     account_index = int(account.get("_index") or 0)
     adapter = GoogleLabsAdapter()
     token_option = _token_option()
@@ -624,119 +625,160 @@ async def studio_video(
             )
         )
 
-    if token_option == "Option 2" and (media_ids or len(uploaded_refs) >= 1):
-        payload = adapter.build_reference_video_payload(
-            reference_media_ids=(media_ids + ["__PLACEHOLDER_REF__"] * len(uploaded_refs))[:3],
-            prompt=prompt,
-            account=account,
-            aspect_ratio=aspect_ratio,
-            output_count=output_count,
-            model=model,
-            seed=seed,
-            recaptcha_token="",
-        )
-        uploads = []
-        existing_count = min(len(media_ids), 3)
-        remaining_slots = max(0, 3 - existing_count)
-        for i, (b64, mime, _name) in enumerate(uploaded_refs[:remaining_slots]):
-            uploads.append(
-                {
-                    "base64": b64,
-                    "mimeType": mime,
-                    "payloadPath": f"requests[0].referenceImages[{existing_count + i}].mediaId",
-                }
+    async def _submit_for_account(account_obj: dict, account_idx: int) -> dict:
+        if token_option == "Option 2" and (media_ids or uploaded_refs):
+            clean_media_ids = [m for m in media_ids if m and "__PLACEHOLDER" not in m]
+            existing_count = min(len(clean_media_ids), 3)
+            remaining_slots = max(0, 3 - existing_count)
+            uploads = []
+            for i, (b64, mime, _name) in enumerate(uploaded_refs[:remaining_slots]):
+                uploads.append(
+                    {
+                        "base64": b64,
+                        "mimeType": mime,
+                        "payloadPath": f"requests[0].referenceImages[{existing_count + i}].mediaId",
+                    }
+                )
+            payload = adapter.build_reference_video_payload(
+                reference_media_ids=(clean_media_ids + ["__PLACEHOLDER_REF__"] * len(uploads))[:3],
+                prompt=prompt,
+                account=account_obj,
+                aspect_ratio=aspect_ratio,
+                output_count=output_count,
+                model=model,
+                seed=seed,
+                recaptcha_token="",
             )
-        result = await request_browser_upload_post(
-            str(uuid.uuid4()),
-            job_type="video",
-            url=URL_REF_VIDEO,
-            payload=payload,
-            uploads=uploads,
-            access_token=account.get("ACCESS_TOKEN", ""),
-            account_index=account_index,
-        )
-    elif token_option == "Option 2" and uploaded_refs:
-        first_b64, first_mime, _ = uploaded_refs[0]
-        payload = adapter.build_image_to_video_payload(
-            media_id="__PLACEHOLDER__",
-            prompt=prompt,
-            account=account,
-            aspect_ratio=aspect_ratio,
-            output_count=output_count,
-            model=model,
-            recaptcha_token="",
-        )
-        result = await request_browser_upload_post(
-            str(uuid.uuid4()),
-            job_type="video",
-            url=URL_I2V,
-            payload=payload,
-            uploads=[{"base64": first_b64, "mimeType": first_mime, "payloadPath": "requests[0].startImage.mediaId"}],
-            access_token=account.get("ACCESS_TOKEN", ""),
-            account_index=account_index,
-        )
-    elif token_option == "Option 2":
-        payload = adapter.build_text_to_video_payload(
-            prompt=prompt,
-            account=account,
-            aspect_ratio=aspect_ratio,
-            output_count=output_count,
-            model=model,
-            seed=seed,
-            recaptcha_token="",
-        )
-        result = await request_browser_submit(
-            str(uuid.uuid4()),
-            job_type="video",
-            url=URL_T2V,
-            payload=payload,
-            access_token=account.get("ACCESS_TOKEN", ""),
-            account_index=account_index,
-        )
-    else:
+            if uploads:
+                return await request_browser_upload_post(
+                    str(uuid.uuid4()),
+                    job_type="video",
+                    url=URL_REF_VIDEO,
+                    payload=payload,
+                    uploads=uploads,
+                    access_token=account_obj.get("ACCESS_TOKEN", ""),
+                    account_index=account_idx,
+                )
+            # Chỉ có media_ids sẵn, không cần upload → dùng browser_submit
+            return await request_browser_submit(
+                str(uuid.uuid4()),
+                job_type="video",
+                url=URL_REF_VIDEO,
+                payload=payload,
+                access_token=account_obj.get("ACCESS_TOKEN", ""),
+                account_index=account_idx,
+            )
+        if token_option == "Option 2" and uploaded_refs:
+            first_b64, first_mime, _ = uploaded_refs[0]
+            payload = adapter.build_image_to_video_payload(
+                media_id="__PLACEHOLDER__",
+                prompt=prompt,
+                account=account_obj,
+                aspect_ratio=aspect_ratio,
+                output_count=output_count,
+                model=model,
+                recaptcha_token="",
+            )
+            return await request_browser_upload_post(
+                str(uuid.uuid4()),
+                job_type="video",
+                url=URL_I2V,
+                payload=payload,
+                uploads=[{"base64": first_b64, "mimeType": first_mime, "payloadPath": "requests[0].startImage.mediaId"}],
+                access_token=account_obj.get("ACCESS_TOKEN", ""),
+                account_index=account_idx,
+            )
+        if token_option == "Option 2":
+            payload = adapter.build_text_to_video_payload(
+                prompt=prompt,
+                account=account_obj,
+                aspect_ratio=aspect_ratio,
+                output_count=output_count,
+                model=model,
+                seed=seed,
+                recaptcha_token="",
+            )
+            return await request_browser_submit(
+                str(uuid.uuid4()),
+                job_type="video",
+                url=URL_T2V,
+                payload=payload,
+                access_token=account_obj.get("ACCESS_TOKEN", ""),
+                account_index=account_idx,
+            )
+
+        media_ids_local = list(media_ids)
         for b64, mime, _name in uploaded_refs:
-            upload_result = await adapter.upload_image(b64, mime, account)
+            upload_result = await adapter.upload_image(b64, mime, account_obj)
             if upload_result.get("ok"):
                 mid = adapter.parse_upload_media_id(upload_result.get("body", ""))
                 if mid:
-                    media_ids.append(mid)
-        media_ids = [mid for mid in media_ids if mid][:3]
-        if media_ids:
-            result = await adapter.reference_video(
-                reference_media_ids=media_ids,
+                    media_ids_local.append(mid)
+        media_ids_local = [mid for mid in media_ids_local if mid][:3]
+        if media_ids_local:
+            return await adapter.reference_video(
+                reference_media_ids=media_ids_local,
                 prompt=prompt,
-                account=account,
+                account=account_obj,
                 aspect_ratio=aspect_ratio,
                 output_count=output_count,
                 model=model,
                 seed=seed,
                 recaptcha_token=recaptcha_token,
             )
-        elif uploaded_refs:
+        if uploaded_refs:
             first_b64, first_mime, _ = uploaded_refs[0]
-            upload_result = await adapter.upload_image(first_b64, first_mime, account)
+            upload_result = await adapter.upload_image(first_b64, first_mime, account_obj)
             if not upload_result.get("ok"):
                 raise HTTPException(400, f"Upload ảnh tham chiếu thất bại: {upload_result.get('body', '')}")
             media_id = adapter.parse_upload_media_id(upload_result.get("body", ""))
-            result = await adapter.image_to_video(
+            return await adapter.image_to_video(
                 media_id=media_id or "",
                 prompt=prompt,
-                account=account,
+                account=account_obj,
                 aspect_ratio=aspect_ratio,
                 output_count=output_count,
                 model=model,
                 recaptcha_token=recaptcha_token,
             )
-        else:
-            result = await adapter.text_to_video(
-                prompt=prompt,
-                account=account,
-                aspect_ratio=aspect_ratio,
-                output_count=output_count,
-                model=model,
-                seed=seed,
-                recaptcha_token=recaptcha_token,
+        return await adapter.text_to_video(
+            prompt=prompt,
+            account=account_obj,
+            aspect_ratio=aspect_ratio,
+            output_count=output_count,
+            model=model,
+            seed=seed,
+            recaptcha_token=recaptcha_token,
+        )
+
+    result = await _submit_for_account(account, account_index)
+
+    # Khi FE không pin account (account_index=0), ref_media_id có thể thuộc account khác.
+    # Fallback: nếu 404 với ref_media_ids, thử lại tuần tự trên account khác.
+    if (
+        not result.get("ok")
+        and token_option == "Option 2"
+        and requested_account_index <= 0
+        and ref_media_ids
+        and int(result.get("status") or 0) == 404
+    ):
+        current_idx = int(account.get("_index") or 0)
+        for alt in get_active_accounts():
+            alt_idx = int(alt.get("_index") or 0)
+            if not alt_idx or alt_idx == current_idx:
+                continue
+            logger.warning(
+                "[StudioVideo] HTTP 404 với account #%s, thử fallback account #%s do ref_media_ids có thể khác owner",
+                current_idx,
+                alt_idx,
             )
+            alt_result = await _submit_for_account(alt, alt_idx)
+            if alt_result.get("ok"):
+                account = alt
+                account_index = alt_idx
+                result = alt_result
+                logger.info("[StudioVideo] fallback thành công với account #%s", alt_idx)
+                break
 
     if not result.get("ok"):
         raise HTTPException(400, f"API error: {result.get('body', '')}")

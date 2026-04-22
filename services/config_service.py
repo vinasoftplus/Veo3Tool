@@ -1,5 +1,5 @@
 """
-Config service — load/save config.json and settings.json.
+Config service - load/save config.json and settings.json.
 Adapted from RUN_VEO_4.0 SettingsManager.
 """
 from __future__ import annotations
@@ -12,22 +12,19 @@ from typing import Any
 
 
 def _resolve_base_dir() -> Path:
-    # Nuitka onefile set env var NUITKA_ONEFILE_PARENT trỏ đúng về exe gốc
     nuitka_parent = os.environ.get("NUITKA_ONEFILE_PARENT", "")
     if nuitka_parent:
         base = Path(nuitka_parent).resolve().parent
-        print(f"[config] Nuitka onefile → BASE_DIR={base!r}", flush=True)
+        print(f"[config] Nuitka onefile -> BASE_DIR={base!r}", flush=True)
         return base
 
-    # PyInstaller
     if getattr(sys, "frozen", False):
         base = Path(sys.executable).resolve().parent
-        print(f"[config] PyInstaller frozen → BASE_DIR={base!r}", flush=True)
+        print(f"[config] PyInstaller frozen -> BASE_DIR={base!r}", flush=True)
         return base
 
-    # Dev mode
     base = Path(__file__).resolve().parent.parent
-    print(f"[config] Dev mode → BASE_DIR={base!r}", flush=True)
+    print(f"[config] Dev mode -> BASE_DIR={base!r}", flush=True)
     return base
 
 
@@ -39,8 +36,14 @@ SETTINGS_FILE = CONFIG_DIR / "settings.json"
 CHROME_USER_DATA_ROOT = BASE_DIR / "chrome_user_data"
 
 # Ensure dirs exist at import time
-for _p in (CONFIG_DIR, DATA_DIR, DATA_DIR / "jobs", DATA_DIR / "characters",
-           DATA_DIR / "media_cache", CHROME_USER_DATA_ROOT):
+for _p in (
+    CONFIG_DIR,
+    DATA_DIR,
+    DATA_DIR / "jobs",
+    DATA_DIR / "characters",
+    DATA_DIR / "media_cache",
+    CHROME_USER_DATA_ROOT,
+):
     _p.mkdir(parents=True, exist_ok=True)
 
 

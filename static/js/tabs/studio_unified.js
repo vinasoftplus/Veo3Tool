@@ -453,7 +453,6 @@
       <div class="studio-card-actions">
         <button class="btn btn-primary studio-generate-image" ${card.busyImage ? 'disabled' : ''}>${card.busyImage ? 'Đang tạo hình...' : 'Tạo hình'}</button>
         <button class="btn btn-primary studio-generate-video" ${card.busyVideo ? 'disabled' : ''}>${card.busyVideo ? 'Đang tạo video...' : 'Tạo video'}</button>
-        ${card.status === 'completed' ? `<button class="btn btn-secondary studio-regenerate-video">Tạo lại</button>` : ''}
       </div>
     `;
 
@@ -543,11 +542,6 @@
     el.querySelector('.studio-clear-ref')?.addEventListener('click', () => { card.refs = []; card.refIndex = 0; renderCard(card, false); updateStats(); });
     el.querySelector('.studio-generate-image').addEventListener('click', () => genImages(card.id));
     el.querySelector('.studio-generate-video').addEventListener('click', () => {
-      _getGlobalVideoSem()(async () => {
-        await genVideo(card.id);
-      });
-    });
-    el.querySelector('.studio-regenerate-video')?.addEventListener('click', () => {
       _getGlobalVideoSem()(async () => {
         await genVideo(card.id);
       });
@@ -764,7 +758,12 @@
     }
     if (refMediaIds.length) fd.append('ref_media_ids_json', JSON.stringify(refMediaIds));
     const res = await API.postForm('/api/veo/studio-video', fd);
-    return { ok: res.ok, jobId: res.job_id || '', error: res.detail || res.message || '' };
+    return {
+      ok: res.ok,
+      jobId: res.job_id || '',
+      accountIndex: res.account_index || 0,
+      error: res.detail || res.message || ''
+    };
   }
 
   async function genVideo(cardId, accountIndex = null) {
@@ -774,10 +773,14 @@
 
     // Auto-detect account từ ảnh gen trong card (images hoặc refs có account_index)
     if (accountIndex === null) {
-      const imgWithAcc = card.images.find(img => img.account_index);
-      const refWithAcc = card.refs.find(ref => ref.account_index);
-      if (imgWithAcc) accountIndex = imgWithAcc.account_index;
-      else if (refWithAcc) accountIndex = refWithAcc.account_index;
+      if (card.videoAccountIndex) {
+        accountIndex = card.videoAccountIndex;
+      } else {
+        const imgWithAcc = card.images.find(img => img.account_index);
+        const refWithAcc = card.refs.find(ref => ref.account_index);
+        if (imgWithAcc) accountIndex = imgWithAcc.account_index;
+        else if (refWithAcc) accountIndex = refWithAcc.account_index;
+      }
     }
 
     const MAX_RETRY = 3;
@@ -792,8 +795,6 @@
 
       card.status = 'running';
       card.busyVideo = true;
-      card.outputs = [];
-      card.outputIndex = 0;
       card.error = '';
       renderCard(card, false);
       updateStats();
@@ -805,24 +806,43 @@
         const req = await createVideo(card, accountIndex);
         if (!req.ok || !req.jobId) throw new Error(req.error || 'Tạo video thất bại');
         card.jobId = req.jobId;
-        card.videoAccountIndex = accountIndex;
+        card.videoAccountIndex = req.accountIndex || accountIndex || null;
 
         await pollJob(req.jobId, '/api/veo/job', async job => {
           if (stopAll) return;
           if (job.status === 'completed' || job.status === 'done') {
-            card.outputs = Array.isArray(job.outputs) ? job.outputs.filter(Boolean) : [];
-            card.status = card.outputs.length ? 'completed' : 'failed';
+            const outputKey = (out) => String(out?.video_url || out?.videoUri || out?.fifeUrl || '').trim();
+            const newOutputs = Array.isArray(job.outputs) ? job.outputs.filter(Boolean) : [];
+            const prevCount = Array.isArray(card.outputs) ? card.outputs.length : 0;
+            let addedCount = 0;
+            if (!Array.isArray(card.outputs)) card.outputs = [];
+            if (newOutputs.length) {
+              const existingKeys = new Set(card.outputs.map(outputKey).filter(Boolean));
+              const dedupedNew = [];
+              for (const out of newOutputs) {
+                const key = outputKey(out);
+                if (key && existingKeys.has(key)) continue;
+                if (key) existingKeys.add(key);
+                dedupedNew.push(out);
+              }
+              if (dedupedNew.length) {
+                card.outputs = card.outputs.concat(dedupedNew);
+                card.outputIndex = prevCount;
+                addedCount = dedupedNew.length;
+              }
+            }
+            card.status = (addedCount > 0 || card.outputs.length) ? 'completed' : 'failed';
             card.busyVideo = false;
-            card.error = card.outputs.length ? '' : 'Không có video trả về';
+            card.error = (addedCount > 0 || card.outputs.length) ? '' : 'Không có video trả về';
             renderCard(card, false);
             updateStats();
-            if (card.outputs.length) {
+            if (addedCount > 0) {
               succeeded = true;
               if (cfg.autoUpscale) {
                 card.status = 'processing';
                 renderCard(card, false);
                 updateStats();
-                const upscaleOk = await upscaleCard(card.id, 0);
+                const upscaleOk = await upscaleCard(card.id, card.outputIndex || 0);
                 if (!upscaleOk) {
                   card.status = 'failed';
                   card.error = 'Upscale 1080p thất bại — ấn "Upscale lại" để thử lại rồi tự tải về';
@@ -832,7 +852,7 @@
                   return;
                 }
               }
-              if (cfg.autoDownload) await saveOutputs(card.id);
+              if (cfg.autoDownload) await saveOutputs(card.id, card.outputIndex || 0);
             } else {
               shouldRetry = true;
             }
@@ -854,21 +874,27 @@
     }
 
     // Hết retry mà vẫn fail
-    card.status = 'failed';
+    if (card.outputs && card.outputs.length) {
+      card.status = 'completed';
+      card.error = '';
+    } else {
+      card.status = 'failed';
+      if (!card.error) card.error = `Thất bại sau ${MAX_RETRY} lần thử`;
+    }
     card.busyVideo = false;
-    if (!card.error) card.error = `Thất bại sau ${MAX_RETRY} lần thử`;
     renderCard(card, false);
     updateStats();
   }
 
-  async function saveOutputs(cardId) {
+  async function saveOutputs(cardId, startIndex = 0) {
     const card = cards.find(c => c.id === cardId);
     if (!card) return;
     // Nếu chưa chọn folder, tự mở dialog chọn folder trước để tránh browser hỏi "allow multiple downloads"
     if (!cfg.saveHandle && window.showDirectoryPicker) {
       await chooseFolder();
     }
-    for (let i = 0; i < card.outputs.length; i++) {
+    const from = Math.max(0, parseInt(startIndex, 10) || 0);
+    for (let i = from; i < card.outputs.length; i++) {
       const out = card.outputs[i];
       const url = out.video_url || out.videoUri || out.fifeUrl;
       if (url) await saveVideo(url, `studio_${String(cards.indexOf(card) + 1).padStart(3, '0')}_${i + 1}.mp4`, cfg.saveHandle);
@@ -1512,6 +1538,15 @@
     clone.refIndex = src.refIndex;
     clone.chars = src.chars.map(ch => ({ ...ch }));
     clone.images = src.images.map(img => ({ ...img }));
+    clone.outputs = (src.outputs || []).map(out => ({ ...out }));
+    clone.outputIndex = Math.max(0, Math.min(src.outputIndex || 0, Math.max(0, clone.outputs.length - 1)));
+    clone.videoAccountIndex = src.videoAccountIndex || null;
+    clone.jobId = src.jobId || null;
+    clone.status = clone.outputs.length ? 'completed' : 'idle';
+    clone.error = '';
+    clone.busyVideo = false;
+    clone.upscaling = false;
+    clone.upscaleFailed = false;
     const idx = cards.findIndex(c => c.id === cardId);
     cards.splice(idx + 1, 0, clone);
     rerender();

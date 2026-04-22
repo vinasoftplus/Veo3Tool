@@ -91,7 +91,16 @@ class TokenCollector:
                 return
             except Exception:
                 pass
-        print(msg)
+        import sys, logging
+        stream = getattr(sys, "stdout", None)
+        if stream is not None:
+            try:
+                stream.write(f"{msg}\n")
+                stream.flush()
+                return
+            except Exception:
+                pass
+        logging.getLogger(__name__).info(msg)
 
     def _is_port_open(self, port: int) -> bool:
         try:

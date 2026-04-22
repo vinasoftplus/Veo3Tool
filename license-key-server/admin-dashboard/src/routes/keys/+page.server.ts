@@ -76,4 +76,19 @@ export const actions: Actions = {
     });
     return { revoked: true };
   },
+
+  updateDevices: async ({ request, cookies }) => {
+    const token = cookies.get('session');
+    if (!token) throw redirect(302, '/login');
+    const form = await request.formData();
+    const id = form.get('id');
+    const maxDevices = Number(form.get('max_devices') || 1);
+    const res = await fetch(`${BACKEND}/admin/licenses/${id}/max-devices`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+      body: JSON.stringify({ max_devices: maxDevices }),
+    });
+    if (!res.ok) return fail(400, { error: 'Cập nhật thất bại' });
+    return { updatedDevices: true };
+  },
 };

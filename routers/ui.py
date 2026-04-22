@@ -12,4 +12,9 @@ router = APIRouter()
 
 @router.get("/", response_class=HTMLResponse)
 async def index(request: Request):
-    return templates.TemplateResponse(request, "index.html")
+    from services.license import get_runtime_key
+    from app import CURRENT_VERSION
+    return templates.TemplateResponse(request, "index.html", {
+        "app_token": get_runtime_key(),
+        "app_version": CURRENT_VERSION,
+    })

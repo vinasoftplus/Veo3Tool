@@ -12,21 +12,21 @@ data/
 config/config.json
 config/private_key.pem
 config/public_key.pem
-NOVA FRAME/config/config.json
-NOVA FRAME/chrome_user_data/
-NOVA FRAME/data/
-NOVA FRAME/logs/
-NOVA FRAME/output/
-NOVA FRAME/venv/
-NOVA FRAME/__pycache__/
-NOVA FRAME/*.py[cod]
-NOVA FRAME/*.db
-NOVA FRAME/*.sqlite
-NOVA FRAME/*.log
-NOVA FRAME/Thumbs.db
-NOVA FRAME/chrome_user_data/
-NOVA FRAME/data/
-NOVA FRAME/build/
-NOVA FRAME/exemple/
+config/config.json
+chrome_user_data/
+data/
+logs/
+output/
+venv/
+__pycache__/
+*.py[cod]
+*.db
+*.sqlite
+*.log
+Thumbs.db
+chrome_user_data/
+data/
+build/
+exemple/
 *.log
 Thumbs.db

@@ -4,7 +4,9 @@
   # Admin dashboard tại /admin-manage
   handle /admin-manage* {
     uri strip_prefix /admin-manage
-    reverse_proxy admin-dashboard:3000
+    reverse_proxy admin-dashboard:3000 {
+      header_down Location ^/(.*)$ /admin-manage/$1
+    }
   }
 
   # API license server (public endpoint cho tool)
@@ -21,6 +23,13 @@
       header_up X-Forwarded-For {http.request.remote}
       header_up X-Real-IP {http.request.remote}
     }
+  }
+
+  # EXE downloads (static file server)
+  handle /downloads/* {
+    root * /srv/downloads
+    uri strip_prefix /downloads
+    file_server
   }
 
   # Health check

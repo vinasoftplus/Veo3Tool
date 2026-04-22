@@ -58,7 +58,7 @@ func CheckRateLimitIP(ctx context.Context, ip string) (bool, error) {
 	return count > 100, nil
 }
 
-// RateLimitMachine: 50 req/day per machine
+// RateLimitMachine: 500 req/day per machine (tool checks every 15min = ~96/day)
 func CheckRateLimitMachine(ctx context.Context, machineID string) (bool, error) {
 	key := "rl:machine:" + machineID
 	count, err := rdb.Incr(ctx, key).Result()
@@ -68,5 +68,5 @@ func CheckRateLimitMachine(ctx context.Context, machineID string) (bool, error) 
 	if count == 1 {
 		rdb.Expire(ctx, key, 24*time.Hour)
 	}
-	return count > 50, nil
+	return count > 1500, nil
 }

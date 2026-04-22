@@ -191,6 +191,28 @@ func RevokeLicense(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"revoked": true})
 }
 
+type UpdateMaxDevicesRequest struct {
+	MaxDevices int `json:"max_devices"`
+}
+
+func UpdateMaxDevices(c *fiber.Ctx) error {
+	id := c.Params("id")
+	var req UpdateMaxDevicesRequest
+	if err := c.BodyParser(&req); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid_request"})
+	}
+	if req.MaxDevices < 1 || req.MaxDevices > 100 {
+		return c.Status(400).JSON(fiber.Map{"error": "max_devices must be 1-100"})
+	}
+	pool := db.Pool()
+	_, err := pool.Exec(context.Background(),
+		"UPDATE licenses SET max_devices = $1 WHERE id = $2", req.MaxDevices, id)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "db_error"})
+	}
+	return c.JSON(fiber.Map{"updated": true, "max_devices": req.MaxDevices})
+}
+
 // ─── Activations ───────────────────────────────────────────────────
 
 func ListActivations(c *fiber.Ctx) error {
@@ -222,7 +244,7 @@ func ListActivations(c *fiber.Ctx) error {
 		rows.Scan(&id, &licID, &machineID, &machineName, &activatedAt, &lastChecked, &ip, &isRevoked)
 		result = append(result, map[string]any{
 			"id": id, "license_id": licID,
-			"machine_id": machineID[:8] + "...", "machine_name": machineName,
+			"machine_id": machineID, "machine_name": machineName,
 			"activated_at": activatedAt, "last_checked_at": lastChecked,
 			"ip_address": ip, "is_revoked": isRevoked,
 		})
@@ -233,11 +255,22 @@ func ListActivations(c *fiber.Ctx) error {
 func RevokeActivation(c *fiber.Ctx) error {
 	id := c.Params("id")
 	pool := db.Pool()
-	_, err := pool.Exec(context.Background(),
-		"UPDATE activations SET is_revoked = TRUE WHERE id = $1", id)
+	ctx := context.Background()
+
+	// Get license_id before revoking
+	var licenseID int64
+	pool.QueryRow(ctx, "SELECT license_id FROM activations WHERE id = $1", id).Scan(&licenseID)
+
+	_, err := pool.Exec(ctx, "UPDATE activations SET is_revoked = TRUE WHERE id = $1", id)
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "db_error"})
 	}
+
+	// Auto-revoke the linked license
+	if licenseID > 0 {
+		pool.Exec(ctx, "UPDATE licenses SET status = 'revoked' WHERE id = $1", licenseID)
+	}
+
 	return c.JSON(fiber.Map{"revoked": true})
 }
 
@@ -297,7 +330,8 @@ func BanMachine(c *fiber.Ctx) error {
 	}
 
 	pool := db.Pool()
-	_, err := pool.Exec(context.Background(), `
+	ctx := context.Background()
+	_, err := pool.Exec(ctx, `
 		INSERT INTO banned_machines (machine_id, ban_reason, is_active)
 		VALUES ($1, $2, TRUE)
 		ON CONFLICT (machine_id) DO UPDATE SET ban_reason = $2, is_active = TRUE, banned_at = NOW()
@@ -305,6 +339,22 @@ func BanMachine(c *fiber.Ctx) error {
 	if err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "db_error"})
 	}
+
+	// Revoke all activations for this machine and their linked licenses
+	rows, _ := pool.Query(ctx,
+		"UPDATE activations SET is_revoked = TRUE WHERE machine_id = $1 AND is_revoked = FALSE RETURNING license_id",
+		req.MachineID)
+	var licenseIDs []int64
+	for rows.Next() {
+		var lid int64
+		rows.Scan(&lid)
+		licenseIDs = append(licenseIDs, lid)
+	}
+	rows.Close()
+	for _, lid := range licenseIDs {
+		pool.Exec(ctx, "UPDATE licenses SET status = 'revoked' WHERE id = $1", lid)
+	}
+
 	db.InsertAuditLog(c.Context(), "machine_banned", nil, nil, req.MachineID, c.IP(), map[string]any{
 		"reason": req.BanReason,
 	})

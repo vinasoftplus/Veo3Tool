@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="vi">
+
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Dream Forge Extention</title>
+  <link rel="stylesheet" href="popup.css">
+</head>
+
+<body>
+  <main class="popup-root">
+    <header class="popup-header">
+      <div class="brand-block">
+        <h1 class="brand-title">Dream Forge Extention</h1>
+        <p class="brand-subtitle">Token Bridge + Proxy Control</p>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="Tabs">
+      <button class="tab active" data-tab="token" type="button">Token</button>
+      <button class="tab" data-tab="proxy" type="button">Proxy</button>
+    </nav>
+
+    <section class="tab-content active" id="tab-token">
+      <div class="panel">
+        <div class="row">
+          <span class="label">Kết nối app</span>
+          <span id="app-status" class="badge err">Chưa kết nối</span>
+        </div>
+        <div class="row">
+          <span class="label">Bearer token</span>
+          <span id="token-status" class="badge err">Chưa có</span>
+        </div>
+        <div class="token-ts" id="token-ts">-</div>
+        <div class="token-box" id="token-preview">Chưa bắt được token. Mở labs.google/fx/tools/flow và thực hiện thao tác bất kỳ.</div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="btn-copy" type="button">Sao chép token</button>
+          <button class="btn btn-ghost" id="btn-refresh" type="button">Làm mới</button>
+        </div>
+      </div>
+    </section>
+
+    <section class="tab-content" id="tab-proxy">
+      <div class="proxy-status-bar">
+        <div class="proxy-stat">
+          <div class="proxy-stat-label">Trạng thái</div>
+          <div class="proxy-stat-value" id="px-status">Tắt</div>
+        </div>
+        <div class="proxy-stat">
+          <div class="proxy-stat-label">Proxy</div>
+          <div class="proxy-stat-value" id="px-count">0</div>
+        </div>
+        <div class="proxy-stat">
+          <div class="proxy-stat-label">Hiện tại</div>
+          <div class="proxy-stat-value is-small" id="px-current">-</div>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">Thêm proxy</h2>
+        <div class="field">
+          <label for="px-bulk-input">host:port | user:pass@host:port | socks5://host:port</label>
+          <textarea id="px-bulk-input" placeholder="1.2.3.4:8080&#10;user:pass@1.2.3.5:8080&#10;socks5://1.2.3.6:1080"></textarea>
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-primary" id="px-add-btn" type="button">Thêm</button>
+          <button class="btn btn-ghost" id="px-export-btn" type="button">Export</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">Điều khiển</h2>
+        <div class="toggle-row">
+          <span>Bật proxy</span>
+          <label class="toggle">
+            <input type="checkbox" id="px-enable-toggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="toggle-row">
+          <span>Tự động xoay (phút)</span>
+          <label class="toggle">
+            <input type="checkbox" id="px-autorotate-toggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="field">
+          <input type="number" id="px-rotate-interval" min="1" value="5" placeholder="Phút">
+        </div>
+        <div class="toggle-row">
+          <span>Xoay theo prompt (mỗi N cái)</span>
+          <label class="toggle">
+            <input type="checkbox" id="px-prompt-rotate-toggle">
+            <span class="slider"></span>
+          </label>
+        </div>
+        <div class="field">
+          <input type="number" id="px-prompt-interval" min="1" value="3" placeholder="N prompts">
+        </div>
+        <div class="btn-row">
+          <button class="btn btn-ghost" id="px-rotate-now-btn" type="button">Xoay ngay</button>
+          <button class="btn btn-danger" id="px-clear-btn" type="button">Xóa tất cả</button>
+        </div>
+      </div>
+
+      <div class="panel">
+        <h2 class="section-title">Danh sách proxy</h2>
+        <div class="proxy-list" id="px-list">
+          <div class="empty">Chưa có proxy</div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="popup.js"></script>
+</body>
+
+</html>

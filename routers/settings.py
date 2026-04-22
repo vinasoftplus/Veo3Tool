@@ -37,15 +37,20 @@ async def get_config():
     return {"ok": True, "data": safe}
 
 
-@router.get("/config-full")
-async def get_config_full():
-    """Return full config including tokens — for internal use."""
-    return {"ok": True, "data": load_config()}
-
-
 @router.post("/config")
 async def save_config_route(req: SaveConfigRequest):
-    save_config(req.config)
+    _ALLOWED_CONFIG_KEYS = {
+        "GEMINI_API_KEY", "GEMINI_API_KEYS", "YOUTUBE_API_KEY",
+        "SEED_MODE", "SEED_VALUE", "CREATE_IMAGE_MODEL",
+        "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE",
+        "LICENSE_TOKEN",
+    }
+    current = load_config()
+    # Allow account keys + whitelisted top-level keys only
+    for k, v in req.config.items():
+        if k.startswith("account") or k in _ALLOWED_CONFIG_KEYS:
+            current[k] = v
+    save_config(current)
     return {"ok": True}
 
 
@@ -71,13 +76,23 @@ async def save_account_route(req: SaveAccountRequest):
     return {"ok": True}
 
 
+_SAVE_VALUE_WHITELIST = {
+    "GEMINI_API_KEY", "GEMINI_API_KEYS", "YOUTUBE_API_KEY",
+    "SEED_MODE", "SEED_VALUE", "CREATE_IMAGE_MODEL",
+    "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE",
+    "LICENSE_TOKEN",
+}
+
 @router.post("/save-value")
 async def save_value(body: dict):
     """Save a single config key-value."""
+    from fastapi import HTTPException
+    key = str(body.get("key", ""))
+    if not key.startswith("account") and key not in _SAVE_VALUE_WHITELIST:
+        raise HTTPException(400, f"Key '{key}' không được phép ghi")
     cfg = load_config()
-    cfg[body["key"]] = body["value"]
-    # Keep GEMINI_API_KEY in sync with first key from GEMINI_API_KEYS
-    if body["key"] == "GEMINI_API_KEYS":
+    cfg[key] = body["value"]
+    if key == "GEMINI_API_KEYS":
         first = next((k.strip() for k in str(body["value"]).splitlines() if k.strip()), "")
         cfg["GEMINI_API_KEY"] = first
     save_config(cfg)

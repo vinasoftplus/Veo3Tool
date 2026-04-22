@@ -82,8 +82,8 @@ async function pollScriptJob(jobId) {
 // ── Master Script (shared result card helpers) ───────────────────────────────
 function _msShowResult(statusText, outputText) {
   const resultCard = document.getElementById('ms-result-card');
-  const statusEl   = document.getElementById('ms-status');
-  const outputEl   = document.getElementById('ms-output');
+  const statusEl = document.getElementById('ms-status');
+  const outputEl = document.getElementById('ms-output');
   resultCard.style.display = '';
   statusEl.textContent = statusText;
   outputEl.textContent = outputText || '';
@@ -91,7 +91,7 @@ function _msShowResult(statusText, outputText) {
 
 function _msBindActions() {
   const copyBtn = document.getElementById('ms-copy-btn');
-  const dlBtn   = document.getElementById('ms-download-btn');
+  const dlBtn = document.getElementById('ms-download-btn');
   if (copyBtn && !copyBtn._bound) {
     copyBtn._bound = true;
     copyBtn.addEventListener('click', () => {
@@ -126,19 +126,19 @@ window.init_master_script = function () {
   if (ampBtn && !ampBtn._bound) {
     ampBtn._bound = true;
     ampBtn.addEventListener('click', async () => {
-      const idea     = document.getElementById('amp-idea')?.value.trim();
-      const scenes   = parseInt(document.getElementById('amp-scenes')?.value || '0', 10);
+      const idea = document.getElementById('amp-idea')?.value.trim();
+      const scenes = parseInt(document.getElementById('amp-scenes')?.value || '0', 10);
       const durationMins = parseInt(document.getElementById('amp-duration')?.value || '0', 10);
       const duration = durationMins * 60;
-      const vtype    = document.getElementById('amp-type')?.value || 'youtube_long';
+      const vtype = document.getElementById('amp-type')?.value || 'youtube_long';
 
-      if (!idea)     return toast('Vui lòng nhập Idea', 'error');
-      if (!scenes || scenes < 1)   return toast('Số Scenes phải ≥ 1', 'error');
+      if (!idea) return toast('Vui lòng nhập Idea', 'error');
+      if (!scenes || scenes < 1) return toast('Số Scenes phải ≥ 1', 'error');
       if (!durationMins || durationMins < 1) return toast('Độ dài video phải ≥ 1 phút', 'error');
 
       ampBtn.disabled = true;
       ampBtn.textContent = '⏳ Đang tạo...';
-      _msShowResult('Đang gửi lên Gemini 2.5 Flash...', '');
+      _msShowResult('AI đang xử lí', '');
       document.getElementById('ms-actions').style.display = 'none';
 
       try {
@@ -171,7 +171,7 @@ window.init_master_script = function () {
 
       msBtn.disabled = true;
       msBtn.textContent = '⏳ Đang phân tích...';
-      _msShowResult('Đang gửi lên Gemini 2.5 Flash...', '');
+      _msShowResult('AI đang xử lí...', '');
       document.getElementById('ms-actions').style.display = 'none';
 
       try {
@@ -213,7 +213,7 @@ async function pollMasterPromptJob(jobId, apiBase, doneMsg) {
         toast('Lỗi: ' + (job.error || ''), 'error');
         return;
       }
-      statusEl.textContent = `⏳ Gemini đang xử lý... (${job.progress || 0}%)`;
+      statusEl.textContent = `⏳ AI đang xử lý... (${job.progress || 0}%)`;
     } catch (e) { /* retry */ }
   }
   statusEl.textContent = '⚠️ Timeout — thử lại sau';
@@ -289,14 +289,14 @@ function renderVHResults(results) {
     return;
   }
 
-  const fmtNum = n => (n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n));
+  const fmtNum = n => (n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n));
   const fmtDate = s => s ? new Date(s).toLocaleDateString('vi-VN') : '';
   const parseDuration = s => {
     if (!s) return '';
     const m = s.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
     if (!m) return s;
-    const h = m[1]||0, min = m[2]||0, sec = m[3]||0;
-    return h > 0 ? `${h}:${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${min}:${String(sec).padStart(2,'0')}`;
+    const h = m[1] || 0, min = m[2] || 0, sec = m[3] || 0;
+    return h > 0 ? `${h}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${min}:${String(sec).padStart(2, '0')}`;
   };
 
   el.innerHTML = `
@@ -323,7 +323,7 @@ function renderVHResults(results) {
           <tbody id="vh-table-body">
             ${results.map((v, i) => `
               <tr class="vh-row" style="border-bottom:1px solid var(--border);transition:background .15s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
-                <td style="padding:10px 12px;color:var(--text3);font-weight:700;">${i+1}</td>
+                <td style="padding:10px 12px;color:var(--text3);font-weight:700;">${i + 1}</td>
                 <td style="padding:8px 12px;">
                   <a href="${v.url}" target="_blank">
                     <img src="${v.thumbnail}" alt="" style="width:80px;height:45px;object-fit:cover;border-radius:4px;display:block;">
@@ -334,9 +334,9 @@ function renderVHResults(results) {
                     onmouseover="this.style.color='var(--pink)'" onmouseout="this.style.color='var(--text)'">${v.title}</a>
                   <div style="color:var(--text3);font-size:11px;">${v.channelTitle}</div>
                 </td>
-                <td style="padding:10px 12px;text-align:right;font-weight:700;color:var(--text);">${fmtNum(v.viewCount||0)}</td>
-                <td style="padding:10px 12px;text-align:right;color:var(--text2);">${fmtNum(v.likeCount||0)}</td>
-                <td style="padding:10px 12px;text-align:right;color:var(--text2);">${fmtNum(v.commentCount||0)}</td>
+                <td style="padding:10px 12px;text-align:right;font-weight:700;color:var(--text);">${fmtNum(v.viewCount || 0)}</td>
+                <td style="padding:10px 12px;text-align:right;color:var(--text2);">${fmtNum(v.likeCount || 0)}</td>
+                <td style="padding:10px 12px;text-align:right;color:var(--text2);">${fmtNum(v.commentCount || 0)}</td>
                 <td style="padding:10px 12px;text-align:center;color:var(--text2);white-space:nowrap;">${parseDuration(v.duration)}</td>
                 <td style="padding:10px 12px;color:var(--text3);white-space:nowrap;">${fmtDate(v.publishedAt)}</td>
                 <td style="padding:10px 12px;text-align:center;">
@@ -370,23 +370,23 @@ function sendToAnalyzer(url) {
 function exportVHCsv() {
   const rows = window._vhResults;
   if (!rows?.length) return;
-  const headers = ['#','Title','Channel','Views','Likes','Comments','Duration','Published','URL'];
+  const headers = ['#', 'Title', 'Channel', 'Views', 'Likes', 'Comments', 'Duration', 'Published', 'URL'];
   const parseDuration = s => {
     if (!s) return '';
     const m = s.match(/PT(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?/);
     if (!m) return s;
-    const h = m[1]||0, min = m[2]||0, sec = m[3]||0;
-    return h > 0 ? `${h}:${String(min).padStart(2,'0')}:${String(sec).padStart(2,'0')}` : `${min}:${String(sec).padStart(2,'0')}`;
+    const h = m[1] || 0, min = m[2] || 0, sec = m[3] || 0;
+    return h > 0 ? `${h}:${String(min).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${min}:${String(sec).padStart(2, '0')}`;
   };
-  const escape = v => `"${String(v).replace(/"/g,'""')}"`;
-  const lines = [headers.join(','), ...rows.map((v,i) => [
-    i+1, escape(v.title), escape(v.channelTitle),
-    v.viewCount||0, v.likeCount||0, v.commentCount||0,
+  const escape = v => `"${String(v).replace(/"/g, '""')}"`;
+  const lines = [headers.join(','), ...rows.map((v, i) => [
+    i + 1, escape(v.title), escape(v.channelTitle),
+    v.viewCount || 0, v.likeCount || 0, v.commentCount || 0,
     parseDuration(v.duration),
     v.publishedAt ? new Date(v.publishedAt).toLocaleDateString('vi-VN') : '',
     v.url
   ].join(','))];
-  const blob = new Blob(['\uFEFF'+lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+  const blob = new Blob(['\uFEFF' + lines.join('\n')], { type: 'text/csv;charset=utf-8' });
   const a = document.createElement('a');
   a.href = URL.createObjectURL(blob);
   a.download = 'ytb_key_hunter.csv';
@@ -430,7 +430,7 @@ function renderChannelAnalyze(data) {
   const hashtags = data.top_hashtags || [];
   const videos = data.videos || [];
 
-  const fmtNum = n => (n >= 1e9 ? (n/1e9).toFixed(1)+'B' : n >= 1e6 ? (n/1e6).toFixed(1)+'M' : n >= 1e3 ? (n/1e3).toFixed(1)+'K' : String(n));
+  const fmtNum = n => (n >= 1e9 ? (n / 1e9).toFixed(1) + 'B' : n >= 1e6 ? (n / 1e6).toFixed(1) + 'M' : n >= 1e3 ? (n / 1e3).toFixed(1) + 'K' : String(n));
   const fmtDate = s => s ? new Date(s).toLocaleDateString('vi-VN') : '';
 
   const yppBadge = ypp.eligible
@@ -445,7 +445,7 @@ function renderChannelAnalyze(data) {
 
   const topVideosHtml = videos.slice(0, 10).map((v, i) => `
     <tr style="border-bottom:1px solid var(--border);transition:background .15s;" onmouseover="this.style.background='var(--bg3)'" onmouseout="this.style.background=''">
-      <td style="padding:8px 12px;color:var(--text3);font-weight:700;">${i+1}</td>
+      <td style="padding:8px 12px;color:var(--text3);font-weight:700;">${i + 1}</td>
       <td style="padding:6px 12px;"><a href="${v.url}" target="_blank"><img src="${v.thumbnail}" style="width:72px;height:40px;object-fit:cover;border-radius:4px;display:block;"></a></td>
       <td style="padding:8px 12px;max-width:260px;">
         <a href="${v.url}" target="_blank" style="color:var(--text);font-weight:600;text-decoration:none;font-size:12px;line-height:1.4;display:block;"
@@ -507,7 +507,7 @@ function renderChannelAnalyze(data) {
     <!-- Top Videos -->
     ${videos.length ? `
     <div class="card" style="padding:0;overflow:hidden;">
-      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;font-size:14px;">Top ${Math.min(videos.length,10)} Video (sắp xếp theo lượt xem)</div>
+      <div style="padding:14px 18px;border-bottom:1px solid var(--border);font-weight:700;font-size:14px;">Top ${Math.min(videos.length, 10)} Video (sắp xếp theo lượt xem)</div>
       <div style="overflow-x:auto;">
         <table style="width:100%;border-collapse:collapse;font-size:12px;">
           <thead>
