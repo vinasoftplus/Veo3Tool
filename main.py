@@ -68,7 +68,7 @@ def start_api_server():
         import app as _app_mod
         _log(f"Starting API server... version={_app_mod.CURRENT_VERSION} path={_app_mod.__file__}")
         app = create_app()
-        uvicorn.run(app, host=HOST, port=PORT, log_level="warning", access_log=False)
+        uvicorn.run(app, host=HOST, port=PORT, log_level="warning", access_log=False, log_config=None)
     except Exception:
         import traceback
         _log("API server error:\n" + traceback.format_exc())
