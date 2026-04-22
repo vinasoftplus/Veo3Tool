@@ -97,13 +97,10 @@ def main():
     server_thread.start()
 
     if not wait_for_server():
-        try:
-            sys.stderr.write("[ERROR] API server failed to start\n")
-            sys.stderr.flush()
-        except Exception:
-            pass
+        _log("ERROR: API server failed to start within 15s")
         sys.exit(1)
 
+    _log("API server ready, launching webview...")
     # Start PyWebView window
     import webview
     window = webview.create_window(
@@ -114,7 +111,12 @@ def main():
         min_size=(1024, 700),
         resizable=True,
     )
-    webview.start(debug=False)
+    _log("webview.start() called")
+    try:
+        webview.start(debug=False)
+    except Exception:
+        import traceback
+        _log("webview error:\n" + traceback.format_exc())
 
 
 if __name__ == "__main__":
