@@ -101,8 +101,21 @@ def main():
         sys.exit(1)
 
     _log("API server ready, launching webview...")
+    # Load pythonnet runtime before pywebview imports clr
+    try:
+        import pythonnet
+        pythonnet.load()
+        _log("pythonnet loaded OK")
+    except Exception as e:
+        _log(f"pythonnet load failed: {e}")
     # Start PyWebView window
     import webview
+    _log(f"webview platforms winforms test...")
+    try:
+        import webview.platforms.winforms as _wf
+        _log("winforms import OK")
+    except Exception as e:
+        _log(f"winforms import FAILED: {e}")
     window = webview.create_window(
         title="Dream Forge - Tool tao video AI tu dong",
         url=f"http://{HOST}:{PORT}/",
