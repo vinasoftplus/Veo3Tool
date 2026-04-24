@@ -237,6 +237,14 @@
     }
   }
 
+  async function appFetch(url, options = {}) {
+    const next = Object.assign({}, options);
+    if (String(url || '').startsWith('/api/')) {
+      next.headers = _appHeaders(options.headers || {});
+    }
+    return fetch(url, next);
+  }
+
   async function saveVideo(url, filename, dirHandle = cfg.saveHandle) {
     if (dirHandle) {
       try {
@@ -1164,19 +1172,42 @@
         else { toast(`Không lấy được ảnh ${quality.toUpperCase()}`, 'error'); _showImgProgress(false); return; }
       }
       let blob;
+      const extFromMime = (mime = '') => {
+        const clean = String(mime || '').split(';', 1)[0].trim().toLowerCase();
+        if (clean === 'image/png') return 'png';
+        if (clean === 'image/webp') return 'webp';
+        if (clean === 'image/gif') return 'gif';
+        if (clean === 'image/bmp') return 'bmp';
+        if (clean === 'image/jpeg' || clean === 'image/jpg') return 'jpg';
+        return 'jpg';
+      };
       if (finalUrl.startsWith('data:')) {
         const res2 = await fetch(finalUrl);
+        if (!res2.ok) throw new Error(`HTTP ${res2.status}`);
         blob = await res2.blob();
       } else {
         const proxyUrl = `/api/veo/proxy-download?url=${encodeURIComponent(finalUrl)}&filename=${encodeURIComponent(baseName + '.jpg')}`;
-        const resp = await fetch(proxyUrl);
+        const resp = await appFetch(proxyUrl);
+        if (!resp.ok) {
+          let msg = `HTTP ${resp.status}`;
+          try { msg += ` ${await resp.text()}`; } catch (_) { }
+          throw new Error(msg);
+        }
         blob = await resp.blob();
+        const contentType = (resp.headers.get('content-type') || '').toLowerCase();
+        if (contentType && !contentType.startsWith('image/') && contentType !== 'application/octet-stream') {
+          let snippet = '';
+          try { snippet = await blob.text(); } catch (_) { }
+          throw new Error(`Proxy trả về content-type không hợp lệ: ${contentType}${snippet ? ` | ${snippet.slice(0, 160)}` : ''}`);
+        }
       }
+      const ext = extFromMime(blob.type);
+      const fileName = `${baseName}.${ext}`;
       if (dirHandle) {
-        const fh = await dirHandle.getFileHandle(`${baseName}.jpg`, { create: true });
+        const fh = await dirHandle.getFileHandle(fileName, { create: true });
         const w = await fh.createWritable(); await w.write(blob); await w.close();
       } else {
-        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `${baseName}.jpg`; a.click();
+        const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = fileName; a.click();
       }
       toast(`Đã tải ảnh ${quality.toUpperCase()}`, 'success');
     } catch (e) {
@@ -1210,7 +1241,7 @@
     return new Promise(resolve => {
       let done = 0;
       const body = JSON.stringify({ images, category_id: categoryId, quality });
-      fetch('/api/image/studio/batch-save-lib', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
+      appFetch('/api/image/studio/batch-save-lib', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body })
         .then(resp => {
           const reader = resp.body.getReader();
           const dec = new TextDecoder();
@@ -1252,7 +1283,7 @@
       const fetchUrl = (popup.url.includes('googleapis.com') || popup.url.includes('google.com'))
         ? `/api/veo/proxy-download?url=${encodeURIComponent(popup.url)}&filename=studio_ref_${Date.now()}.png`
         : popup.url;
-      const resp = await fetch(fetchUrl);
+      const resp = await appFetch(fetchUrl);
       const blob = await resp.blob();
       file = new File([blob], `studio_ref_${Date.now()}.png`, { type: blob.type || 'image/png' });
     } catch (_) { }
@@ -2233,7 +2264,7 @@
           const fetchUrl = (item.url.includes('googleapis.com') || item.url.includes('google.com'))
             ? `/api/veo/proxy-download?url=${encodeURIComponent(item.url)}&filename=studio_ref_${Date.now()}.png`
             : item.url;
-          const resp = await fetch(fetchUrl);
+          const resp = await appFetch(fetchUrl);
           const blob = await resp.blob();
           file = new File([blob], `studio_ref_${Date.now()}.png`, { type: blob.type || 'image/png' });
         } catch (_) { }
@@ -2505,7 +2536,7 @@
         const fetchUrl = (item.url.includes('googleapis.com') || item.url.includes('google.com'))
           ? `/api/veo/proxy-download?url=${encodeURIComponent(item.url)}&filename=vault_ref_${Date.now()}.png`
           : item.url;
-        const resp = await fetch(fetchUrl);
+        const resp = await appFetch(fetchUrl);
         const blob = await resp.blob();
         file = new File([blob], `vault_ref_${Date.now()}.png`, { type: blob.type || 'image/png' });
       } catch (_) { }

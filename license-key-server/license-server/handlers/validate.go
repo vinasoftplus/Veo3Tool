@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"math"
 	"time"
@@ -22,6 +23,8 @@ type ValidateRequest struct {
 }
 
 func Validate(c *fiber.Ctx) error {
+	ip := clientIP(c)
+
 	var req ValidateRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid_request"})
@@ -45,7 +48,7 @@ func Validate(c *fiber.Ctx) error {
 	banned, err := db.GetBannedMachine(c.Context(), req.MachineID)
 	if err == nil && banned != nil {
 		// Machine is banned — return special response
-		db.InsertAuditLog(c.Context(), "validated_banned", nil, nil, req.MachineID, c.IP(), map[string]any{
+		db.InsertAuditLog(c.Context(), "validated_banned", nil, nil, req.MachineID, ip, map[string]any{
 			"ban_reason": banned.BanReason,
 		})
 		return c.Status(403).JSON(fiber.Map{
@@ -65,7 +68,7 @@ func Validate(c *fiber.Ctx) error {
 	keyHash := db.HashKey(req.Key)
 	license, err := db.GetLicenseByKeyHash(c.Context(), keyHash)
 	if err == pgx.ErrNoRows || license == nil {
-		db.InsertAuditLog(c.Context(), "validated_fail", nil, nil, req.MachineID, c.IP(), map[string]any{"reason": "key_not_found"})
+		db.InsertAuditLog(c.Context(), "validated_fail", nil, nil, req.MachineID, ip, map[string]any{"reason": "key_not_found"})
 		return c.Status(401).JSON(fiber.Map{"error": "invalid_key"})
 	}
 	if err != nil {
@@ -88,7 +91,7 @@ func Validate(c *fiber.Ctx) error {
 		if count >= license.MaxDevices {
 			return c.Status(403).JSON(fiber.Map{"error": "max_devices_reached"})
 		}
-		if aerr := db.CreateActivation(c.Context(), license.ID, req.MachineID, req.MachineName, c.IP()); aerr != nil {
+		if aerr := db.CreateActivation(c.Context(), license.ID, req.MachineID, req.MachineName, ip); aerr != nil {
 			return c.Status(500).JSON(fiber.Map{"error": "server_error"})
 		}
 		activation, err = db.GetActivation(c.Context(), license.ID, req.MachineID)
@@ -103,7 +106,7 @@ func Validate(c *fiber.Ctx) error {
 	}
 
 	// 8. Update last_checked + machine_name
-	go db.UpdateLastChecked(c.Context(), activation.ID, c.IP(), req.MachineName)
+	go db.UpdateLastChecked(context.Background(), activation.ID, ip, req.MachineName)
 
 	// 9. Build response (without signature)
 	licenseTypeStr := []string{"trial", "standard", "premium"}[license.LicenseType]
@@ -122,7 +125,7 @@ func Validate(c *fiber.Ctx) error {
 	// 11. Audit log
 	licID := license.ID
 	actID := activation.ID
-	go db.InsertAuditLog(c.Context(), "validated_ok", &licID, &actID, req.MachineID, c.IP(), nil)
+	go db.InsertAuditLog(c.Context(), "validated_ok", &licID, &actID, req.MachineID, ip, nil)
 
 	return c.JSON(response)
 }

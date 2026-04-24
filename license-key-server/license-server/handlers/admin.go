@@ -219,7 +219,7 @@ func ListActivations(c *fiber.Ctx) error {
 	licenseID := c.Query("license_id", "")
 	pool := db.Pool()
 
-	query := `SELECT id, license_id, machine_id, machine_name, activated_at, last_checked_at, ip_address, is_revoked
+	query := `SELECT id, license_id, machine_id, machine_name, activated_at, last_checked_at, ip_address::text, is_revoked
 	          FROM activations WHERE 1=1`
 	args := []any{}
 	if licenseID != "" {
@@ -237,16 +237,21 @@ func ListActivations(c *fiber.Ctx) error {
 	var result []map[string]any
 	for rows.Next() {
 		var id, licID int64
-		var machineID, machineName, ip string
+		var machineID, machineName string
 		var activatedAt time.Time
 		var lastChecked *time.Time
 		var isRevoked bool
+		var ip *string
 		rows.Scan(&id, &licID, &machineID, &machineName, &activatedAt, &lastChecked, &ip, &isRevoked)
+		ipStr := ""
+		if ip != nil {
+			ipStr = *ip
+		}
 		result = append(result, map[string]any{
 			"id": id, "license_id": licID,
 			"machine_id": machineID, "machine_name": machineName,
 			"activated_at": activatedAt, "last_checked_at": lastChecked,
-			"ip_address": ip, "is_revoked": isRevoked,
+			"ip_address": ipStr, "is_revoked": isRevoked,
 		})
 	}
 	return c.JSON(fiber.Map{"data": result})

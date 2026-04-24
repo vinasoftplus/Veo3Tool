@@ -36,7 +36,8 @@ func main() {
 	handlers.SetConfig(cfg)
 
 	app := fiber.New(fiber.Config{
-		BodyLimit: 300 * 1024 * 1024, // 300MB cho upload EXE
+		BodyLimit:   300 * 1024 * 1024, // 300MB cho upload EXE
+		ProxyHeader: "X-Forwarded-For",
 		ErrorHandler: func(c *fiber.Ctx, err error) error {
 			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": err.Error()})
 		},

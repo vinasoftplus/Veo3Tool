@@ -37,6 +37,11 @@ async def get_config():
     return {"ok": True, "data": safe}
 
 
+@router.get("/config-full")
+async def get_config_full():
+    return {"ok": True, "data": load_config()}
+
+
 @router.post("/config")
 async def save_config_route(req: SaveConfigRequest):
     _ALLOWED_CONFIG_KEYS = {

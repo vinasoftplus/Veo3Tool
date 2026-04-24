@@ -19,6 +19,8 @@ type ActivateRequest struct {
 }
 
 func Activate(c *fiber.Ctx) error {
+	ip := clientIP(c)
+
 	var req ActivateRequest
 	if err := c.BodyParser(&req); err != nil {
 		return c.Status(400).JSON(fiber.Map{"error": "invalid_request"})
@@ -70,12 +72,12 @@ func Activate(c *fiber.Ctx) error {
 		return c.Status(409).JSON(fiber.Map{"error": "max_devices_reached"})
 	}
 
-	if err := db.CreateActivation(c.Context(), license.ID, req.MachineID, req.MachineName, c.IP()); err != nil {
+	if err := db.CreateActivation(c.Context(), license.ID, req.MachineID, req.MachineName, ip); err != nil {
 		return c.Status(500).JSON(fiber.Map{"error": "activation_failed"})
 	}
 
 	licID := license.ID
-	go db.InsertAuditLog(c.Context(), "activated", &licID, nil, req.MachineID, c.IP(), nil)
+	go db.InsertAuditLog(c.Context(), "activated", &licID, nil, req.MachineID, ip, nil)
 
 	return c.Status(201).JSON(fiber.Map{
 		"activated":    true,

@@ -957,22 +957,26 @@ async def upscale_job(job_id: str, body: dict):
 @router.get("/proxy-download")
 async def proxy_download(url: str, filename: str = "video.mp4"):
     import httpx
+    from starlette.background import BackgroundTask
     from fastapi.responses import StreamingResponse
     import urllib.parse
 
     if not url:
         raise HTTPException(400, "Missing url")
+    client = httpx.AsyncClient(timeout=120, follow_redirects=True)
+    req = client.build_request("GET", url)
+    resp = await client.send(req, stream=True)
+    resp.raise_for_status()
 
-    async def stream():
-        async with httpx.AsyncClient(timeout=120, follow_redirects=True) as client:
-            async with client.stream("GET", url) as resp:
-                resp.raise_for_status()
-                async for chunk in resp.aiter_bytes(65536):
-                    yield chunk
+    async def _cleanup():
+        await resp.aclose()
+        await client.aclose()
 
     safe_name = urllib.parse.quote(filename)
+    content_type = resp.headers.get("content-type", "").split(";", 1)[0].strip() or "application/octet-stream"
     return StreamingResponse(
-        stream(),
-        media_type="video/mp4",
+        resp.aiter_bytes(65536),
+        media_type=content_type,
         headers={"Content-Disposition": f'attachment; filename*=UTF-8\'\'{safe_name}'},
+        background=BackgroundTask(_cleanup),
     )
