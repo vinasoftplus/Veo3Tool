@@ -30,3 +30,4 @@ build/
 exemple/
 *.log
 Thumbs.db
+config/.license_cache
