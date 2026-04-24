@@ -9,6 +9,32 @@ from pydantic import BaseModel
 from services import job_store
 from services.config_service import load_config, get_gemini_keys
 
+
+def _get_adapter(model_provider: str):
+    """Return (adapter, model_name) based on provider string like 'gemini', 'gpt-4o', 'deepseek-chat'."""
+    cfg = load_config()
+    if model_provider.startswith("gpt") or model_provider == "openai":
+        api_key = cfg.get("OPENAI_API_KEY", "").strip()
+        if not api_key:
+            raise HTTPException(400, "Chưa có OpenAI API Key. Vào Cài đặt để thêm.")
+        from adapters.openai_adapter import OpenAIAdapter
+        model = model_provider if model_provider.startswith("gpt") else "gpt-4o"
+        return OpenAIAdapter(api_key), model
+    if model_provider.startswith("deepseek"):
+        api_key = cfg.get("DEEPSEEK_API_KEY", "").strip()
+        if not api_key:
+            raise HTTPException(400, "Chưa có DeepSeek API Key. Vào Cài đặt để thêm.")
+        from adapters.deepseek_adapter import DeepSeekAdapter
+        model = model_provider if model_provider != "deepseek" else "deepseek-chat"
+        return DeepSeekAdapter(api_key), model
+    # Default: Gemini
+    keys = get_gemini_keys()
+    if not keys:
+        raise HTTPException(400, "Chưa có Gemini API key. Vào Cài đặt để thêm.")
+    from adapters.gemini import GeminiAdapter
+    model = "gemini-2.5-flash" if model_provider in ("gemini", "gemini-2.5-flash", "") else model_provider
+    return GeminiAdapter(keys[0]), model
+
 router = APIRouter(tags=["youtube"])
 
 
@@ -106,6 +132,7 @@ async def save_script(req: SaveScriptRequest):
 
 class MasterScriptRequest(BaseModel):
     youtube_url: str
+    model: str = "gemini-2.5-flash"
 
 
 _MASTER_PROMPT = """Act as a Creative Director, Lead 3D Animator, and Data Architect for a heartwarming 3D animated feature "[SERIES_NAME]".
@@ -250,21 +277,15 @@ Do not output any narration script, dialogue, subtitle text, or voiceover text."
 
 @router.post("/master-script")
 async def master_script(req: MasterScriptRequest):
-    from adapters.gemini import GeminiAdapter
-
-    keys = get_gemini_keys()
-    if not keys:
-        raise HTTPException(400, "Chưa có Gemini API key. Vào Cài đặt để thêm.")
-
+    adapter, model = _get_adapter(req.model)
     master_prompt = _MASTER_PROMPT
 
-    job_id = await job_store.create_job("master_script", {"youtube_url": req.youtube_url})
+    job_id = await job_store.create_job("master_script", {"youtube_url": req.youtube_url, "model": req.model})
 
     async def _run():
         try:
             await job_store.update_job(job_id, status="running", progress=10)
-            adapter = GeminiAdapter(keys[0])
-            result = await adapter.analyze_youtube_master_prompt(req.youtube_url, master_prompt)
+            result = await adapter.analyze_youtube_master_prompt(req.youtube_url, master_prompt, model=model)
             await job_store.update_job(job_id, status="done", progress=100, outputs={"md": result})
         except Exception as e:
             await job_store.update_job(job_id, status="failed", error=str(e))
@@ -290,15 +311,12 @@ class AutoMasterPromptRequest(BaseModel):
     scene_count: int
     duration_seconds: int
     video_type: str = "youtube_long"  # "youtube_long" | "short_tiktok"
+    model: str = "gemini-2.5-flash"
 
 
 @router.post("/auto-master-prompt")
 async def auto_master_prompt(req: AutoMasterPromptRequest):
-    from adapters.gemini import GeminiAdapter
-
-    keys = get_gemini_keys()
-    if not keys:
-        raise HTTPException(400, "Chưa có Gemini API key. Vào Cài đặt để thêm.")
+    adapter, model = _get_adapter(req.model)
 
     # Fill known values into the master prompt template
     type_label = "YouTube Long-form" if req.video_type == "youtube_long" else "Short / TikTok Vertical"
@@ -333,8 +351,7 @@ async def auto_master_prompt(req: AutoMasterPromptRequest):
     async def _run():
         try:
             await job_store.update_job(job_id, status="running", progress=10)
-            adapter = GeminiAdapter(keys[0])
-            result = await adapter.analyze_text(user_message, "", model="gemini-2.5-flash")
+            result = await adapter.analyze_text(user_message, "", model=model)
             await job_store.update_job(job_id, status="done", progress=100, outputs={"md": result})
         except Exception as e:
             await job_store.update_job(job_id, status="failed", error=str(e))

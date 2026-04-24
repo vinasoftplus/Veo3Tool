@@ -30,6 +30,8 @@
     const el = id => document.getElementById(id);
     if (el('cfg-youtube-key')) el('cfg-youtube-key').value = cfg.YOUTUBE_API_KEY || '';
     if (el('cfg-gemini-keys')) el('cfg-gemini-keys').value = cfg.GEMINI_API_KEYS || '';
+    if (el('cfg-openai-key')) el('cfg-openai-key').value = cfg.OPENAI_API_KEY || '';
+    if (el('cfg-deepseek-key')) el('cfg-deepseek-key').value = cfg.DEEPSEEK_API_KEY || '';
     if (el('cfg-ffmpeg-path')) el('cfg-ffmpeg-path').value = cfg.FFMPEG_PATH || '';
     if (el('cfg-max-concurrent')) el('cfg-max-concurrent').value = cfg.MAX_CONCURRENT != null ? cfg.MAX_CONCURRENT : 3;
     if (el('cfg-max-concurrent-image')) el('cfg-max-concurrent-image').value = cfg.MAX_CONCURRENT_IMAGE != null ? cfg.MAX_CONCURRENT_IMAGE : 2;
@@ -43,6 +45,8 @@
     const updates = {
       YOUTUBE_API_KEY: document.getElementById('cfg-youtube-key')?.value.trim() || '',
       GEMINI_API_KEYS: document.getElementById('cfg-gemini-keys')?.value.trim() || '',
+      OPENAI_API_KEY: document.getElementById('cfg-openai-key')?.value.trim() || '',
+      DEEPSEEK_API_KEY: document.getElementById('cfg-deepseek-key')?.value.trim() || '',
       FFMPEG_PATH: document.getElementById('cfg-ffmpeg-path')?.value.trim() || '',
       MAX_CONCURRENT: maxConcurrent,
       MAX_CONCURRENT_IMAGE: maxConcurrentImage,

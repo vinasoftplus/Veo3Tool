@@ -1209,6 +1209,16 @@
                     </select>
                   </div>
                 </div>
+                <div class="form-group" style="margin-top:8px;">
+                  <label class="form-label">Model AI</label>
+                  <select id="amp-model">
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="gpt-4o-mini">GPT-4o Mini</option>
+                    <option value="deepseek-chat">DeepSeek Chat</option>
+                    <option value="deepseek-reasoner">DeepSeek Reasoner</option>
+                  </select>
+                </div>
                 <button id="amp-submit" class="btn btn-primary" style="width:100%;margin-top:4px;">✨ Tạo Master
                   Prompt</button>
               </div>
@@ -1223,6 +1233,16 @@
                   <label class="form-label">YouTube URL</label>
                   <input type="text" id="ms-url" placeholder="https://www.youtube.com/watch?v=..."
                     style="font-family:monospace;font-size:12px;">
+                </div>
+                <div class="form-group" style="margin-top:8px;">
+                  <label class="form-label">Model AI</label>
+                  <select id="ms-model">
+                    <option value="gemini-2.5-flash">Gemini 2.5 Flash</option>
+                    <option value="gpt-4o">GPT-4o</option>
+                    <option value="gpt-4o-mini">GPT-4o Mini</option>
+                    <option value="deepseek-chat">DeepSeek Chat</option>
+                    <option value="deepseek-reasoner">DeepSeek Reasoner</option>
+                  </select>
                 </div>
                 <button id="ms-submit" class="btn btn-primary" style="width:100%;margin-top:4px;">🎬 Lấy kịch
                   bản</button>
@@ -1259,8 +1279,16 @@
                     <input type="text" id="cfg-youtube-key" placeholder="AIza...">
                   </div>
                   <div class="form-group">
-                    <label class="form-label">Gemini API Keys (m&#7895;i d&#242;ng 1 key)</label>
+                    <label class="form-label">Gemini API Keys (mỗi dòng 1 key)</label>
                     <textarea id="cfg-gemini-keys" rows="4" placeholder="AIza...&#10;AIza..."></textarea>
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">OpenAI API Key (GPT)</label>
+                    <input type="password" id="cfg-openai-key" placeholder="sk-...">
+                  </div>
+                  <div class="form-group">
+                    <label class="form-label">DeepSeek API Key</label>
+                    <input type="password" id="cfg-deepseek-key" placeholder="sk-...">
                   </div>
                   <div class="form-group">
                     <label class="form-label">Max Concurrent Video mỗi tài khoản (1–10)</label>

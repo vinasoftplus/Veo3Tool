@@ -46,6 +46,7 @@ async def get_config_full():
 async def save_config_route(req: SaveConfigRequest):
     _ALLOWED_CONFIG_KEYS = {
         "GEMINI_API_KEY", "GEMINI_API_KEYS", "YOUTUBE_API_KEY",
+        "OPENAI_API_KEY", "DEEPSEEK_API_KEY",
         "SEED_MODE", "SEED_VALUE", "CREATE_IMAGE_MODEL",
         "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE",
         "LICENSE_TOKEN",
@@ -83,6 +84,7 @@ async def save_account_route(req: SaveAccountRequest):
 
 _SAVE_VALUE_WHITELIST = {
     "GEMINI_API_KEY", "GEMINI_API_KEYS", "YOUTUBE_API_KEY",
+    "OPENAI_API_KEY", "DEEPSEEK_API_KEY",
     "SEED_MODE", "SEED_VALUE", "CREATE_IMAGE_MODEL",
     "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE",
     "LICENSE_TOKEN",

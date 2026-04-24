@@ -142,8 +142,9 @@ window.init_master_script = function () {
       document.getElementById('ms-actions').style.display = 'none';
 
       try {
+        const ampModel = document.getElementById('amp-model')?.value || 'gemini-2.5-flash';
         const res = await API.post('/api/youtube/auto-master-prompt', {
-          idea, scene_count: scenes, duration_seconds: duration, video_type: vtype,
+          idea, scene_count: scenes, duration_seconds: duration, video_type: vtype, model: ampModel,
         });
         if (!res.ok) {
           _msShowResult('❌ ' + (res.detail || 'Lỗi'), '');
@@ -175,7 +176,8 @@ window.init_master_script = function () {
       document.getElementById('ms-actions').style.display = 'none';
 
       try {
-        const res = await API.post('/api/youtube/master-script', { youtube_url: url });
+        const msModel = document.getElementById('ms-model')?.value || 'gemini-2.5-flash';
+        const res = await API.post('/api/youtube/master-script', { youtube_url: url, model: msModel });
         if (!res.ok) {
           _msShowResult('❌ ' + (res.detail || 'Lỗi'), '');
           toast(res.detail || 'Lỗi', 'error');

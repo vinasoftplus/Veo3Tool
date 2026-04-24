@@ -5,6 +5,7 @@ import asyncio
 import base64
 import json
 import logging
+import random
 import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -62,33 +63,32 @@ def _token_option() -> str:
 
 
 async def _get_recaptcha_token(job_type: str = "video", account_index: int = 1) -> str:
-    """Request reCAPTCHA token from Chrome extension. Returns empty string if unavailable."""
-    try:
-        from routers.extension import request_captcha_token
-        import uuid as _uuid
+    """Request reCAPTCHA token from Chrome extension. Raises if unavailable."""
+    from routers.extension import request_captcha_token
+    import uuid as _uuid
 
-        job_id = str(_uuid.uuid4())
-        logger.info(
-            "🧩 Đang yêu cầu reCAPTCHA token cho %s | job_%s | account #%s",
-            job_type,
-            job_id[:8],
-            account_index,
-        )
+    job_id = str(_uuid.uuid4())
+    logger.info(
+        "🧩 Đang yêu cầu reCAPTCHA token cho %s | job_%s | account #%s",
+        job_type,
+        job_id[:8],
+        account_index,
+    )
+    try:
         token = await asyncio.wait_for(
             request_captcha_token(job_id, job_type, account_index=account_index),
             timeout=35.0,
         )
-        if token:
-            logger.info("✅ Đã nhận reCAPTCHA token cho job_%s", job_id[:8])
-            return token
-        logger.warning("⚠️ reCAPTCHA trả về rỗng cho job_%s — thử không có token", job_id[:8])
-        return ""
     except asyncio.TimeoutError:
-        logger.warning("⚠️ Timeout chờ reCAPTCHA — thử không có token")
-        return ""
+        raise HTTPException(503, "Timeout chờ reCAPTCHA token — extension chưa sẵn sàng")
     except Exception as exc:
-        logger.warning("⚠️ Lỗi reCAPTCHA: %s — thử không có token", exc)
-        return ""
+        raise HTTPException(503, f"Lỗi lấy reCAPTCHA token: {exc}")
+
+    if not token:
+        raise HTTPException(503, "reCAPTCHA token rỗng — extension chưa sẵn sàng")
+
+    logger.info("✅ Đã nhận reCAPTCHA token cho job_%s", job_id[:8])
+    return token
 
 async def _poll_video_job(job_id: str, token: str, operations: list, account_index: int = 0):
     from adapters.google_labs import GoogleLabsAdapter
@@ -188,9 +188,11 @@ async def text_to_video(req: T2VRequest):
     recaptcha_token = "" if token_option == "Option 2" else await _get_recaptcha_token("video", account_index=account_index)
 
     job_ids = []
-    for prompt in req.prompts:
+    for i, prompt in enumerate(req.prompts):
         if not prompt.strip():
             continue
+        if i > 0:
+            await asyncio.sleep(random.uniform(2.0, 5.0))
         try:
             logger.info("[SUBMIT] text-to-video | prompt_len=%s | output_count=%s | TOKEN_OPTION=%s", len(prompt.strip()), req.output_count, token_option)
             if token_option == "Option 2":
