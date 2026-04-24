@@ -899,33 +899,35 @@ async def upscale_job(job_id: str, body: dict):
 
     logger.info("[Upscale] mediaId=%r account=#%s aspect=%s", resolved_media_id, account_index, job_aspect)
 
-    # Fix 3: retry tự động tối đa 3 lần khi 403/500
+    # Retry lần lượt qua tất cả accounts khi 404; retry cùng account khi 403/500
+    all_accounts = get_active_accounts()
+    # Sắp xếp: account hiện tại lên đầu, các account còn lại theo sau
+    other_accounts = [a for a in all_accounts if int(a.get("_index") or 0) != account_index]
+    accounts_to_try = [account] + other_accounts
+
     result = None
-    for attempt in range(3):
-        upscale_payload = adapter.build_upscale_payload(resolved_media_id, account=account, recaptcha_token="")
-        # Patch aspect_ratio đúng theo video gốc
+    for acc in accounts_to_try:
+        used_index = int(acc.get("_index") or 1)
+        upscale_payload = adapter.build_upscale_payload(resolved_media_id, account=acc, recaptcha_token="")
         if upscale_payload.get("requests"):
             upscale_payload["requests"][0]["aspectRatio"] = job_aspect
 
         browser_job_id = str(uuid.uuid4())
+        logger.info("[Upscale] Thử account #%s mediaId=%r", used_index, resolved_media_id)
         result = await request_browser_submit(
             browser_job_id,
             job_type="video",
             url=URL_UPSCALE_VIDEO,
             payload=upscale_payload,
-            access_token=account.get("ACCESS_TOKEN", ""),
-            account_index=account_index,
+            access_token=acc.get("ACCESS_TOKEN", ""),
+            account_index=used_index,
         )
         status = result.get("status", 0)
         if result.get("ok"):
+            logger.info("[Upscale] Thành công với account #%s", used_index)
             break
-        if status in (403, 401):
-            logger.warning("[Upscale] attempt %s/%s → HTTP %s, retry...", attempt + 1, 3, status)
-            await asyncio.sleep(2)
-            continue
-        # 500 hoặc lỗi khác — retry luôn
-        logger.warning("[Upscale] attempt %s/%s → status=%s body=%s, retry...", attempt + 1, 3, status, str(result.get("body", ""))[:200])
-        await asyncio.sleep(2)
+        logger.warning("[Upscale] account #%s → HTTP %s, thử account tiếp theo...", used_index, status)
+        await asyncio.sleep(1)
 
     if not result or not result.get("ok"):
         return {"ok": False, "body": result.get("body", "") if result else "No result"}
@@ -936,7 +938,7 @@ async def upscale_job(job_id: str, body: dict):
 
     for _ in range(80):
         await asyncio.sleep(3)
-        status_result = await adapter.check_video_status(upscale_operations, account.get("ACCESS_TOKEN", ""))
+        status_result = await adapter.check_video_status(upscale_operations, acc.get("ACCESS_TOKEN", ""))
         if not status_result.get("ok"):
             continue
         videos = adapter.parse_video_results(status_result.get("body", ""))
