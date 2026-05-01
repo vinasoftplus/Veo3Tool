@@ -72,3 +72,20 @@ CREATE TABLE IF NOT EXISTS audit_log (
 );
 CREATE INDEX IF NOT EXISTS idx_audit_license ON audit_log(license_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_audit_event   ON audit_log(event_type, created_at DESC);
+
+-- notifications: admin broadcasts to all tool users
+CREATE TABLE IF NOT EXISTS notifications (
+  id           BIGSERIAL PRIMARY KEY,
+  admin_id     BIGINT REFERENCES admin_users(id),
+  title        TEXT NOT NULL DEFAULT '',
+  message      TEXT NOT NULL,
+  notif_type   TEXT NOT NULL DEFAULT 'info',  -- info | warning | error | success
+  title_color  TEXT NOT NULL DEFAULT '#1e293b',
+  message_color TEXT NOT NULL DEFAULT '#374151',
+  bg_color     TEXT NOT NULL DEFAULT '#ffffff',
+  is_active    BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at   TIMESTAMPTZ DEFAULT NOW(),
+  expires_at   TIMESTAMPTZ,
+  CONSTRAINT chk_notif_type CHECK (notif_type IN ('info','warning','error','success'))
+);
+CREATE INDEX IF NOT EXISTS idx_notif_active ON notifications(is_active, created_at DESC);

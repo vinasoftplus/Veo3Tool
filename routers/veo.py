@@ -137,6 +137,15 @@ async def _poll_video_job(job_id: str, token: str, operations: list, account_ind
                 status = result.get("status")
                 body = str(result.get("body", ""))
                 if status in (401, 403) and account_index:
+                    body_lower = body.lower()
+                    if status == 403 and (
+                        "recaptcha evaluation failed" in body_lower
+                        or "public_error_unusual_activity" in body_lower
+                        or "recaptcha" in body_lower
+                    ):
+                        logger.warning("Job %s HTTP 403 do reCAPTCHA/unusual activity - khong refresh token", job_id[:8])
+                        await job_store.update_job(job_id, "failed", error="reCAPTCHA/unusual activity")
+                        return
                     logger.warning("⚠️ Job %s HTTP %s — thử refresh token...", job_id[:8], status)
                     from services.token_refresh_service import refresh_account_token
                     refreshed = await refresh_account_token(account_index)
@@ -899,13 +908,28 @@ async def upscale_job(job_id: str, body: dict):
 
     logger.info("[Upscale] mediaId=%r account=#%s aspect=%s", resolved_media_id, account_index, job_aspect)
 
-    # Retry lần lượt qua tất cả accounts khi 404; retry cùng account khi 403/500
+    def _should_try_next_account(status: int, body_text: str) -> bool:
+        if status in (0, 400, 403, 404):
+            return True
+        text = str(body_text or "").lower()
+        return any(token in text for token in (
+            "not found",
+            "missing mediaid",
+            "missing mediaid for upscale",
+            "mediaid",
+            "videoinput",
+            "timeout",
+            "browser submit timeout",
+        ))
+
+    # Chỉ failover account khi có dấu hiệu media/account mismatch rõ ràng.
     all_accounts = get_active_accounts()
-    # Sắp xếp: account hiện tại lên đầu, các account còn lại theo sau
     other_accounts = [a for a in all_accounts if int(a.get("_index") or 0) != account_index]
     accounts_to_try = [account] + other_accounts
 
     result = None
+    used_account_index = account_index
+    used_account = account
     for acc in accounts_to_try:
         used_index = int(acc.get("_index") or 1)
         upscale_payload = adapter.build_upscale_payload(resolved_media_id, account=acc, recaptcha_token="")
@@ -925,20 +949,41 @@ async def upscale_job(job_id: str, body: dict):
         status = result.get("status", 0)
         if result.get("ok"):
             logger.info("[Upscale] Thành công với account #%s", used_index)
+            used_account_index = used_index
+            used_account = acc
             break
-        logger.warning("[Upscale] account #%s → HTTP %s, thử account tiếp theo...", used_index, status)
-        await asyncio.sleep(1)
+        body_text = result.get("body", "")
+        body_preview = str(body_text or "").replace("\r", " ").replace("\n", " ")[:300]
+        logger.warning("[Upscale] account #%s HTTP %s body=%s", used_index, status, body_preview)
+        if _should_try_next_account(status, body_text):
+            logger.warning("[Upscale] account #%s → HTTP %s, thử account tiếp theo...", used_index, status)
+            await asyncio.sleep(1)
+            continue
+        logger.warning("[Upscale] account #%s → HTTP %s, dừng failover", used_index, status)
+        used_account_index = used_index
+        used_account = acc
+        break
 
     if not result or not result.get("ok"):
-        return {"ok": False, "body": result.get("body", "") if result else "No result"}
+        return {
+            "ok": False,
+            "body": result.get("body", "") if result else "No result",
+            "account_index": used_account_index,
+        }
 
     upscale_operations = adapter.parse_operations(result.get("body", ""))
     if not upscale_operations:
-        return {"ok": True, "started": True, "message": "Upscale request accepted"}
+        return {
+            "ok": True,
+            "started": True,
+            "pending": True,
+            "message": "Upscale request accepted",
+            "account_index": used_account_index,
+        }
 
     for _ in range(80):
         await asyncio.sleep(3)
-        status_result = await adapter.check_video_status(upscale_operations, acc.get("ACCESS_TOKEN", ""))
+        status_result = await adapter.check_video_status(upscale_operations, used_account.get("ACCESS_TOKEN", ""))
         if not status_result.get("ok"):
             continue
         videos = adapter.parse_video_results(status_result.get("body", ""))
@@ -950,9 +995,15 @@ async def upscale_job(job_id: str, body: dict):
                     "media_id": v.get("mediaId", ""),
                     "operation_name": v.get("operationName") or (((upscale_operations[0] or {}).get("operation") or {}).get("name", "")),
                 })
-            return {"ok": True, "completed": True, "outputs": upscaled}
+            return {"ok": True, "completed": True, "outputs": upscaled, "account_index": used_account_index}
 
-    return {"ok": True, "started": True, "message": "Upscale da duoc gui, nhung chua co ket qua kip thoi gian cho"}
+    return {
+        "ok": True,
+        "started": True,
+        "pending": True,
+        "message": "Upscale da duoc gui, nhung chua co ket qua kip thoi gian cho",
+        "account_index": used_account_index,
+    }
 
 
 # ---------------------------------------------------------------------------

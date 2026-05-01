@@ -54,6 +54,12 @@
       e.preventDefault();
     }
   }
+
+  function confirmDelete(e: Event) {
+    if (!confirm('Xóa vĩnh viễn key này khỏi database?')) {
+      e.preventDefault();
+    }
+  }
 </script>
 
 <div class="p-6">
@@ -183,6 +189,11 @@
                 <form method="POST" action="?/revoke" use:enhance>
                   <input type="hidden" name="id" value={l.id} />
                   <button class="btn-danger" type="submit" on:click={confirmRevoke}>Thu hồi</button>
+                </form>
+              {:else if l.status === 'revoked'}
+                <form method="POST" action="?/delete" use:enhance>
+                  <input type="hidden" name="id" value={l.id} />
+                  <button class="btn-danger text-xs px-3 py-1.5" type="submit" on:click={confirmDelete}>Xóa</button>
                 </form>
               {:else}
                 <span class="text-gray-600 text-xs">—</span>

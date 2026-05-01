@@ -1646,6 +1646,29 @@
   <!-- Toast container -->
   <div id="toast-container"></div>
 
+  <!-- Admin Notification Popup -->
+  <div id="notif-popup-overlay"
+    style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(10,10,20,.75);backdrop-filter:blur(8px);
+           align-items:center;justify-content:center;">
+    <div id="notif-popup-box"
+      style="width:480px;max-width:94vw;max-height:90vh;overflow-y:auto;border-radius:20px;
+             box-shadow:0 32px 80px rgba(0,0,0,.6);padding:0;border:1px solid rgba(236,72,153,.25);
+             position:relative;background:#fff;">
+      <!-- Pink accent top bar -->
+      <div style="height:4px;background:linear-gradient(90deg,#ec4899,#f43f5e,#fb923c);border-radius:20px 20px 0 0;"></div>
+      <div id="notif-popup-inner" style="padding:28px 28px 16px;text-align:center;"></div>
+      <div style="padding:0 28px 24px;display:flex;justify-content:center;">
+        <button id="notif-popup-close"
+          style="background:linear-gradient(135deg,#ec4899,#f43f5e);color:#fff;border:none;
+                 border-radius:10px;padding:11px 36px;font-size:14px;font-weight:600;cursor:pointer;
+                 letter-spacing:.3px;box-shadow:0 4px 14px rgba(236,72,153,.4);transition:opacity .15s;"
+          onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+          Đã hiểu
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Studio image popup (shared) -->
   <div id="studio-img-popup" class="studio-popup-overlay" style="display:none;"
     onclick="if(event.target===this)Studio.closePopup()">
@@ -2104,6 +2127,7 @@
   <script src="/static/js/tabs/settings.js?v=7"></script>
   <script src="/static/js/tabs/other.js?v=6"></script>
   <script src="/static/js/tabs/studio_unified.js?v=24"></script>
+  <script src="/static/js/notifications.js?v=1"></script>
 </body>
 
 </html>

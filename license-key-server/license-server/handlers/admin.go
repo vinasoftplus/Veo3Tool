@@ -366,6 +366,28 @@ func BanMachine(c *fiber.Ctx) error {
 	return c.Status(201).JSON(fiber.Map{"banned": true, "machine_id": req.MachineID})
 }
 
+func DeleteLicense(c *fiber.Ctx) error {
+	id := c.Params("id")
+	pool := db.Pool()
+	ctx := context.Background()
+
+	// Chỉ cho xóa key đã revoked
+	var status string
+	err := pool.QueryRow(ctx, "SELECT status FROM licenses WHERE id = $1", id).Scan(&status)
+	if err == pgx.ErrNoRows {
+		return c.Status(404).JSON(fiber.Map{"error": "not_found"})
+	}
+	if status != "revoked" {
+		return c.Status(400).JSON(fiber.Map{"error": "only_revoked_can_be_deleted"})
+	}
+
+	_, err = pool.Exec(ctx, "DELETE FROM licenses WHERE id = $1", id)
+	if err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "db_error"})
+	}
+	return c.JSON(fiber.Map{"deleted": true})
+}
+
 func UnbanMachine(c *fiber.Ctx) error {
 	id := c.Params("id")
 	pool := db.Pool()

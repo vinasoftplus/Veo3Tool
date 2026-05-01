@@ -102,6 +102,6 @@ async def on_api_401(account_index: int) -> bool:
 
 
 async def on_api_403(account_index: int) -> bool:
-    """Gọi khi API trả về 403 — thử refresh token ngay lập tức."""
-    logger.warning("[AutoRefresh] 403 detected for account #%s — refreshing now...", account_index)
-    return await refresh_account_token(account_index)
+    """403 often means reCAPTCHA/unusual activity, not an expired token."""
+    logger.warning("[AutoRefresh] 403 detected for account #%s - skip automatic token refresh", account_index)
+    return False

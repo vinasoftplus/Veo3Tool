@@ -32,21 +32,11 @@
   function parsePrompts(text) {
     const raw = String(text || '').trim();
     if (!raw) return [];
-    if (/^SCENE\s+\d+[:\s]/im.test(raw)) {
-      const chunks = [];
-      let block = [];
-      raw.split(/\r?\n/).forEach(line => {
-        if (/^SCENE\s+\d+[:\s]/i.test(line) && block.length) {
-          chunks.push(block.join('\n').trim());
-          block = [line];
-        } else {
-          block.push(line);
-        }
-      });
-      if (block.join('').trim()) chunks.push(block.join('\n').trim());
-      return chunks.filter(Boolean);
-    }
-    return raw.split(/\r?\n{2,}/).map(x => x.trim()).filter(Boolean);
+    // TXT import rule: one non-empty line = one prompt/card.
+    return raw
+      .split(/\r?\n/)
+      .map(x => x.trim())
+      .filter(Boolean);
   }
 
   function parseJsonPromptCards(text) {
@@ -319,11 +309,11 @@
     `).join('');
   }
 
-  function openLibraryPicker(cardId) {
+  async function openLibraryPicker(cardId) {
     libraryPickerCardId = cardId;
     const modal = $('studio-library-picker');
     if (!modal) return;
-    populateLibraryCategoryFilters();
+    await loadLibrarySources().catch(() => {});
     renderLibraryPicker();
     modal.style.display = 'flex';
   }
@@ -408,6 +398,7 @@
       const url = out?.video_url || out?.videoUri || out?.fifeUrl || '';
       if (card.busyImage) return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang tạo ảnh...</div></div>';
       if (card.upscaling) return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang upscale 1080p...</div></div>';
+      if (card.status === 'processing' && card.upscaleFailed) return `<div style="text-align:center;padding:12px;color:var(--orange);font-size:12px;white-space:pre-wrap;"><div style="font-weight:700;margin-bottom:6px;">Upscale đã gửi nhưng chưa có kết quả 1080p</div><button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="Studio.retryUpscale('${card.id}')">Upscale lại</button></div>`;
       if (card.status === 'processing') return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang xử lý...</div></div>';
       if (card.status === 'running') return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang tạo video...</div></div>';
       if (card.status === 'failed') return `<div style="padding:12px;color:var(--red);font-size:12px;white-space:pre-wrap;">${card.error || 'Thất bại'}${card.upscaleFailed ? `<br><button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="Studio.retryUpscale('${card.id}')">Upscale lại</button>` : ''}</div>`;
@@ -959,11 +950,18 @@
           try {
             const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: i, account_index: card.videoAccountIndex || null });
             if (res.ok && Array.isArray(res.outputs) && res.outputs.length) {
+              if (res.account_index) card.videoAccountIndex = res.account_index;
               card.outputs[i] = { ...out, ...res.outputs[0], _upscaled: true };
               const url1080 = card.outputs[i].video_url || card.outputs[i].videoUri || card.outputs[i].fifeUrl;
               card.status = 'completed';
               if (url1080) { await saveVideo(url1080, filename, manualHandle); saved++; }
               else failed++;
+            } else if (res.ok && (res.pending || res.started)) {
+              if (res.account_index) card.videoAccountIndex = res.account_index;
+              card.status = 'processing';
+              card.upscaleFailed = true;
+              failed++;
+              toast(`Cụm ${cardIdx}: upscale đã được gửi, chờ thêm để có kết quả`, 'info');
             } else {
               toast(`Cụm ${cardIdx}: upscale thất bại`, 'error');
               card.status = 'failed';
@@ -1003,11 +1001,18 @@
     try {
       const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: outputIndex, account_index: card.videoAccountIndex || null });
       if (res.ok && Array.isArray(res.outputs) && res.outputs.length) {
+        if (res.account_index) card.videoAccountIndex = res.account_index;
         card.outputs[outputIndex] = { ...card.outputs[outputIndex], ...res.outputs[0], _upscaled: true };
         card.upscaleFailed = false;
         card.status = 'completed';
         toast('Upscale 1080p thành công', 'success');
         return true;
+      } else if (res.ok && (res.pending || res.started)) {
+        if (res.account_index) card.videoAccountIndex = res.account_index;
+        card.upscaleFailed = true;
+        card.status = 'processing';
+        toast(res.message || 'Upscale đã được gửi, chờ thêm để có kết quả', 'info');
+        return false;
       } else {
         card.status = 'failed';
         toast(res.body || res.message || 'Upscale thất bại', 'error');
@@ -1443,7 +1448,7 @@
 
   async function genAllImages() {
     // Nếu đang lọc "failed" thì tạo lại các card lỗi, không đụng card đã xong
-    const pending = _activeFilter === 'failed'
+    const pending = (_activeFilter === 'failed' || _activeFilter === 'img-failed')
       ? cards.filter(c => !c.busyImage && c.status === 'failed' && String(c.prompt || '').trim())
       : cards.filter(c => !c.busyImage && String(c.prompt || '').trim());
     if (!pending.length) return toast('Không có cụm nào sẵn sàng tạo hình', 'error');
@@ -2361,7 +2366,7 @@
     const n = norm(charName);
     if (!n) return false;
     // Word boundary: ký tự trước/sau phải là khoảng trắng, dấu câu, hoặc đầu/cuối chuỗi
-    const re = new RegExp('(?:^|[\\s,.(\\[\\-])' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=$|[\\s,.)\\]\\-])', '');
+    const re = new RegExp('(?:^|[\\s,.(\\[\\-"])' + n.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '(?=$|[\\s,.)\\]\\-"])', '');
     return re.test(p);
   }
 

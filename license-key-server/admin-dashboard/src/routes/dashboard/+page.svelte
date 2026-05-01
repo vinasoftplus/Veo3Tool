@@ -34,25 +34,32 @@
     <div class="card">
       <h3 class="text-sm font-medium text-gray-400 mb-3">Quick Links</h3>
       <div class="space-y-2">
-        <a href="/keys" class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
+        <a href="/admin-manage/keys" class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
           <span class="text-xl">🔑</span>
           <div>
             <div class="text-sm font-medium text-gray-200">Tạo License Key mới</div>
             <div class="text-xs text-gray-500">Quản lý và phân phối keys</div>
           </div>
         </a>
-        <a href="/bans" class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
+        <a href="/admin-manage/bans" class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
           <span class="text-xl">🚫</span>
           <div>
             <div class="text-sm font-medium text-gray-200">Quản lý Ban</div>
             <div class="text-xs text-gray-500">Ban/unban máy theo UUID</div>
           </div>
         </a>
-        <a href="/activations" class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
+        <a href="/admin-manage/activations" class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
           <span class="text-xl">💻</span>
           <div>
             <div class="text-sm font-medium text-gray-200">Xem Activations</div>
             <div class="text-xs text-gray-500">Thiết bị đã kích hoạt</div>
+          </div>
+        </a>
+        <a href="/admin-manage/notifications" class="flex items-center gap-3 p-3 rounded-lg hover:bg-gray-800 transition-colors cursor-pointer">
+          <span class="text-xl">🔔</span>
+          <div>
+            <div class="text-sm font-medium text-gray-200">Gửi thông báo</div>
+            <div class="text-xs text-gray-500">Hiển thị popup cho người dùng khi mở tool</div>
           </div>
         </a>
       </div>

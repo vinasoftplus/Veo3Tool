@@ -39,6 +39,14 @@ async def _refresh_if_needed(result: dict, account_index: int) -> bool:
     status = result.get("status", 0)
     if status not in (401, 403):
         return False
+    body_text = str(result.get("body", "") or "").lower()
+    if status == 403 and (
+        "recaptcha evaluation failed" in body_text
+        or "public_error_unusual_activity" in body_text
+        or "recaptcha" in body_text
+    ):
+        logger.warning("[Image] HTTP 403 do reCAPTCHA/unusual activity - khong refresh token account #%s", account_index)
+        return False
     if not account_index:
         return False
     from services.token_refresh_service import refresh_account_token

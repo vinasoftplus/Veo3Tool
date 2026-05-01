@@ -111,15 +111,6 @@ chrome.webRequest.onBeforeSendHeaders.addListener(
 
         chrome.storage.local.set({ lastBearer: payload });
 
-        const expiryTs = Date.now() + 3600 * 1000;
-        getCurrentAccountIndex().then((accountIndex) => {
-          fetch(`${APP_URL}/api/extension/token`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ token, url: details.url, expiry: expiryTs, accountIndex }),
-          }).catch(() => {});
-        });
-
         chrome.runtime.sendMessage({ type: 'TOKEN_CAPTURED', payload }).catch(() => {});
       }
     } catch (e) {}
@@ -249,13 +240,6 @@ chrome.runtime.onMessage.addListener((msg) => {
     if (!isPreferredTokenUrl(msg.url)) return;
     const payload = { token: msg.token, url: msg.url, ts: new Date().toISOString() };
     chrome.storage.local.set({ lastBearer: payload });
-    getCurrentAccountIndex().then((accountIndex) => {
-      fetch(`${APP_URL}/api/extension/token`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: msg.token, url: msg.url, accountIndex }),
-      }).catch(() => {});
-    });
     chrome.runtime.sendMessage({ type: 'TOKEN_CAPTURED', payload }).catch(() => {});
   }
 
@@ -366,13 +350,85 @@ async function getRecaptchaFromTab(action = 'VIDEO_GENERATION') {
   }
 }
 
-// Direct background SW call to Google API (no tab injection needed for the API call itself)
-// Only requires tab for reCAPTCHA token acquisition
+// Ensure a labs.google tab is open and return its tabId
+async function ensureLabsTab() {
+  let tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
+  if (tabs.length) return tabs[0].id;
+  log('No labs.google tab — opening one and waiting...');
+  await chrome.tabs.create({ url: LABS_URL, active: false });
+  for (let i = 0; i < 20; i++) {
+    await new Promise(r => setTimeout(r, 1000));
+    tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
+    if (tabs.length) break;
+  }
+  if (!tabs.length) throw new Error('No labs.google tab open after auto-open');
+  await new Promise(r => setTimeout(r, 2000));
+  return tabs[0].id;
+}
+
+// Execute fetch from inside the labs.google tab so Chrome auto-adds x-browser-* headers
+async function fetchViaTab(tabId, url, fetchToken, bodyStr) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: async (reqUrl, token, body) => {
+      try {
+        const resp = await fetch(reqUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+            'X-Goog-Encode-Response-If-Executable': 'base64',
+          },
+          body,
+          credentials: 'include',
+          mode: 'cors',
+        });
+        const text = await resp.text();
+        return { ok: resp.ok, status: resp.status, reason: resp.statusText, body: text };
+      } catch (e) {
+        return { ok: false, status: 0, reason: 'TAB_FETCH_ERROR', body: String(e?.message || e) };
+      }
+    },
+    args: [url, fetchToken, bodyStr],
+  });
+  return results[0]?.result || { ok: false, status: 0, reason: 'NO_RESULT', body: '' };
+}
+
+// Execute upload from inside the labs.google tab
+async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr) {
+  const results = await chrome.scripting.executeScript({
+    target: { tabId },
+    world: 'MAIN',
+    func: async (reqUrl, token, body) => {
+      try {
+        const resp = await fetch(reqUrl, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${token}`,
+          },
+          body,
+          credentials: 'include',
+          mode: 'cors',
+        });
+        if (!resp.ok) return { ok: false, status: resp.status, body: null };
+        const json = await resp.json();
+        return { ok: true, status: resp.status, body: json };
+      } catch (e) {
+        return { ok: false, status: 0, body: null };
+      }
+    },
+    args: [uploadUrl, fetchToken, uploadPayloadStr],
+  });
+  return results[0]?.result || { ok: false, status: 0, body: null };
+}
+
+// POST via labs.google tab — Chrome auto-adds x-browser-validation and x-client-data
 async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GENERATION', accountIndex = 1) {
   const freshToken = await getFreshToken(accessToken, accountIndex);
   const recaptchaToken = await getRecaptchaFromTab(action) || '';
 
-  // Build final payload with fresh sessionId + recaptcha
   const p = JSON.parse(JSON.stringify(payload));
   if (p.clientContext) {
     p.clientContext.sessionId = crypto.randomUUID();
@@ -385,87 +441,48 @@ async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GEN
   }
 
   try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${freshToken}`,
-        'X-Goog-Encode-Response-If-Executable': 'base64',
-      },
-      body: JSON.stringify(p),
-      credentials: 'omit',
-      mode: 'cors',
-    });
-    // 401/403 = token hết hạn → reload labs tab để capture token mới, retry 1 lần
-    if (response.status === 401 || response.status === 403) {
-      log('Got', response.status, '— reloading labs tab to refresh token...');
+    const tabId = await ensureLabsTab();
+    let result = await fetchViaTab(tabId, url, freshToken, JSON.stringify(p));
+
+    // 401/403 → reload tab, capture new token, retry once
+    if (result.status === 401 || result.status === 403) {
+      log('Got', result.status, '— reloading labs tab to refresh token...');
       const oldToken = freshToken;
-      const tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
-      if (tabs.length) await chrome.tabs.reload(tabs[0].id);
-      else await chrome.tabs.create({ url: LABS_URL, active: false });
-      // Đợi tối đa 30s đến khi token mới được capture (khác token cũ)
+      await chrome.tabs.reload(tabId);
       let retryToken = oldToken;
       for (let i = 0; i < 15; i++) {
         await new Promise(r => setTimeout(r, 2000));
         retryToken = await getFreshToken(accessToken, accountIndex);
-        if (retryToken && retryToken !== oldToken) {
-          log('New token captured after', (i + 1) * 2, 's');
-          break;
-        }
+        if (retryToken && retryToken !== oldToken) { log('New token after', (i + 1) * 2, 's'); break; }
       }
-      log('Retrying request with', retryToken === oldToken ? 'same token (no new token captured)' : 'new token');
-      // Lấy lại reCAPTCHA mới — token cũ đã hết hạn sau khi chờ tab reload
       const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
-      const retryPayload = JSON.parse(JSON.stringify(p));
-      if (retryPayload.clientContext) {
-        retryPayload.clientContext.sessionId = crypto.randomUUID();
-        if (retryRecaptcha) {
-          retryPayload.clientContext.recaptchaContext = {
-            token: retryRecaptcha,
-            applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB',
-          };
-        }
+      const retryP = JSON.parse(JSON.stringify(p));
+      if (retryP.clientContext) {
+        retryP.clientContext.sessionId = crypto.randomUUID();
+        if (retryRecaptcha) retryP.clientContext.recaptchaContext = { token: retryRecaptcha, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
       }
-      const retryResp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${retryToken}`,
-          'X-Goog-Encode-Response-If-Executable': 'base64',
-        },
-        body: JSON.stringify(retryPayload),
-        credentials: 'omit',
-        mode: 'cors',
-      });
-      const retryBody = await retryResp.text();
-      return { ok: retryResp.ok, status: retryResp.status, reason: retryResp.statusText, body: retryBody };
+      const newTabId = await ensureLabsTab();
+      result = await fetchViaTab(newTabId, url, retryToken, JSON.stringify(retryP));
     }
-    const body = await response.text();
-    return { ok: response.ok, status: response.status, reason: response.statusText, body };
+    return result;
   } catch (error) {
     return { ok: false, status: 0, reason: 'FETCH_ERROR', body: String(error?.message || error || '') };
   }
 }
 
-// Upload image(s) in browser then immediately POST the video generation request
-// payload.__uploads__ = [{fieldKey, base64, mimeType, targetPayloadPath}, ...]
-// Upload images directly from background SW then POST generation request
-// payload.__uploads__ = [{base64, mimeType, payloadPath}, ...]
+// Upload images + POST generation request — all via labs.google tab for x-browser-* headers
 async function executeBrowserUploadAndPost(url, payload, accessToken, accountIndex = 1, action = 'VIDEO_GENERATION') {
   const freshToken = await getFreshToken(accessToken, accountIndex);
   const uploads = payload.__uploads__ || [];
   const cleanPayload = Object.assign({}, payload);
   delete cleanPayload.__uploads__;
 
-  // Parse mediaId từ upload response — check top-level rồi nested 1 cấp
   function parseUploadMediaId(body) {
     if (!body || typeof body !== 'object') return null;
     const KEYS = ['mediaId', 'mediaGenerationId', 'id', 'name'];
-    // top-level string
     for (const k of KEYS) {
       if (typeof body[k] === 'string' && body[k]) return body[k];
     }
-    // nested 1 cấp (vd: body.media.name, body.imageInput.mediaGenerationId)
     for (const v of Object.values(body)) {
       if (v && typeof v === 'object' && !Array.isArray(v)) {
         for (const k of KEYS) {
@@ -476,33 +493,22 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
     return null;
   }
 
-  async function uploadImageSW(base64str, mimeType) {
-    const uploadPayload = {
-      imageInput: {
-        rawImageBytes: base64str,
-        mimeType,
-        isUserUploaded: true,
-      },
-      clientContext: { sessionId: crypto.randomUUID(), tool: 'ASSET_MANAGER' },
-    };
-    const resp = await fetch(URL_UPLOAD_IMAGE, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${freshToken}` },
-      body: JSON.stringify(uploadPayload),
-      credentials: 'omit',
-      mode: 'cors',
-    });
-    if (!resp.ok) throw new Error(`Upload failed: ${resp.status}`);
-    const body = await resp.json();
-    return parseUploadMediaId(body);
-  }
-
   try {
-    // Upload all images and inject mediaIds into payload
+    const tabId = await ensureLabsTab();
     const p = JSON.parse(JSON.stringify(cleanPayload));
+
+    // Upload each image via tab so Chrome adds x-browser-* headers
     for (const up of uploads) {
-      const mediaId = await uploadImageSW(up.base64, up.mimeType);
+      const uploadPayload = {
+        imageInput: { rawImageBytes: up.base64, mimeType: up.mimeType, isUserUploaded: true },
+        clientContext: { sessionId: crypto.randomUUID(), tool: 'ASSET_MANAGER' },
+      };
+      const upResult = await uploadViaTab(tabId, URL_UPLOAD_IMAGE, freshToken, JSON.stringify(uploadPayload));
+      if (!upResult.ok) return { ok: false, status: upResult.status, reason: 'UPLOAD_FAILED', body: '' };
+      const mediaId = parseUploadMediaId(upResult.body);
       if (!mediaId) return { ok: false, status: 0, reason: 'UPLOAD_NO_MEDIA_ID', body: '' };
+
+      // Inject mediaId into payload at the correct path
       const parts = up.payloadPath.split('.');
       let obj = p;
       for (let i = 0; i < parts.length - 1; i++) {
@@ -512,83 +518,41 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
       }
       const finalKey = parts[parts.length - 1];
       const finalArrMatch = finalKey.match(/^(\w+)\[(\d+)\]$/);
-      if (finalArrMatch) {
-        obj[finalArrMatch[1]][parseInt(finalArrMatch[2])] = mediaId;
-      } else {
-        obj[finalKey] = mediaId;
-      }
+      if (finalArrMatch) obj[finalArrMatch[1]][parseInt(finalArrMatch[2])] = mediaId;
+      else obj[finalKey] = mediaId;
     }
 
-    // Get reCAPTCHA token (requires tab, but only this step needs it)
+    // Get reCAPTCHA and POST via tab
     const recaptchaToken = await getRecaptchaFromTab(action) || '';
     if (p.clientContext) {
       p.clientContext.sessionId = crypto.randomUUID();
-      if (recaptchaToken) {
-        p.clientContext.recaptchaContext = {
-          token: recaptchaToken,
-          applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB',
-        };
-      }
+      if (recaptchaToken) p.clientContext.recaptchaContext = { token: recaptchaToken, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
     }
 
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${freshToken}`,
-        'X-Goog-Encode-Response-If-Executable': 'base64',
-      },
-      body: JSON.stringify(p),
-      credentials: 'omit',
-      mode: 'cors',
-    });
+    let result = await fetchViaTab(tabId, url, freshToken, JSON.stringify(p));
 
-    // 401/403 → reload labs tab để capture token mới, retry 1 lần
-    if (response.status === 401 || response.status === 403) {
-      log('Upload+Post got', response.status, '— reloading labs tab...');
+    // 401/403 → reload tab, get new token, retry once
+    if (result.status === 401 || result.status === 403) {
+      log('Upload+Post got', result.status, '— reloading labs tab...');
       const oldToken = freshToken;
-      const tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
-      if (tabs.length) await chrome.tabs.reload(tabs[0].id);
-      else await chrome.tabs.create({ url: LABS_URL, active: false });
-      // Đợi token mới tối đa 30s
+      await chrome.tabs.reload(tabId);
       let retryToken = oldToken;
       for (let i = 0; i < 15; i++) {
         await new Promise(r => setTimeout(r, 2000));
         retryToken = await getFreshToken(accessToken, accountIndex);
-        if (retryToken && retryToken !== oldToken) {
-          log('New token captured after', (i + 1) * 2, 's');
-          break;
-        }
+        if (retryToken && retryToken !== oldToken) { log('New token after', (i + 1) * 2, 's'); break; }
       }
-      // Fresh reCAPTCHA + sessionId
       const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
       const retryP = JSON.parse(JSON.stringify(p));
       if (retryP.clientContext) {
         retryP.clientContext.sessionId = crypto.randomUUID();
-        if (retryRecaptcha) {
-          retryP.clientContext.recaptchaContext = {
-            token: retryRecaptcha,
-            applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB',
-          };
-        }
+        if (retryRecaptcha) retryP.clientContext.recaptchaContext = { token: retryRecaptcha, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
       }
-      const retryResp = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${retryToken}`,
-          'X-Goog-Encode-Response-If-Executable': 'base64',
-        },
-        body: JSON.stringify(retryP),
-        credentials: 'omit',
-        mode: 'cors',
-      });
-      const retryBody = await retryResp.text();
-      return { ok: retryResp.ok, status: retryResp.status, reason: retryResp.statusText, body: retryBody };
+      const newTabId = await ensureLabsTab();
+      result = await fetchViaTab(newTabId, url, retryToken, JSON.stringify(retryP));
     }
 
-    const body = await response.text();
-    return { ok: response.ok, status: response.status, reason: response.statusText, body };
+    return result;
   } catch (error) {
     return { ok: false, status: 0, reason: 'SW_ERROR', body: String(error?.message || error || '') };
   }

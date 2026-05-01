@@ -77,6 +77,19 @@ export const actions: Actions = {
     return { revoked: true };
   },
 
+  delete: async ({ request, cookies }) => {
+    const token = cookies.get('session');
+    if (!token) throw redirect(302, '/login');
+    const form = await request.formData();
+    const id = form.get('id');
+    const res = await fetch(`${BACKEND}/admin/licenses/${id}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) return fail(400, { error: 'Xóa thất bại' });
+    return { deleted: true };
+  },
+
   updateDevices: async ({ request, cookies }) => {
     const token = cookies.get('session');
     if (!token) throw redirect(302, '/login');

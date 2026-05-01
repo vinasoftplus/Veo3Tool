@@ -68,6 +68,7 @@ func main() {
 	api.Post("/validate", handlers.Validate)
 	api.Post("/activate", handlers.Activate)
 	api.Get("/version", handlers.GetVersion)
+	api.Get("/notifications", handlers.GetNotifications)
 
 	// Admin endpoints (JWT protected)
 	admin := app.Group("/admin")
@@ -79,6 +80,7 @@ func main() {
 	adminAuth.Get("/licenses/:id", handlers.GetLicense)
 	adminAuth.Patch("/licenses/:id/revoke", handlers.RevokeLicense)
 	adminAuth.Patch("/licenses/:id/max-devices", handlers.UpdateMaxDevices)
+	adminAuth.Delete("/licenses/:id", handlers.DeleteLicense)
 	adminAuth.Get("/activations", handlers.ListActivations)
 	adminAuth.Post("/activations/:id/revoke", handlers.RevokeActivation)
 	adminAuth.Get("/stats", handlers.GetStats)
@@ -89,6 +91,11 @@ func main() {
 	// Update management
 	adminAuth.Get("/update", handlers.GetUpdateInfo)
 	adminAuth.Post("/update/upload", handlers.UploadUpdate)
+	// Notification management
+	adminAuth.Get("/notifications", handlers.AdminListNotifications)
+	adminAuth.Post("/notifications", handlers.AdminCreateNotification)
+	adminAuth.Patch("/notifications/:id/toggle", handlers.AdminToggleNotification)
+	adminAuth.Delete("/notifications/:id", handlers.AdminDeleteNotification)
 
 	log.Printf("License server starting on :%s", cfg.Port)
 	log.Fatal(app.Listen(":" + cfg.Port))

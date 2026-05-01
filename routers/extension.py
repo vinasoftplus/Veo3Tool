@@ -335,6 +335,17 @@ async def capture_token(payload: TokenPayload):
         _last_token_capture["decision"] = "ignored_non_labs"
         return {"ok": True, "message": "Ignored non-Labs token"}
 
+    if _pending_browser_submit or _inflight_jobs:
+        _last_token_capture["decision"] = "ignored_busy_capture"
+        logger.info(
+            "[Extension] ignored captured token while jobs are active | pending=%s | inflight=%s | account #%s | url=%s",
+            len(_pending_browser_submit),
+            len(_inflight_jobs),
+            int(payload.accountIndex or 1),
+            payload.url or "?",
+        )
+        return {"ok": True, "message": "Ignored captured token while jobs are active"}
+
     requested_index = max(1, int(payload.accountIndex or 1))
     updated_account_index = requested_index
     target_key = f"account{requested_index}"

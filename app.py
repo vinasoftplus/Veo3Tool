@@ -36,7 +36,7 @@ def _setup_logging() -> None:
     root.setLevel(logging.INFO)
 
 
-CURRENT_VERSION = "1.4.1"
+CURRENT_VERSION = "1.4.2"
 
 _update_info: dict = {}  # cache kết quả check update
 
@@ -76,7 +76,7 @@ def create_app() -> FastAPI:
     from services.license import get_runtime_key, is_licensed
 
     # Paths excluded from all security checks (must always be reachable)
-    _PUBLIC_PATHS = {"/", "/api/health", "/api/update-info", "/api/license/info", "/api/license/auto-check",
+    _PUBLIC_PATHS = {"/", "/api/health", "/api/update-info", "/api/notifications", "/api/license/info", "/api/license/auto-check",
                      "/api/license/validate", "/api/license/set-key", "/api/license/ban-check",
                      "/api/license/clear", "/api/license/shutdown", "/api/extension/poll-job",
                      "/api/extension/submit-job", "/api/extension/submit-browser",
@@ -190,5 +190,18 @@ def create_app() -> FastAPI:
         if _update_info:
             return {"has_update": True, "current_version": CURRENT_VERSION, **_update_info}
         return {"has_update": False, "current_version": CURRENT_VERSION}
+
+    @app.get("/api/notifications")
+    async def get_notifications():
+        """Lấy thông báo từ admin server để hiển thị popup khi tool khởi động."""
+        try:
+            import urllib.request, json
+            from services.license import LICENSE_SERVER_URL
+            url = f"{LICENSE_SERVER_URL}/api/v1/notifications"
+            with urllib.request.urlopen(url, timeout=5) as r:
+                data = json.loads(r.read())
+            return {"ok": True, "data": data.get("data", [])}
+        except Exception:
+            return {"ok": True, "data": []}
 
     return app

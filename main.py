@@ -117,7 +117,7 @@ def main():
     except Exception as e:
         _log(f"winforms import FAILED: {e}")
     window = webview.create_window(
-        title="Dream Forge - Tool tao video AI tu dong",
+        title="Dream Forge - Tool tạo video AI tự động - Dev by Vo Hoan Hao - Mua tool liên hệ telegram: @haovipscan",
         url=f"http://{HOST}:{PORT}/",
         width=1440,
         height=900,

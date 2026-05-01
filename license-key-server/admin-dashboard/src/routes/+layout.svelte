@@ -8,13 +8,14 @@
     { href: '/admin-manage/activations', label: 'Activations', icon: '💻' },
     { href: '/admin-manage/bans', label: 'Bans', icon: '🚫' },
     { href: '/admin-manage/update', label: 'Update Manager', icon: '🚀' },
+    { href: '/admin-manage/notifications', label: 'Thông báo', icon: '🔔' },
   ];
 
   let sidebarOpen = false;
   function closeSidebar() { sidebarOpen = false; }
 </script>
 
-{#if $page.url.pathname !== '/admin-manage/login'}
+{#if $page.url.pathname !== '/login'}
 <div class="flex min-h-screen">
   <!-- Mobile overlay -->
   {#if sidebarOpen}
