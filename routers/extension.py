@@ -9,6 +9,8 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import random
+import time
 from typing import Any
 
 from fastapi import APIRouter
@@ -24,9 +26,57 @@ _captcha_queue: list[dict[str, Any]] = []
 
 _pending_browser_submit: dict[str, asyncio.Future] = {}
 _browser_submit_queue: list[dict[str, Any]] = []
+_browser_job_accounts: dict[str, int] = {}
 
 # Jobs đã được poll, đang xử lý bởi extension (tránh trả lại cùng 1 job)
 _inflight_jobs: set[str] = set()
+_inflight_browser_accounts: set[int] = set()
+_browser_account_cooldown_until: dict[int, float] = {}
+
+_RECAPTCHA_COOLDOWN_BASE_SECONDS = 60
+_RECAPTCHA_COOLDOWN_JITTER_SECONDS = 30
+
+
+def _is_unusual_activity(body: str) -> bool:
+    text = str(body or "").lower()
+    return "public_error_unusual_activity" in text or "recaptcha evaluation failed" in text
+
+
+def _set_browser_account_cooldown(account_index: int, body: str = "") -> int:
+    account = max(1, int(account_index or 1))
+    seconds = _RECAPTCHA_COOLDOWN_BASE_SECONDS + random.randint(0, _RECAPTCHA_COOLDOWN_JITTER_SECONDS)
+    _browser_account_cooldown_until[account] = time.monotonic() + seconds
+    logger.warning(
+        "[Extension] Pause browser jobs account #%s trong %ss do reCAPTCHA/unusual activity | body=%s",
+        account,
+        seconds,
+        str(body or "").replace("\n", " ")[:300],
+    )
+    return seconds
+
+
+def _browser_account_wait_seconds(account_index: int) -> float:
+    account = max(1, int(account_index or 1))
+    wait = _browser_account_cooldown_until.get(account, 0.0) - time.monotonic()
+    if wait <= 0:
+        _browser_account_cooldown_until.pop(account, None)
+        return 0.0
+    return wait
+
+
+async def wait_for_browser_account_available(account_index: int, *, timeout: float = 300.0) -> None:
+    """Wait until a browser account is not in-flight/cooldown before doing pre-submit work."""
+    account = max(1, int(account_index or 1))
+    deadline = time.monotonic() + timeout
+    while True:
+        wait = _browser_account_wait_seconds(account)
+        busy = account in _inflight_browser_accounts
+        if wait <= 0 and not busy:
+            return
+        if time.monotonic() >= deadline:
+            return
+        sleep_for = min(2.0, max(0.2, wait if wait > 0 else 1.0))
+        await asyncio.sleep(sleep_for)
 
 
 async def request_captcha_token(job_id: str, job_type: str = "video", account_index: int = 1) -> str | None:
@@ -86,6 +136,7 @@ async def request_browser_upload_post(
     fut: asyncio.Future = loop.create_future()
     normalized_account_index = max(1, int(account_index or 1))
     _pending_browser_submit[job_id] = fut
+    _browser_job_accounts[job_id] = normalized_account_index
     full_payload = dict(payload)
     full_payload["__uploads__"] = uploads
     _browser_submit_queue.append(
@@ -112,6 +163,8 @@ async def request_browser_upload_post(
     finally:
         _pending_browser_submit.pop(job_id, None)
         _inflight_jobs.discard(job_id)
+        account_for_job = _browser_job_accounts.pop(job_id, normalized_account_index)
+        _inflight_browser_accounts.discard(account_for_job)
         for i, item in enumerate(_browser_submit_queue):
             if item["jobId"] == job_id:
                 _browser_submit_queue.pop(i)
@@ -131,6 +184,7 @@ async def request_browser_submit(
     fut: asyncio.Future = loop.create_future()
     normalized_account_index = max(1, int(account_index or 1))
     _pending_browser_submit[job_id] = fut
+    _browser_job_accounts[job_id] = normalized_account_index
     _browser_submit_queue.append(
         {
             "jobId": job_id,
@@ -157,6 +211,8 @@ async def request_browser_submit(
     finally:
         _pending_browser_submit.pop(job_id, None)
         _inflight_jobs.discard(job_id)
+        account_for_job = _browser_job_accounts.pop(job_id, normalized_account_index)
+        _inflight_browser_accounts.discard(account_for_job)
         for i, item in enumerate(_browser_submit_queue):
             if item["jobId"] == job_id:
                 _browser_submit_queue.pop(i)
@@ -168,10 +224,16 @@ async def poll_job():
     # Browser submit jobs — pop ngay khi trả, đánh dấu in-flight
     for i, job in enumerate(_browser_submit_queue):
         job_id = job["jobId"]
+        account_index = max(1, int(job.get("accountIndex") or 1))
         if job_id in _inflight_jobs:
             continue  # đang được xử lý, bỏ qua
+        if account_index in _inflight_browser_accounts:
+            continue
+        if _browser_account_wait_seconds(account_index) > 0:
+            continue
         _browser_submit_queue.pop(i)
         _inflight_jobs.add(job_id)
+        _inflight_browser_accounts.add(account_index)
         job_kind = str(job.get("jobKind") or "browser_submit")
         logger.info(
             "📤 [Extension] poll-job -> job_%s (%s, %s, account #%s)",
@@ -272,10 +334,13 @@ async def submit_browser(req: BrowserSubmitResponse):
             break
 
     _inflight_jobs.discard(req.jobId)
+    mapped_account = _browser_job_accounts.get(req.jobId)
     fut = _pending_browser_submit.get(req.jobId)
     if fut and not fut.done():
-        expected_account = int((queued_job or {}).get("accountIndex") or 1)
+        expected_account = int(mapped_account or (queued_job or {}).get("accountIndex") or 1)
         received_account = int(req.accountIndex or expected_account)
+        _inflight_browser_accounts.discard(expected_account)
+        _inflight_browser_accounts.discard(received_account)
         logger.info(
             "✅ [Extension] submit-browser cho job_%s | account #%s | status=%s",
             req.jobId[:8],
@@ -293,6 +358,8 @@ async def submit_browser(req: BrowserSubmitResponse):
                 reason_preview,
                 body_preview,
             )
+            if int(req.status or 0) == 403 and _is_unusual_activity(req.body):
+                _set_browser_account_cooldown(received_account, req.body)
         fut.set_result(
             {
                 "ok": bool(req.ok),
@@ -303,6 +370,10 @@ async def submit_browser(req: BrowserSubmitResponse):
         )
         return {"ok": True}
 
+    fallback_account = int(mapped_account or req.accountIndex or 1)
+    _inflight_browser_accounts.discard(fallback_account)
+    if int(req.status or 0) == 403 and _is_unusual_activity(req.body):
+        _set_browser_account_cooldown(fallback_account, req.body)
     logger.warning("⚠️ [Extension] submit-browser bị trễ hoặc job không còn: job_%s", req.jobId[:8])
     return {"ok": False, "detail": "Browser submit job not found or already completed"}
 

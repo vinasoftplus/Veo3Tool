@@ -24,12 +24,15 @@ const LABS_FLOW_MATCH = '*://labs.google/fx/tools/flow*';
 const TOKEN_SOURCE_HOSTS = ['aisandbox-pa.googleapis.com'];
 // Cached reCAPTCHA token intercepted from page (expires in 2 minutes)
 const RECAPTCHA_CACHE_TTL = 110 * 1000;
+const RECAPTCHA_COOLDOWN_BASE_MS = 60 * 1000;
+const RECAPTCHA_COOLDOWN_JITTER_MS = 30 * 1000;
 
 const DEBUG = true;
 const log = DEBUG ? console.log.bind(console, '[DreamForgeExt]') : () => {};
 
 // In-memory cache for intercepted reCAPTCHA tokens keyed by action
 const _recaptchaCache = {};
+const _recaptchaCooldownUntil = {};
 
 function normalizeAccountIndex(value, fallback = 1) {
   const num = Number(value);
@@ -308,20 +311,74 @@ async function solveCaptcha(action = 'VIDEO_GENERATION') {
   return results[0]?.result ?? null;
 }
 
+// Generic timeout wrapper
+function withTimeout(promise, ms, label) {
+  return Promise.race([
+    promise,
+    new Promise((_, rej) => setTimeout(() => rej(new Error(`TIMEOUT: ${label} (${ms}ms)`)), ms)),
+  ]);
+}
+
+function sleep(ms) {
+  return new Promise(r => setTimeout(r, ms));
+}
+
+function _isRecaptchaFailureBody(body) {
+  const text = String(body || '').toLowerCase();
+  return text.includes('recaptcha') || text.includes('unusual_activity');
+}
+
+function _isUnusualActivityBody(body) {
+  const text = String(body || '').toLowerCase();
+  return text.includes('public_error_unusual_activity') || text.includes('recaptcha evaluation failed');
+}
+
+function _setRecaptchaCooldown(accountIndex, body = '') {
+  const acc = normalizeAccountIndex(accountIndex, 1);
+  const jitter = Math.floor(Math.random() * RECAPTCHA_COOLDOWN_JITTER_MS);
+  const ms = RECAPTCHA_COOLDOWN_BASE_MS + jitter;
+  _recaptchaCooldownUntil[acc] = Date.now() + ms;
+  log('reCAPTCHA unusual activity cooldown for account', acc, 'ms:', ms, 'body:', String(body || '').slice(0, 160));
+  return ms;
+}
+
+async function _waitRecaptchaCooldown(accountIndex) {
+  const acc = normalizeAccountIndex(accountIndex, 1);
+  const until = _recaptchaCooldownUntil[acc] || 0;
+  const waitMs = until - Date.now();
+  if (waitMs > 0) {
+    log('Waiting reCAPTCHA cooldown for account', acc, 'ms:', waitMs);
+    await sleep(waitMs);
+  }
+}
+
 // Get token cho đúng accountIndex từ backend config
 async function getFreshToken(fallback = '', accountIndex = 1) {
   try {
-    const res = await fetch(`${APP_URL}/api/extension/token-for-account?account_index=${accountIndex}`);
+    const res = await withTimeout(
+      fetch(`${APP_URL}/api/extension/token-for-account?account_index=${accountIndex}`),
+      8000, 'getFreshToken'
+    );
     if (res.ok) {
       const data = await res.json();
       if (data.token) return data.token;
     }
-  } catch (e) {}
+  } catch (e) { log('getFreshToken error:', e.message); }
   return fallback;
 }
 
 // Mutex for reCAPTCHA acquisition — only one call to grecaptcha.execute() at a time
 let _recaptchaMutex = Promise.resolve();
+
+// Mutex for tab fetch/upload — only one executeScript at a time to avoid frame conflicts
+let _tabMutex = Promise.resolve();
+
+function acquireTabMutex() {
+  let release;
+  const prev = _tabMutex;
+  _tabMutex = new Promise(r => { release = r; });
+  return prev.then(() => release);
+}
 
 // Get reCAPTCHA token from the labs.google tab (tab needed only for reCAPTCHA)
 async function getRecaptchaFromTab(action = 'VIDEO_GENERATION') {
@@ -344,7 +401,7 @@ async function getRecaptchaFromTab(action = 'VIDEO_GENERATION') {
       delete _recaptchaCache[action];
       return cached2.token;
     }
-    return await solveCaptcha(action);
+    return await withTimeout(solveCaptcha(action), 35000, 'getRecaptchaFromTab');
   } finally {
     resolve();
   }
@@ -366,62 +423,164 @@ async function ensureLabsTab() {
   return tabs[0].id;
 }
 
+// Helper: build body string với recaptchaToken và sessionId mới
+function _injectRecaptcha(bodyStr, recaptchaToken) {
+  try {
+    const p = JSON.parse(bodyStr);
+    if (p.clientContext) {
+      p.clientContext.sessionId = crypto.randomUUID();
+      if (recaptchaToken) p.clientContext.recaptchaContext = { token: recaptchaToken, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
+    }
+    return JSON.stringify(p);
+  } catch (_) { return bodyStr; }
+}
+
 // Execute fetch from inside the labs.google tab so Chrome auto-adds x-browser-* headers
-async function fetchViaTab(tabId, url, fetchToken, bodyStr) {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (reqUrl, token, body) => {
-      try {
-        const resp = await fetch(reqUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-            'X-Goog-Encode-Response-If-Executable': 'base64',
+// recaptchaToken phải được lấy TRƯỚC khi gọi hàm này (bên ngoài mutex)
+// Nếu 403 reCAPTCHA: release mutex → lấy token mới → re-acquire mutex → retry (không có 2 executeScript đồng thời)
+// Nếu 403 token expired: reload tab trong mutex → lấy token mới → retry
+async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', accountIndex = 1, action = 'VIDEO_GENERATION' } = {}) {
+  const doFetchWithMutex = async (tid, fetchTok, fetchBody) => {
+    const rel = await acquireTabMutex();
+    try {
+      const results = await withTimeout(
+        chrome.scripting.executeScript({
+          target: { tabId: tid },
+          world: 'MAIN',
+          func: async (reqUrl, tok, b) => {
+            try {
+              const resp = await fetch(reqUrl, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${tok}`,
+                  'X-Goog-Encode-Response-If-Executable': 'base64',
+                },
+                body: b,
+                credentials: 'include',
+                mode: 'cors',
+              });
+              const text = await resp.text();
+              return { ok: resp.ok, status: resp.status, reason: resp.statusText, body: text };
+            } catch (e) {
+              return { ok: false, status: 0, reason: 'TAB_FETCH_ERROR', body: String(e?.message || e) };
+            }
           },
-          body,
-          credentials: 'include',
-          mode: 'cors',
-        });
-        const text = await resp.text();
-        return { ok: resp.ok, status: resp.status, reason: resp.statusText, body: text };
-      } catch (e) {
-        return { ok: false, status: 0, reason: 'TAB_FETCH_ERROR', body: String(e?.message || e) };
+          args: [url, fetchTok, fetchBody],
+        }),
+        60000, 'fetchViaTab'
+      );
+      return results[0]?.result || { ok: false, status: 0, reason: 'NO_RESULT', body: '' };
+    } finally {
+      rel();
+    }
+  };
+
+  try {
+    await _waitRecaptchaCooldown(accountIndex);
+
+    // Lần 1: acquire mutex → fetch → release mutex
+    let result = await doFetchWithMutex(tabId, fetchToken, bodyStr);
+
+    // 401/403 handling — mutex đã được RELEASE trước khi xử lý
+    if (result.status === 401 || result.status === 403) {
+      const body403 = String(result.body || '');
+      const isRecaptchaFail = _isRecaptchaFailureBody(body403);
+      const isUnusualActivity = _isUnusualActivityBody(body403);
+
+      if (isRecaptchaFail) {
+        if (isUnusualActivity) {
+          _setRecaptchaCooldown(accountIndex, body403);
+          return result;
+        }
+        // reCAPTCHA fail — mutex đã free, lấy token mới rồi re-acquire để retry
+        log('Got 403 reCAPTCHA fail — fetching fresh reCAPTCHA then retrying');
+        const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
+        if (!retryRecaptcha) {
+          log('No fresh reCAPTCHA token available — skip retry');
+          return result;
+        }
+        const retryBody = _injectRecaptcha(bodyStr, retryRecaptcha);
+        // re-acquire mutex cho retry — mutex đã free nên không deadlock
+        result = await doFetchWithMutex(tabId, fetchToken, retryBody);
+        if ((result.status === 401 || result.status === 403) && _isUnusualActivityBody(result.body)) {
+          _setRecaptchaCooldown(accountIndex, result.body);
+        }
+      } else {
+        // Token expired — acquire mutex, reload tab, lấy token mới, retry
+        log('Got', result.status, '— reloading labs tab to refresh token...');
+        const rel2 = await acquireTabMutex();
+        let retryToken = fetchToken;
+        let newTabId = tabId;
+        try {
+          await chrome.tabs.reload(tabId);
+          await new Promise(r => setTimeout(r, 3000));
+          const oldToken = fetchToken;
+          for (let i = 0; i < 15; i++) {
+            await new Promise(r => setTimeout(r, 2000));
+            retryToken = await getFreshToken(accessToken, accountIndex);
+            if (retryToken && retryToken !== oldToken) { log('New token after', (i + 1) * 2, 's'); break; }
+          }
+          newTabId = await ensureLabsTab();
+        } finally {
+          rel2();
+        }
+        // lấy reCAPTCHA bên ngoài mutex
+        const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
+        const retryBody = _injectRecaptcha(bodyStr, retryRecaptcha);
+        result = await doFetchWithMutex(newTabId, retryToken, retryBody);
+        if ((result.status === 401 || result.status === 403) && _isUnusualActivityBody(result.body)) {
+          _setRecaptchaCooldown(accountIndex, result.body);
+        }
       }
-    },
-    args: [url, fetchToken, bodyStr],
-  });
-  return results[0]?.result || { ok: false, status: 0, reason: 'NO_RESULT', body: '' };
+    }
+
+    return result;
+  } catch (e) {
+    log('fetchViaTab error:', e.message);
+    return { ok: false, status: 0, reason: e.message, body: '' };
+  }
 }
 
 // Execute upload from inside the labs.google tab
+// Serialized via _tabMutex to prevent frame conflicts from concurrent jobs
 async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr) {
-  const results = await chrome.scripting.executeScript({
-    target: { tabId },
-    world: 'MAIN',
-    func: async (reqUrl, token, body) => {
-      try {
-        const resp = await fetch(reqUrl, {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${token}`,
-          },
-          body,
-          credentials: 'include',
-          mode: 'cors',
-        });
-        if (!resp.ok) return { ok: false, status: resp.status, body: null };
-        const json = await resp.json();
-        return { ok: true, status: resp.status, body: json };
-      } catch (e) {
-        return { ok: false, status: 0, body: null };
-      }
-    },
-    args: [uploadUrl, fetchToken, uploadPayloadStr],
-  });
-  return results[0]?.result || { ok: false, status: 0, body: null };
+  const release = await acquireTabMutex();
+  try {
+    const results = await withTimeout(
+      chrome.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        func: async (reqUrl, token, body) => {
+          try {
+            const resp = await fetch(reqUrl, {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+              body,
+              credentials: 'include',
+              mode: 'cors',
+            });
+            if (!resp.ok) return { ok: false, status: resp.status, body: null };
+            const json = await resp.json();
+            return { ok: true, status: resp.status, body: json };
+          } catch (e) {
+            return { ok: false, status: 0, body: null };
+          }
+        },
+        args: [uploadUrl, fetchToken, uploadPayloadStr],
+      }),
+      30000, 'uploadViaTab'
+    );
+    return results[0]?.result || { ok: false, status: 0, body: null };
+  } catch (e) {
+    log('uploadViaTab error:', e.message);
+    return { ok: false, status: 0, body: null };
+  } finally {
+    release();
+  }
 }
 
 // POST via labs.google tab — Chrome auto-adds x-browser-validation and x-client-data
@@ -442,29 +601,8 @@ async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GEN
 
   try {
     const tabId = await ensureLabsTab();
-    let result = await fetchViaTab(tabId, url, freshToken, JSON.stringify(p));
-
-    // 401/403 → reload tab, capture new token, retry once
-    if (result.status === 401 || result.status === 403) {
-      log('Got', result.status, '— reloading labs tab to refresh token...');
-      const oldToken = freshToken;
-      await chrome.tabs.reload(tabId);
-      let retryToken = oldToken;
-      for (let i = 0; i < 15; i++) {
-        await new Promise(r => setTimeout(r, 2000));
-        retryToken = await getFreshToken(accessToken, accountIndex);
-        if (retryToken && retryToken !== oldToken) { log('New token after', (i + 1) * 2, 's'); break; }
-      }
-      const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
-      const retryP = JSON.parse(JSON.stringify(p));
-      if (retryP.clientContext) {
-        retryP.clientContext.sessionId = crypto.randomUUID();
-        if (retryRecaptcha) retryP.clientContext.recaptchaContext = { token: retryRecaptcha, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
-      }
-      const newTabId = await ensureLabsTab();
-      result = await fetchViaTab(newTabId, url, retryToken, JSON.stringify(retryP));
-    }
-    return result;
+    // Pass accessToken/accountIndex/action so fetchViaTab can handle 403 retry internally while holding mutex
+    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex, action });
   } catch (error) {
     return { ok: false, status: 0, reason: 'FETCH_ERROR', body: String(error?.message || error || '') };
   }
@@ -523,36 +661,14 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
     }
 
     // Get reCAPTCHA and POST via tab
+    // fetchViaTab holds mutex for entire duration including 403 reload+retry
     const recaptchaToken = await getRecaptchaFromTab(action) || '';
     if (p.clientContext) {
       p.clientContext.sessionId = crypto.randomUUID();
       if (recaptchaToken) p.clientContext.recaptchaContext = { token: recaptchaToken, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
     }
 
-    let result = await fetchViaTab(tabId, url, freshToken, JSON.stringify(p));
-
-    // 401/403 → reload tab, get new token, retry once
-    if (result.status === 401 || result.status === 403) {
-      log('Upload+Post got', result.status, '— reloading labs tab...');
-      const oldToken = freshToken;
-      await chrome.tabs.reload(tabId);
-      let retryToken = oldToken;
-      for (let i = 0; i < 15; i++) {
-        await new Promise(r => setTimeout(r, 2000));
-        retryToken = await getFreshToken(accessToken, accountIndex);
-        if (retryToken && retryToken !== oldToken) { log('New token after', (i + 1) * 2, 's'); break; }
-      }
-      const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
-      const retryP = JSON.parse(JSON.stringify(p));
-      if (retryP.clientContext) {
-        retryP.clientContext.sessionId = crypto.randomUUID();
-        if (retryRecaptcha) retryP.clientContext.recaptchaContext = { token: retryRecaptcha, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
-      }
-      const newTabId = await ensureLabsTab();
-      result = await fetchViaTab(newTabId, url, retryToken, JSON.stringify(retryP));
-    }
-
-    return result;
+    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex, action });
   } catch (error) {
     return { ok: false, status: 0, reason: 'SW_ERROR', body: String(error?.message || error || '') };
   }
@@ -571,6 +687,7 @@ async function executeJob(data) {
     fetch(`${APP_URL}/api/extension/poll-job`).catch(() => {});
   }, 20000);
 
+  const isBrowserJob = data.jobKind === 'browser_upload_post' || data.jobKind === 'browser_submit';
   try {
     if (data.jobKind === 'browser_upload_post') {
       log('Upload+submit for job:', data.jobId, 'account:', accountIndex);
@@ -614,6 +731,14 @@ async function executeJob(data) {
     }
   } catch (e) {
     console.error('[DreamForgeExt] Job error for', data.jobId, ':', e.message, e.stack);
+    // Fallback: always notify server so it doesn't hang waiting for 300s timeout
+    if (isBrowserJob) {
+      await fetch(`${APP_URL}/api/extension/submit-browser`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: data.jobId, accountIndex, ok: false, status: 0, reason: 'EXTENSION_JOB_ERROR', body: e.message || '' }),
+      }).catch(() => {});
+    }
   } finally {
     _swAlive = false;
     clearInterval(_swPing);

@@ -61,22 +61,78 @@ async def download_and_apply(req: UpdateRequest):
         )
 
     current_exe = str(running_exe)
+    current_dir = str(running_exe.parent)
+    current_pid = os.getpid()
     tmp_dir = Path(tempfile.gettempdir())
-    new_exe = tmp_dir / "DreamForge-latest.exe"
-    bat_path = tmp_dir / "df_updater.bat"
+    new_exe = tmp_dir / f"DreamForge-update-{current_pid}.exe"
+    bat_path = tmp_dir / f"df_updater_{current_pid}.bat"
+    log_path = tmp_dir / f"df_updater_{current_pid}.log"
 
     # Download EXE mới
     try:
         urllib.request.urlretrieve(req.download_url, str(new_exe))
     except Exception as e:
         raise HTTPException(500, f"Download thất bại: {e}")
+    if not new_exe.exists() or new_exe.stat().st_size <= 0:
+        raise HTTPException(500, "Download failed: empty update file")
 
     # Tạo updater.bat
     bat_content = f"""@echo off
-timeout /t 2 /nobreak >nul
-copy /y "{new_exe}" "{current_exe}"
-start "" "{current_exe}"
+setlocal EnableExtensions
+set "NEW_EXE={new_exe}"
+set "CURRENT_EXE={current_exe}"
+set "CURRENT_DIR={current_dir}"
+set "LOG_FILE={log_path}"
+set "OLD_PID={current_pid}"
+
+echo [%date% %time%] updater started > "%LOG_FILE%"
+echo NEW_EXE=%NEW_EXE% >> "%LOG_FILE%"
+echo CURRENT_EXE=%CURRENT_EXE% >> "%LOG_FILE%"
+echo CURRENT_DIR=%CURRENT_DIR% >> "%LOG_FILE%"
+echo OLD_PID=%OLD_PID% >> "%LOG_FILE%"
+
+if not exist "%NEW_EXE%" (
+  echo [%date% %time%] missing downloaded exe >> "%LOG_FILE%"
+  exit /b 1
+)
+
+set /a WAIT_COUNT=0
+:wait_old_process
+tasklist /FI "PID eq %OLD_PID%" 2>nul | find "%OLD_PID%" >nul
+if errorlevel 1 goto copy_retry
+set /a WAIT_COUNT+=1
+if %WAIT_COUNT% GEQ 30 (
+  echo [%date% %time%] old process still running, forcing shutdown >> "%LOG_FILE%"
+  taskkill /PID %OLD_PID% /F >> "%LOG_FILE%" 2>&1
+  timeout /t 2 /nobreak >nul
+  goto copy_retry
+)
+timeout /t 1 /nobreak >nul
+goto wait_old_process
+
+:copy_retry
+set /a COPY_COUNT=0
+:copy_loop
+set /a COPY_COUNT+=1
+echo [%date% %time%] copy attempt %COPY_COUNT% >> "%LOG_FILE%"
+copy /y "%NEW_EXE%" "%CURRENT_EXE%" >> "%LOG_FILE%" 2>&1
+if not errorlevel 1 if exist "%CURRENT_EXE%" goto start_app
+if %COPY_COUNT% GEQ 60 goto fail
+timeout /t 1 /nobreak >nul
+goto copy_loop
+
+:start_app
+echo [%date% %time%] starting app >> "%LOG_FILE%"
+start "" /D "%CURRENT_DIR%" "%CURRENT_EXE%" >> "%LOG_FILE%" 2>&1
+if errorlevel 1 goto fail
+echo [%date% %time%] update success >> "%LOG_FILE%"
+del "%NEW_EXE%" >nul 2>&1
 del "%~f0"
+exit /b 0
+
+:fail
+echo [%date% %time%] update failed >> "%LOG_FILE%"
+exit /b 1
 """
     bat_path.write_text(bat_content, encoding="utf-8")
 

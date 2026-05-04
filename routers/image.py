@@ -114,7 +114,7 @@ class GenerateImageRequest(BaseModel):
 async def generate_image(req: GenerateImageRequest):
     from adapters.google_labs import GoogleLabsAdapter
     from adapters.google_labs import URL_IMG_GEN_TPL
-    from routers.extension import request_browser_submit
+    from routers.extension import request_browser_submit, wait_for_browser_account_available
     from urllib.parse import quote
 
     account = _get_account_or_raise()
@@ -126,6 +126,7 @@ async def generate_image(req: GenerateImageRequest):
         project_id = str(account.get("PROJECT_ID", "") or "").strip()
         if not project_id:
             raise HTTPException(400, "Thiếu PROJECT_ID cho tài khoản hiện tại.")
+        await wait_for_browser_account_available(account_index)
 
         payload = adapter.build_generate_images_payload(
             prompt=req.prompt,
@@ -192,7 +193,7 @@ async def generate_image_studio(
 ):
     from adapters.google_labs import GoogleLabsAdapter
     from adapters.google_labs import URL_IMG_GEN_TPL
-    from routers.extension import request_browser_submit
+    from routers.extension import request_browser_submit, wait_for_browser_account_available
     from services.character_service import get_character
     from urllib.parse import quote
 
@@ -203,6 +204,8 @@ async def generate_image_studio(
     project_id = str(account.get("PROJECT_ID", "") or "").strip()
     if not project_id:
         raise HTTPException(400, "Thiếu PROJECT_ID cho tài khoản hiện tại.")
+    if token_option == "Option 2":
+        await wait_for_browser_account_available(account_index)
 
     try:
         character_ids = json.loads(character_ids_json or "[]")
