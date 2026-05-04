@@ -616,12 +616,9 @@ async def studio_video(
         ref_media_ids = []
 
     logger.info("[StudioVideo] ref_media_ids=%s character_ids=%s", ref_media_ids, character_ids)
-    media_ids = await get_media_ids_for_account([str(x) for x in character_ids], account)
-    # Thêm media_id từ refs có sẵn (ảnh gen đã upload lên Google, không cần upload lại)
-    for mid in ref_media_ids:
-        if mid not in media_ids:
-            media_ids.append(mid)
-    logger.info("[StudioVideo] final media_ids=%s uploaded_refs_count=pending", media_ids)
+
+    # character_ids luôn dùng media_id đã sync (không có binary kèm theo)
+    char_media_ids = await get_media_ids_for_account([str(x) for x in character_ids], account)
 
     uploaded_refs: list[tuple[str, str, str]] = []
     for ref in reference_images[:6]:
@@ -635,6 +632,23 @@ async def studio_video(
                 ref.filename or f"ref_{uuid.uuid4().hex[:8]}.jpg",
             )
         )
+
+    # Nếu có binary reference_images → ưu tiên upload fresh, bỏ qua ref_media_ids thư viện.
+    # ref_media_ids có thể đã expired trên Google Labs → chỉ dùng khi không có binary.
+    if uploaded_refs:
+        media_ids = list(char_media_ids)
+        if ref_media_ids:
+            logger.info(
+                "[StudioVideo] Có %d ảnh binary → bỏ qua ref_media_ids thư viện %s, upload fresh",
+                len(uploaded_refs), ref_media_ids,
+            )
+    else:
+        media_ids = list(char_media_ids)
+        for mid in ref_media_ids:
+            if mid not in media_ids:
+                media_ids.append(mid)
+
+    logger.info("[StudioVideo] final media_ids=%s uploaded_refs=%d", media_ids, len(uploaded_refs))
 
     async def _submit_for_account(account_obj: dict, account_idx: int) -> dict:
         if token_option == "Option 2" and (media_ids or uploaded_refs):
@@ -670,7 +684,7 @@ async def studio_video(
                     access_token=account_obj.get("ACCESS_TOKEN", ""),
                     account_index=account_idx,
                 )
-            # Chỉ có media_ids sẵn, không cần upload → dùng browser_submit
+            # Chỉ có media_ids sẵn (char), không cần upload → dùng browser_submit
             return await request_browser_submit(
                 str(uuid.uuid4()),
                 job_type="video",
@@ -763,33 +777,6 @@ async def studio_video(
         )
 
     result = await _submit_for_account(account, account_index)
-
-    # Khi FE không pin account (account_index=0), ref_media_id có thể thuộc account khác.
-    # Fallback: nếu 404 với ref_media_ids, thử lại tuần tự trên account khác.
-    if (
-        not result.get("ok")
-        and token_option == "Option 2"
-        and requested_account_index <= 0
-        and ref_media_ids
-        and int(result.get("status") or 0) == 404
-    ):
-        current_idx = int(account.get("_index") or 0)
-        for alt in get_active_accounts():
-            alt_idx = int(alt.get("_index") or 0)
-            if not alt_idx or alt_idx == current_idx:
-                continue
-            logger.warning(
-                "[StudioVideo] HTTP 404 với account #%s, thử fallback account #%s do ref_media_ids có thể khác owner",
-                current_idx,
-                alt_idx,
-            )
-            alt_result = await _submit_for_account(alt, alt_idx)
-            if alt_result.get("ok"):
-                account = alt
-                account_index = alt_idx
-                result = alt_result
-                logger.info("[StudioVideo] fallback thành công với account #%s", alt_idx)
-                break
 
     if not result.get("ok"):
         raise HTTPException(400, f"API error: {result.get('body', '')}")

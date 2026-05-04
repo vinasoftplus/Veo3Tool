@@ -377,9 +377,20 @@ func DeleteLicense(c *fiber.Ctx) error {
 	if err == pgx.ErrNoRows {
 		return c.Status(404).JSON(fiber.Map{"error": "not_found"})
 	}
-	if status != "revoked" {
-		return c.Status(400).JSON(fiber.Map{"error": "only_revoked_can_be_deleted"})
+	isExpired := false
+	var expiresAt time.Time
+	pool.QueryRow(ctx, "SELECT expires_at FROM licenses WHERE id = $1", id).Scan(&expiresAt)
+	if status == "active" && expiresAt.Before(time.Now()) {
+		isExpired = true
 	}
+	if status != "revoked" && !isExpired {
+		return c.Status(400).JSON(fiber.Map{"error": "only_revoked_or_expired_can_be_deleted"})
+	}
+
+	// Xóa theo đúng thứ tự foreign key: audit_log → activations → licenses
+	pool.Exec(ctx, "DELETE FROM audit_log WHERE activation_id IN (SELECT id FROM activations WHERE license_id = $1)", id)
+	pool.Exec(ctx, "DELETE FROM audit_log WHERE license_id = $1", id)
+	pool.Exec(ctx, "DELETE FROM activations WHERE license_id = $1", id)
 
 	_, err = pool.Exec(ctx, "DELETE FROM licenses WHERE id = $1", id)
 	if err != nil {

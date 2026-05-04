@@ -747,13 +747,11 @@
     const refMediaIds = [];
     for (let i = 0; i < card.refs.length; i++) {
       const ref = card.refs[i];
-      if (ref.media_id) {
-        refMediaIds.push(ref.media_id);
-      } else {
-        let file = ref.file || null;
-        if (!file && ref.url) file = await urlToFile(ref.url, `${card.id}_video_ref_${i + 1}.png`);
-        if (file) fd.append('reference_images', file, file.name || `${card.id}_video_ref_${i + 1}.png`);
-      }
+      if (ref.media_id) refMediaIds.push(ref.media_id);
+      // Luôn gửi binary — BE sẽ upload fresh và bỏ qua media_id cũ nếu có binary
+      let file = ref.file || null;
+      if (!file && ref.url) file = await urlToFile(ref.url, `${card.id}_video_ref_${i + 1}.png`);
+      if (file) fd.append('reference_images', file, file.name || `${card.id}_video_ref_${i + 1}.png`);
     }
     if (refMediaIds.length) fd.append('ref_media_ids_json', JSON.stringify(refMediaIds));
     const res = await API.postForm('/api/veo/studio-video', fd);

@@ -1,6 +1,7 @@
 <script lang="ts">
   import type { PageData } from './$types';
   import { enhance } from '$app/forms';
+  import { invalidateAll } from '$app/navigation';
   import { LICENSE_TYPE_LABELS } from '$lib/types';
 
   export let data: PageData;
@@ -190,8 +191,8 @@
                   <input type="hidden" name="id" value={l.id} />
                   <button class="btn-danger" type="submit" on:click={confirmRevoke}>Thu hồi</button>
                 </form>
-              {:else if l.status === 'revoked'}
-                <form method="POST" action="?/delete" use:enhance>
+              {:else if l.status === 'revoked' || l.status === 'expired'}
+                <form method="POST" action="?/delete" use:enhance={() => ({ async update() { await invalidateAll(); } })}>
                   <input type="hidden" name="id" value={l.id} />
                   <button class="btn-danger text-xs px-3 py-1.5" type="submit" on:click={confirmDelete}>Xóa</button>
                 </form>

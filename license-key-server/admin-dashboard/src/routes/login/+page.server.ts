@@ -28,7 +28,7 @@ export const actions: Actions = {
       path: '/',
       maxAge: 60 * 60 * 8,
     });
-    throw redirect(302, '/dashboard');
+    throw redirect(302, '/admin-manage/dashboard');
   },
 
   logout: async ({ cookies }) => {

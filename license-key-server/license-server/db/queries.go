@@ -172,6 +172,9 @@ func ListLicensesDB(ctx context.Context, status string, page, limit int) ([]map[
 		var createdAt, expiresAt time.Time
 		var maxDevices int
 		rows.Scan(&id, &keyHash, &licType, &custName, &custEmail, &createdAt, &expiresAt, &maxDevices, &status)
+		if status == "active" && expiresAt.Before(time.Now()) {
+			status = "expired"
+		}
 		machineIDs := getMachineIDsForLicense(ctx, id)
 		result = append(result, map[string]any{
 			"id":             id,

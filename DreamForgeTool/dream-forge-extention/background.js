@@ -370,13 +370,17 @@ async function getFreshToken(fallback = '', accountIndex = 1) {
 // Mutex for reCAPTCHA acquisition — only one call to grecaptcha.execute() at a time
 let _recaptchaMutex = Promise.resolve();
 
-// Mutex for tab fetch/upload — only one executeScript at a time to avoid frame conflicts
-let _tabMutex = Promise.resolve();
+// Per-account tab pool: accountIndex → tabId
+const _accountTabs = new Map();
+// Per-account mutex: accountIndex → Promise (tail of mutex chain)
+const _accountMutexTails = new Map();
 
-function acquireTabMutex() {
+function acquireAccountMutex(accountIndex) {
+  const acc = normalizeAccountIndex(accountIndex, 1);
   let release;
-  const prev = _tabMutex;
-  _tabMutex = new Promise(r => { release = r; });
+  const prev = _accountMutexTails.get(acc) || Promise.resolve();
+  const next = new Promise(r => { release = r; });
+  _accountMutexTails.set(acc, next);
   return prev.then(() => release);
 }
 
@@ -407,20 +411,29 @@ async function getRecaptchaFromTab(action = 'VIDEO_GENERATION') {
   }
 }
 
-// Ensure a labs.google tab is open and return its tabId
-async function ensureLabsTab() {
-  let tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
-  if (tabs.length) return tabs[0].id;
-  log('No labs.google tab — opening one and waiting...');
-  await chrome.tabs.create({ url: LABS_URL, active: false });
+// Ensure a labs.google tab exists for the given account and return its tabId
+async function ensureAccountTab(accountIndex) {
+  const acc = normalizeAccountIndex(accountIndex, 1);
+  const existing = _accountTabs.get(acc);
+  if (existing) {
+    try {
+      await chrome.tabs.get(existing); // throws if tab no longer exists
+      return existing;
+    } catch (_) {
+      _accountTabs.delete(acc);
+    }
+  }
+  log('Opening labs.google tab for account', acc);
+  const created = await chrome.tabs.create({ url: LABS_URL, active: false });
+  _accountTabs.set(acc, created.id);
+  // Wait for tab to load and grecaptcha to init
   for (let i = 0; i < 20; i++) {
     await new Promise(r => setTimeout(r, 1000));
-    tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
-    if (tabs.length) break;
+    const tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
+    if (tabs.some(t => t.id === created.id)) break;
   }
-  if (!tabs.length) throw new Error('No labs.google tab open after auto-open');
   await new Promise(r => setTimeout(r, 2000));
-  return tabs[0].id;
+  return created.id;
 }
 
 // Helper: build body string với recaptchaToken và sessionId mới
@@ -435,13 +448,15 @@ function _injectRecaptcha(bodyStr, recaptchaToken) {
   } catch (_) { return bodyStr; }
 }
 
-// Execute fetch from inside the labs.google tab so Chrome auto-adds x-browser-* headers
-// recaptchaToken phải được lấy TRƯỚC khi gọi hàm này (bên ngoài mutex)
-// Nếu 403 reCAPTCHA: release mutex → lấy token mới → re-acquire mutex → retry (không có 2 executeScript đồng thời)
-// Nếu 403 token expired: reload tab trong mutex → lấy token mới → retry
+// Execute fetch from inside the account's dedicated labs.google tab
+// Per-account mutex: jobs for same account are serial, different accounts run in parallel
+// 403 reCAPTCHA: release mutex → get fresh reCAPTCHA → re-acquire → retry (no concurrent executeScript)
+// 403 token expired: reload tab inside mutex → get new token → retry
 async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', accountIndex = 1, action = 'VIDEO_GENERATION' } = {}) {
+  const acc = normalizeAccountIndex(accountIndex, 1);
+
   const doFetchWithMutex = async (tid, fetchTok, fetchBody) => {
-    const rel = await acquireTabMutex();
+    const rel = await acquireAccountMutex(acc);
     try {
       const results = await withTimeout(
         chrome.scripting.executeScript({
@@ -477,39 +492,33 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
   };
 
   try {
-    await _waitRecaptchaCooldown(accountIndex);
+    await _waitRecaptchaCooldown(acc);
 
-    // Lần 1: acquire mutex → fetch → release mutex
+    // Attempt 1: acquire per-account mutex → fetch → release
     let result = await doFetchWithMutex(tabId, fetchToken, bodyStr);
 
-    // 401/403 handling — mutex đã được RELEASE trước khi xử lý
+    // 401/403 — mutex already released before handling
     if (result.status === 401 || result.status === 403) {
       const body403 = String(result.body || '');
       const isRecaptchaFail = _isRecaptchaFailureBody(body403);
-      const isUnusualActivity = _isUnusualActivityBody(body403);
 
       if (isRecaptchaFail) {
-        if (isUnusualActivity) {
-          _setRecaptchaCooldown(accountIndex, body403);
+        if (_isUnusualActivityBody(body403)) {
+          _setRecaptchaCooldown(acc, body403);
           return result;
         }
-        // reCAPTCHA fail — mutex đã free, lấy token mới rồi re-acquire để retry
-        log('Got 403 reCAPTCHA fail — fetching fresh reCAPTCHA then retrying');
+        // reCAPTCHA fail — mutex free, get fresh token then re-acquire for retry
+        log('Got 403 reCAPTCHA fail for account', acc, '— retrying with fresh reCAPTCHA');
         const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
-        if (!retryRecaptcha) {
-          log('No fresh reCAPTCHA token available — skip retry');
-          return result;
-        }
-        const retryBody = _injectRecaptcha(bodyStr, retryRecaptcha);
-        // re-acquire mutex cho retry — mutex đã free nên không deadlock
-        result = await doFetchWithMutex(tabId, fetchToken, retryBody);
+        if (!retryRecaptcha) { log('No fresh reCAPTCHA — skip retry'); return result; }
+        result = await doFetchWithMutex(tabId, fetchToken, _injectRecaptcha(bodyStr, retryRecaptcha));
         if ((result.status === 401 || result.status === 403) && _isUnusualActivityBody(result.body)) {
-          _setRecaptchaCooldown(accountIndex, result.body);
+          _setRecaptchaCooldown(acc, result.body);
         }
       } else {
-        // Token expired — acquire mutex, reload tab, lấy token mới, retry
-        log('Got', result.status, '— reloading labs tab to refresh token...');
-        const rel2 = await acquireTabMutex();
+        // Token expired — reload this account's tab inside mutex
+        log('Got', result.status, 'for account', acc, '— reloading tab to refresh token');
+        const rel2 = await acquireAccountMutex(acc);
         let retryToken = fetchToken;
         let newTabId = tabId;
         try {
@@ -518,34 +527,34 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
           const oldToken = fetchToken;
           for (let i = 0; i < 15; i++) {
             await new Promise(r => setTimeout(r, 2000));
-            retryToken = await getFreshToken(accessToken, accountIndex);
+            retryToken = await getFreshToken(accessToken, acc);
             if (retryToken && retryToken !== oldToken) { log('New token after', (i + 1) * 2, 's'); break; }
           }
-          newTabId = await ensureLabsTab();
+          newTabId = await ensureAccountTab(acc);
         } finally {
           rel2();
         }
-        // lấy reCAPTCHA bên ngoài mutex
+        // Get reCAPTCHA outside mutex then retry
         const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
-        const retryBody = _injectRecaptcha(bodyStr, retryRecaptcha);
-        result = await doFetchWithMutex(newTabId, retryToken, retryBody);
+        result = await doFetchWithMutex(newTabId, retryToken, _injectRecaptcha(bodyStr, retryRecaptcha));
         if ((result.status === 401 || result.status === 403) && _isUnusualActivityBody(result.body)) {
-          _setRecaptchaCooldown(accountIndex, result.body);
+          _setRecaptchaCooldown(acc, result.body);
         }
       }
     }
 
     return result;
   } catch (e) {
-    log('fetchViaTab error:', e.message);
+    log('fetchViaTab error account', acc, ':', e.message);
     return { ok: false, status: 0, reason: e.message, body: '' };
   }
 }
 
-// Execute upload from inside the labs.google tab
-// Serialized via _tabMutex to prevent frame conflicts from concurrent jobs
-async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr) {
-  const release = await acquireTabMutex();
+// Execute upload from inside the account's dedicated labs.google tab
+// Serialized via per-account mutex to prevent frame conflicts
+async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, accountIndex = 1) {
+  const acc = normalizeAccountIndex(accountIndex, 1);
+  const release = await acquireAccountMutex(acc);
   try {
     const results = await withTimeout(
       chrome.scripting.executeScript({
@@ -583,9 +592,10 @@ async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr) {
   }
 }
 
-// POST via labs.google tab — Chrome auto-adds x-browser-validation and x-client-data
+// POST via account's dedicated labs.google tab — Chrome auto-adds x-browser-validation and x-client-data
 async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GENERATION', accountIndex = 1) {
-  const freshToken = await getFreshToken(accessToken, accountIndex);
+  const acc = normalizeAccountIndex(accountIndex, 1);
+  const freshToken = await getFreshToken(accessToken, acc);
   const recaptchaToken = await getRecaptchaFromTab(action) || '';
 
   const p = JSON.parse(JSON.stringify(payload));
@@ -600,9 +610,8 @@ async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GEN
   }
 
   try {
-    const tabId = await ensureLabsTab();
-    // Pass accessToken/accountIndex/action so fetchViaTab can handle 403 retry internally while holding mutex
-    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex, action });
+    const tabId = await ensureAccountTab(acc);
+    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex: acc, action });
   } catch (error) {
     return { ok: false, status: 0, reason: 'FETCH_ERROR', body: String(error?.message || error || '') };
   }
@@ -632,16 +641,17 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
   }
 
   try {
-    const tabId = await ensureLabsTab();
+    const acc = normalizeAccountIndex(accountIndex, 1);
+    const tabId = await ensureAccountTab(acc);
     const p = JSON.parse(JSON.stringify(cleanPayload));
 
-    // Upload each image via tab so Chrome adds x-browser-* headers
+    // Upload each image via account's tab so Chrome adds x-browser-* headers
     for (const up of uploads) {
       const uploadPayload = {
         imageInput: { rawImageBytes: up.base64, mimeType: up.mimeType, isUserUploaded: true },
         clientContext: { sessionId: crypto.randomUUID(), tool: 'ASSET_MANAGER' },
       };
-      const upResult = await uploadViaTab(tabId, URL_UPLOAD_IMAGE, freshToken, JSON.stringify(uploadPayload));
+      const upResult = await uploadViaTab(tabId, URL_UPLOAD_IMAGE, freshToken, JSON.stringify(uploadPayload), acc);
       if (!upResult.ok) return { ok: false, status: upResult.status, reason: 'UPLOAD_FAILED', body: '' };
       const mediaId = parseUploadMediaId(upResult.body);
       if (!mediaId) return { ok: false, status: 0, reason: 'UPLOAD_NO_MEDIA_ID', body: '' };
@@ -668,7 +678,7 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
       if (recaptchaToken) p.clientContext.recaptchaContext = { token: recaptchaToken, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
     }
 
-    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex, action });
+    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex: acc, action });
   } catch (error) {
     return { ok: false, status: 0, reason: 'SW_ERROR', body: String(error?.message || error || '') };
   }
