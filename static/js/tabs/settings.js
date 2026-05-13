@@ -33,15 +33,16 @@
     if (el('cfg-openai-key')) el('cfg-openai-key').value = cfg.OPENAI_API_KEY || '';
     if (el('cfg-deepseek-key')) el('cfg-deepseek-key').value = cfg.DEEPSEEK_API_KEY || '';
     if (el('cfg-ffmpeg-path')) el('cfg-ffmpeg-path').value = cfg.FFMPEG_PATH || '';
-    if (el('cfg-max-concurrent')) el('cfg-max-concurrent').value = cfg.MAX_CONCURRENT != null ? cfg.MAX_CONCURRENT : 3;
-    if (el('cfg-max-concurrent-image')) el('cfg-max-concurrent-image').value = cfg.MAX_CONCURRENT_IMAGE != null ? cfg.MAX_CONCURRENT_IMAGE : 2;
+    const clampConcurrent = (value, fallback = 2) => Math.min(3, Math.max(1, parseInt(value ?? fallback, 10) || fallback));
+    if (el('cfg-max-concurrent')) el('cfg-max-concurrent').value = clampConcurrent(cfg.MAX_CONCURRENT);
+    if (el('cfg-max-concurrent-image')) el('cfg-max-concurrent-image').value = clampConcurrent(cfg.MAX_CONCURRENT_IMAGE);
   }
 
   async function saveGeneral() {
-    const rawConcurrent = parseInt(document.getElementById('cfg-max-concurrent')?.value || '3', 10);
-    const maxConcurrent = Math.min(10, Math.max(1, isNaN(rawConcurrent) ? 3 : rawConcurrent));
+    const rawConcurrent = parseInt(document.getElementById('cfg-max-concurrent')?.value || '2', 10);
+    const maxConcurrent = Math.min(3, Math.max(1, isNaN(rawConcurrent) ? 2 : rawConcurrent));
     const rawImg = parseInt(document.getElementById('cfg-max-concurrent-image')?.value || '2', 10);
-    const maxConcurrentImage = Math.min(5, Math.max(1, isNaN(rawImg) ? 2 : rawImg));
+    const maxConcurrentImage = Math.min(3, Math.max(1, isNaN(rawImg) ? 2 : rawImg));
     const updates = {
       YOUTUBE_API_KEY: document.getElementById('cfg-youtube-key')?.value.trim() || '',
       GEMINI_API_KEYS: document.getElementById('cfg-gemini-keys')?.value.trim() || '',

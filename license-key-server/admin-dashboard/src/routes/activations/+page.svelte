@@ -44,7 +44,7 @@
               <a href="/keys?search={a.license_id}" class="hover:text-pink-400 transition-colors">#{a.license_id}</a>
             </td>
             <td class="px-4 py-3 text-gray-400 text-xs">{a.activated_at?.slice(0, 10) || '—'}</td>
-            <td class="px-4 py-3 text-gray-400 text-xs">{a.last_checked_at?.slice(0, 10) || '—'}</td>
+            <td class="px-4 py-3 text-gray-400 text-xs">{a.last_checked_at ? new Date(a.last_checked_at).toLocaleString('sv-SE', { timeZone: 'Asia/Ho_Chi_Minh' }) : '—'}</td>
             <td class="px-4 py-3 text-gray-400 text-xs">{a.ip_address || '—'}</td>
             <td class="px-4 py-3">
               {#if a.is_revoked}

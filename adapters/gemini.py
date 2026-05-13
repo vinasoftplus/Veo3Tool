@@ -73,24 +73,38 @@ class GeminiAdapter:
         from google.genai import types as gtypes
 
         system_instruction = (
-            "You are a professional video production planner. "
-            "The user will give you a YouTube video URL and a master prompt template. "
-            "Watch/analyze the video carefully, then fill in the master prompt template "
-            "based on the video's content, style, narrative, characters, and locations. "
-            "Replace every [INSERT ...] and [placeholder] with concrete, detailed content derived from the video. "
+            "You are a professional YouTube video analyst and production planner. "
+            "The user will give you a YouTube video URL and an output template. "
+            "Stay strictly grounded in the URL and any video content you can actually access or infer with high confidence. "
+            "Do not invent unrelated stories, characters, settings, emotional arcs, or visual styles. "
+            "Do not force the result into a heartwarming, animal, 3D animation, no-human, or no-dialogue format unless the source video itself has that format. "
+            "If you cannot access or confidently analyze the source video, return SOURCE_ANALYSIS_INSUFFICIENT and explain what data is missing instead of fabricating a script. "
+            "For SOURCE_ANALYSIS_INSUFFICIENT, a short missing-data explanation is allowed and required. "
+            "Return the exact provided master prompt template after filling every placeholder. "
+            "Do not add SOURCE ANALYSIS, CLONE STRATEGY, notes, explanations, preambles, or any section that is not in the provided template. "
+            "If the template contains a JSON schema sample, keep it as one sample object only; do not expand it into a full scene list. "
             "Return the complete filled markdown document — no explanation, no preamble, just the filled template."
         )
 
         user_message = (
-            f"Here is the YouTube video to analyze:\n{youtube_url}\n\n"
-            f"Here is the master prompt template to fill:\n\n{master_prompt}"
+            "Analyze the attached YouTube video URL, then fill this output template. "
+            "Use the actual video content when available. Do not rely on the URL text alone. "
+            "The final answer must be only the filled version of the template below. "
+            "Keep PART 2 as one JSON schema sample object, not a full generated scene list.\n\n"
+            f"{master_prompt}"
         )
 
         def _gen():
             return client.models.generate_content(
                 model=model,
                 contents=[
-                    gtypes.Content(role="user", parts=[gtypes.Part(text=user_message)])
+                    gtypes.Content(
+                        role="user",
+                        parts=[
+                            gtypes.Part(file_data=gtypes.FileData(file_uri=youtube_url)),
+                            gtypes.Part(text=user_message),
+                        ],
+                    )
                 ],
                 config=gtypes.GenerateContentConfig(
                     system_instruction=system_instruction,

@@ -9,7 +9,7 @@
   // Semaphore dùng chung cho cả tạo lẻ lẫn hàng loạt — tránh burst reCAPTCHA
   let _globalVideoSem = null;
   function _getGlobalVideoSem() {
-    if (!_globalVideoSem) _globalVideoSem = makeSemaphore(3); // default 3, sẽ được cập nhật theo config
+    if (!_globalVideoSem) _globalVideoSem = makeSemaphore(2); // default 2, sẽ được cập nhật theo config
     return _globalVideoSem;
   }
   let seq = 0;
@@ -1439,8 +1439,8 @@
       const acc = d[`account${i}`];
       if (acc && (acc.ACCESS_TOKEN || acc.COOKIE)) activeIndices.push(i);
     }
-    const maxConcurrent = Math.min(10, Math.max(1, parseInt(d.MAX_CONCURRENT || '3', 10) || 3));
-    const maxConcurrentImage = Math.min(5, Math.max(1, parseInt(d.MAX_CONCURRENT_IMAGE || '2', 10) || 2));
+    const maxConcurrent = Math.min(3, Math.max(1, parseInt(d.MAX_CONCURRENT || '2', 10) || 2));
+    const maxConcurrentImage = Math.min(3, Math.max(1, parseInt(d.MAX_CONCURRENT_IMAGE || '2', 10) || 2));
     return { accountIndices: activeIndices.length > 1 ? activeIndices : [null], maxConcurrent, maxConcurrentImage };
   }
 

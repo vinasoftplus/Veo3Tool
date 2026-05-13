@@ -413,7 +413,7 @@
         if (acc && (acc.ACCESS_TOKEN || acc.COOKIE)) idxs.push(i);
       }
       if (idxs.length > 1) accountIndices = idxs;
-      maxConcurrent = Math.min(10, Math.max(1, parseInt(d.MAX_CONCURRENT || '3', 10) || 3));
+      maxConcurrent = Math.min(3, Math.max(1, parseInt(d.MAX_CONCURRENT || '2', 10) || 2));
     } catch (_) {}
 
     const sleep = ms => new Promise(r => setTimeout(r, ms));

@@ -22,17 +22,17 @@ const RECAPTCHA_SITE_KEY = '6LdsFiUsAAAAAIjVDZcuLhaHiDn5nnHVXVRQGeMV';
 const LABS_URL = 'https://labs.google/fx/tools/flow';
 const LABS_FLOW_MATCH = '*://labs.google/fx/tools/flow*';
 const TOKEN_SOURCE_HOSTS = ['aisandbox-pa.googleapis.com'];
-// Cached reCAPTCHA token intercepted from page (expires in 2 minutes)
-const RECAPTCHA_CACHE_TTL = 110 * 1000;
+// Natural page tokens are observed only for diagnostics. Submit jobs always
+// generate a fresh one-time token in the correct account tab.
 const RECAPTCHA_COOLDOWN_BASE_MS = 60 * 1000;
 const RECAPTCHA_COOLDOWN_JITTER_MS = 30 * 1000;
 
 const DEBUG = true;
 const log = DEBUG ? console.log.bind(console, '[DreamForgeExt]') : () => {};
 
-// In-memory cache for intercepted reCAPTCHA tokens keyed by action
-const _recaptchaCache = {};
 const _recaptchaCooldownUntil = {};
+const _submitLimiters = new Map();
+let _submitLimitCache = { ts: 0, video: 2, image: 2 };
 
 function normalizeAccountIndex(value, fallback = 1) {
   const num = Number(value);
@@ -76,7 +76,8 @@ async function autoReloadLabsTab() {
     const tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
     if (tabs.length > 0) {
       log('Auto-reloading labs.google tab for fresh token');
-      await chrome.tabs.reload(tabs[0].id);
+      const [firstTab] = tabs;
+      await chrome.tabs.reload(firstTab.id);
     } else {
       log('No labs.google tab found, opening one');
       chrome.tabs.create({ url: LABS_URL, active: false });
@@ -249,40 +250,18 @@ chrome.runtime.onMessage.addListener((msg) => {
   if (msg.type === 'RECAPTCHA_FROM_PAGE') {
     const { token, action } = msg;
     if (token && token.length > 20) {
-      const key = action || 'VIDEO_GENERATION';
-      _recaptchaCache[key] = { token, ts: Date.now() };
-      log('Intercepted natural reCAPTCHA token for action:', key, token.slice(0, 20) + '...');
+      log('Ignored natural reCAPTCHA token for action:', action || 'VIDEO_GENERATION', token.slice(0, 20) + '...');
     }
   }
 });
 
-// --- solveCaptcha: use cached intercepted token first, fall back to execute() ---
-async function solveCaptcha(action = 'VIDEO_GENERATION') {
-  // 1. Use cached intercepted token if fresh enough
-  const cached = _recaptchaCache[action];
-  if (cached && (Date.now() - cached.ts) < RECAPTCHA_CACHE_TTL) {
-    log('Using cached reCAPTCHA token for action:', action);
-    delete _recaptchaCache[action]; // use once
-    return cached.token;
-  }
+// --- solveCaptcha: generate a fresh one-time token in the correct account tab ---
+async function solveCaptcha(action = 'VIDEO_GENERATION', accountIndex = 1) {
+  const acc = normalizeAccountIndex(accountIndex, 1);
 
-  // 2. Try to trigger a natural reCAPTCHA execution by calling execute() in page context
-  let tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
-  if (!tabs.length) {
-    // Tự mở tab labs.google và đợi load xong (tối đa 20s)
-    log('No labs.google tab — opening one and waiting...');
-    await chrome.tabs.create({ url: LABS_URL, active: false });
-    for (let i = 0; i < 20; i++) {
-      await new Promise(r => setTimeout(r, 1000));
-      tabs = await chrome.tabs.query({ url: LABS_FLOW_MATCH });
-      if (tabs.length) break;
-    }
-    if (!tabs.length) throw new Error('No labs.google tab open after auto-open');
-    // Thêm 2s để page init grecaptcha
-    await new Promise(r => setTimeout(r, 2000));
-  }
+  // Try to trigger a natural reCAPTCHA execution by calling execute() in page context
+  const tabId = await ensureAccountTab(acc);
 
-  const tabId = tabs[0].id;
   const results = await chrome.scripting.executeScript({
     target: { tabId },
     world: 'MAIN',
@@ -308,7 +287,11 @@ async function solveCaptcha(action = 'VIDEO_GENERATION') {
     },
     args: [RECAPTCHA_SITE_KEY, action],
   });
-  return results[0]?.result ?? null;
+  const token = results[0]?.result ?? null;
+  if (token && token.length > 20) {
+    log('Generated one-time reCAPTCHA for account', acc, 'action:', action, token.slice(0, 20) + '...');
+  }
+  return token;
 }
 
 // Generic timeout wrapper
@@ -372,40 +355,63 @@ let _recaptchaMutex = Promise.resolve();
 
 // Per-account tab pool: accountIndex → tabId
 const _accountTabs = new Map();
-// Per-account mutex: accountIndex → Promise (tail of mutex chain)
-const _accountMutexTails = new Map();
-
-function acquireAccountMutex(accountIndex) {
-  const acc = normalizeAccountIndex(accountIndex, 1);
-  let release;
-  const prev = _accountMutexTails.get(acc) || Promise.resolve();
-  const next = new Promise(r => { release = r; });
-  _accountMutexTails.set(acc, next);
-  return prev.then(() => release);
+// Per-account submit limiter. Capacity is read from MAX_CONCURRENT/MAX_CONCURRENT_IMAGE.
+async function getSubmitLimit(action = 'VIDEO_GENERATION') {
+  const now = Date.now();
+  if (now - _submitLimitCache.ts > 10000) {
+    try {
+      const res = await fetch(`${APP_URL}/api/settings/config`);
+      const data = await res.json();
+      const cfg = data?.data || {};
+      _submitLimitCache = {
+        ts: now,
+        video: Math.min(3, Math.max(1, parseInt(cfg.MAX_CONCURRENT ?? '2', 10) || 2)),
+        image: Math.min(3, Math.max(1, parseInt(cfg.MAX_CONCURRENT_IMAGE ?? '2', 10) || 2)),
+      };
+    } catch (_) {
+      _submitLimitCache.ts = now;
+    }
+  }
+  return action === 'IMAGE_GENERATION' ? _submitLimitCache.image : _submitLimitCache.video;
 }
 
-// Get reCAPTCHA token from the labs.google tab (tab needed only for reCAPTCHA)
-async function getRecaptchaFromTab(action = 'VIDEO_GENERATION') {
-  // Try cached intercepted token first (no mutex needed)
-  const cached = _recaptchaCache[action];
-  if (cached && (Date.now() - cached.ts) < RECAPTCHA_CACHE_TTL) {
-    log('Using cached reCAPTCHA for action:', action);
-    delete _recaptchaCache[action];
-    return cached.token;
+function _drainSubmitLimiter(state) {
+  while (state.queue.length) {
+    const item = state.queue[0];
+    const slots = item.exclusive ? state.limit : 1;
+    if (state.active + slots > state.limit) break;
+    state.queue.shift();
+    state.active += slots;
+    item.resolve(() => {
+      state.active = Math.max(0, state.active - slots);
+      _drainSubmitLimiter(state);
+    });
   }
+}
+
+async function acquireAccountSubmitSlot(accountIndex, action = 'VIDEO_GENERATION', exclusive = false) {
+  const acc = normalizeAccountIndex(accountIndex, 1);
+  const key = `${acc}:${action === 'IMAGE_GENERATION' ? 'image' : 'video'}`;
+  const limit = await getSubmitLimit(action);
+  const state = _submitLimiters.get(key) || { active: 0, queue: [], limit };
+  state.limit = limit;
+  _submitLimiters.set(key, state);
+  return await new Promise(resolve => {
+    state.queue.push({ resolve, exclusive });
+    _drainSubmitLimiter(state);
+  });
+}
+
+// Get a fresh one-time reCAPTCHA token from the correct account tab.
+async function getRecaptchaFromTab(action = 'VIDEO_GENERATION', accountIndex = 1) {
+  const acc = normalizeAccountIndex(accountIndex, 1);
   // Serialize reCAPTCHA executions — concurrent calls to grecaptcha.execute() in same tab fail
   let resolve;
   const prev = _recaptchaMutex;
   _recaptchaMutex = new Promise(r => { resolve = r; });
   await prev;
   try {
-    // Check cache again after acquiring mutex (another job may have cached it)
-    const cached2 = _recaptchaCache[action];
-    if (cached2 && (Date.now() - cached2.ts) < RECAPTCHA_CACHE_TTL) {
-      delete _recaptchaCache[action];
-      return cached2.token;
-    }
-    return await withTimeout(solveCaptcha(action), 35000, 'getRecaptchaFromTab');
+    return await withTimeout(solveCaptcha(action, acc), 35000, 'getRecaptchaFromTab');
   } finally {
     resolve();
   }
@@ -449,14 +455,22 @@ function _injectRecaptcha(bodyStr, recaptchaToken) {
 }
 
 // Execute fetch from inside the account's dedicated labs.google tab
-// Per-account mutex: jobs for same account are serial, different accounts run in parallel
-// 403 reCAPTCHA: release mutex → get fresh reCAPTCHA → re-acquire → retry (no concurrent executeScript)
-// 403 token expired: reload tab inside mutex → get new token → retry
+// Per-account limiter: jobs for same account follow MAX_CONCURRENT, different accounts run in parallel.
+// reCAPTCHA is acquired inside the submit slot so it's fetched immediately before POST.
+// 403 reCAPTCHA: release slot → get fresh reCAPTCHA → re-acquire → retry.
+// 403 token expired: acquire an exclusive slot → reload tab → get new token → retry.
 async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', accountIndex = 1, action = 'VIDEO_GENERATION' } = {}) {
   const acc = normalizeAccountIndex(accountIndex, 1);
 
-  const doFetchWithMutex = async (tid, fetchTok, fetchBody) => {
-    const rel = await acquireAccountMutex(acc);
+  const doFetchWithMutex = async (tid, fetchTok, fetchBody, isRetry = false) => {
+    const rel = await acquireAccountSubmitSlot(acc, action);
+    // Lấy reCAPTCHA bên trong submit slot — ngay trước POST, tránh stale token
+    if (!isRetry) {
+      try {
+        const recaptcha = await getRecaptchaFromTab(action, acc).catch(() => '') || '';
+        if (recaptcha) fetchBody = _injectRecaptcha(fetchBody, recaptcha);
+      } catch (_) {}
+    }
     try {
       const results = await withTimeout(
         chrome.scripting.executeScript({
@@ -509,16 +523,16 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
         }
         // reCAPTCHA fail — mutex free, get fresh token then re-acquire for retry
         log('Got 403 reCAPTCHA fail for account', acc, '— retrying with fresh reCAPTCHA');
-        const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
+        const retryRecaptcha = await getRecaptchaFromTab(action, acc).catch(() => '') || '';
         if (!retryRecaptcha) { log('No fresh reCAPTCHA — skip retry'); return result; }
-        result = await doFetchWithMutex(tabId, fetchToken, _injectRecaptcha(bodyStr, retryRecaptcha));
+        result = await doFetchWithMutex(tabId, fetchToken, _injectRecaptcha(bodyStr, retryRecaptcha), true);
         if ((result.status === 401 || result.status === 403) && _isUnusualActivityBody(result.body)) {
           _setRecaptchaCooldown(acc, result.body);
         }
       } else {
         // Token expired — reload this account's tab inside mutex
         log('Got', result.status, 'for account', acc, '— reloading tab to refresh token');
-        const rel2 = await acquireAccountMutex(acc);
+        const rel2 = await acquireAccountSubmitSlot(acc, action, true);
         let retryToken = fetchToken;
         let newTabId = tabId;
         try {
@@ -535,8 +549,8 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
           rel2();
         }
         // Get reCAPTCHA outside mutex then retry
-        const retryRecaptcha = await getRecaptchaFromTab(action).catch(() => '') || '';
-        result = await doFetchWithMutex(newTabId, retryToken, _injectRecaptcha(bodyStr, retryRecaptcha));
+        const retryRecaptcha = await getRecaptchaFromTab(action, acc).catch(() => '') || '';
+        result = await doFetchWithMutex(newTabId, retryToken, _injectRecaptcha(bodyStr, retryRecaptcha), true);
         if ((result.status === 401 || result.status === 403) && _isUnusualActivityBody(result.body)) {
           _setRecaptchaCooldown(acc, result.body);
         }
@@ -551,10 +565,10 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
 }
 
 // Execute upload from inside the account's dedicated labs.google tab
-// Serialized via per-account mutex to prevent frame conflicts
-async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, accountIndex = 1) {
+// Limited via per-account submit limiter to prevent excessive frame conflicts
+async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, accountIndex = 1, action = 'VIDEO_GENERATION') {
   const acc = normalizeAccountIndex(accountIndex, 1);
-  const release = await acquireAccountMutex(acc);
+  const release = await acquireAccountSubmitSlot(acc, action);
   try {
     const results = await withTimeout(
       chrome.scripting.executeScript({
@@ -593,20 +607,14 @@ async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, acco
 }
 
 // POST via account's dedicated labs.google tab — Chrome auto-adds x-browser-validation and x-client-data
+// reCAPTCHA is acquired inside fetchViaTab's per-account mutex, not here, to avoid burst on batch jobs
 async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GENERATION', accountIndex = 1) {
   const acc = normalizeAccountIndex(accountIndex, 1);
   const freshToken = await getFreshToken(accessToken, acc);
-  const recaptchaToken = await getRecaptchaFromTab(action) || '';
 
   const p = JSON.parse(JSON.stringify(payload));
   if (p.clientContext) {
     p.clientContext.sessionId = crypto.randomUUID();
-    if (recaptchaToken) {
-      p.clientContext.recaptchaContext = {
-        token: recaptchaToken,
-        applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB',
-      };
-    }
   }
 
   try {
@@ -651,7 +659,7 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
         imageInput: { rawImageBytes: up.base64, mimeType: up.mimeType, isUserUploaded: true },
         clientContext: { sessionId: crypto.randomUUID(), tool: 'ASSET_MANAGER' },
       };
-      const upResult = await uploadViaTab(tabId, URL_UPLOAD_IMAGE, freshToken, JSON.stringify(uploadPayload), acc);
+      const upResult = await uploadViaTab(tabId, URL_UPLOAD_IMAGE, freshToken, JSON.stringify(uploadPayload), acc, action);
       if (!upResult.ok) return { ok: false, status: upResult.status, reason: 'UPLOAD_FAILED', body: '' };
       const mediaId = parseUploadMediaId(upResult.body);
       if (!mediaId) return { ok: false, status: 0, reason: 'UPLOAD_NO_MEDIA_ID', body: '' };
@@ -670,12 +678,9 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
       else obj[finalKey] = mediaId;
     }
 
-    // Get reCAPTCHA and POST via tab
-    // fetchViaTab holds mutex for entire duration including 403 reload+retry
-    const recaptchaToken = await getRecaptchaFromTab(action) || '';
+    // POST via tab — reCAPTCHA acquired inside fetchViaTab mutex, not here
     if (p.clientContext) {
       p.clientContext.sessionId = crypto.randomUUID();
-      if (recaptchaToken) p.clientContext.recaptchaContext = { token: recaptchaToken, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
     }
 
     return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex: acc, action });
@@ -720,6 +725,9 @@ async function executeJob(data) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ jobId: data.jobId, accountIndex, ok: !!result.ok, status: result.status || 0, reason: result.reason || '', body: result.body || '' }),
       }).catch(() => {});
+      if (result.status !== 200 && result.status !== 0) {
+        log('Browser-submit FAIL job:', data.jobId, 'status:', result.status, 'body:', String(result.body || '').slice(0, 500));
+      }
       log('Browser-submit done for job:', data.jobId, 'status:', result.status);
       await maybeRotateProxy();
 
@@ -728,7 +736,7 @@ async function executeJob(data) {
       log('Captcha for job:', data.jobId, 'account:', accountIndex);
       const action = data.jobType === 'image' ? 'IMAGE_GENERATION' : 'VIDEO_GENERATION';
       const token = await Promise.race([
-        solveCaptcha(action),
+        solveCaptcha(action, accountIndex),
         new Promise((_, rej) => setTimeout(() => rej(new Error('captcha timeout')), 30000)),
       ]);
       await fetch(`${APP_URL}/api/extension/submit-job`, {

@@ -62,7 +62,7 @@ _DEFAULT_CONFIG: dict = {
     "CREATE_IMAGE_MODEL": "Imagen 4",
     "TOKEN_OPTION": "Option 1",
     "LICENSE_TOKEN": "",
-    "MAX_CONCURRENT": 3,
+    "MAX_CONCURRENT": 2,
     "MAX_CONCURRENT_IMAGE": 2,
 }
 

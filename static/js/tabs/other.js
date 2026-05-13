@@ -102,20 +102,55 @@ function _msBindActions() {
   }
   if (dlBtn && !dlBtn._bound) {
     dlBtn._bound = true;
-    dlBtn.addEventListener('click', () => {
+    dlBtn.addEventListener('click', async () => {
       const text = document.getElementById('ms-output')?.textContent || '';
       if (!text) return toast('Chưa có nội dung để tải', 'error');
-      const blob = new Blob([text], { type: 'text/markdown;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = 'master_prompt.md';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      setTimeout(() => URL.revokeObjectURL(url), 1000);
+      await _msSaveMarkdown(text);
     });
   }
+}
+
+async function _msSaveMarkdown(text) {
+  const pad = n => String(n).padStart(2, '0');
+  const d = new Date();
+  const filename = `master_prompt_${d.getFullYear()}${pad(d.getMonth() + 1)}${pad(d.getDate())}_${pad(d.getHours())}${pad(d.getMinutes())}${pad(d.getSeconds())}.md`;
+  const blob = new Blob(['\uFEFF' + text], { type: 'text/markdown;charset=utf-8' });
+
+  try {
+    if (window.showDirectoryPicker) {
+      const dir = await window.showDirectoryPicker({ mode: 'readwrite' });
+      const file = await dir.getFileHandle(filename, { create: true });
+      const writable = await file.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      toast('Đã lưu file .md: ' + filename, 'success');
+      return;
+    }
+
+    if (window.showSaveFilePicker) {
+      const file = await window.showSaveFilePicker({
+        suggestedName: filename,
+        types: [{ description: 'Markdown', accept: { 'text/markdown': ['.md'] } }],
+      });
+      const writable = await file.createWritable();
+      await writable.write(blob);
+      await writable.close();
+      toast('Đã lưu file .md', 'success');
+      return;
+    }
+  } catch (e) {
+    if (e?.name === 'AbortError') return;
+    console.warn('Save markdown via file picker failed, falling back to download', e);
+  }
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
 
 window.init_master_script = function () {

@@ -27,10 +27,11 @@ _captcha_queue: list[dict[str, Any]] = []
 _pending_browser_submit: dict[str, asyncio.Future] = {}
 _browser_submit_queue: list[dict[str, Any]] = []
 _browser_job_accounts: dict[str, int] = {}
+_browser_job_slots: dict[str, tuple[int, str]] = {}
 
 # Jobs đã được poll, đang xử lý bởi extension (tránh trả lại cùng 1 job)
 _inflight_jobs: set[str] = set()
-_inflight_browser_accounts: set[int] = set()
+_inflight_browser_counts: dict[tuple[int, str], int] = {}
 _browser_account_cooldown_until: dict[int, float] = {}
 
 _RECAPTCHA_COOLDOWN_BASE_SECONDS = 60
@@ -64,13 +65,55 @@ def _browser_account_wait_seconds(account_index: int) -> float:
     return wait
 
 
+def _browser_job_group(job_type: str | None) -> str:
+    return "image" if str(job_type or "").lower() in {"image", "image_upscale"} else "video"
+
+
+def _browser_submit_limit(job_type: str | None) -> int:
+    try:
+        from services.config_service import load_config
+
+        cfg = load_config()
+        key = "MAX_CONCURRENT_IMAGE" if _browser_job_group(job_type) == "image" else "MAX_CONCURRENT"
+        return max(1, min(3, int(cfg.get(key) or 2)))
+    except Exception:
+        return 2
+
+
+def _browser_inflight_count(account_index: int, job_type: str | None) -> int:
+    account = max(1, int(account_index or 1))
+    return int(_inflight_browser_counts.get((account, _browser_job_group(job_type)), 0))
+
+
+def _claim_browser_slot(job_id: str, account_index: int, job_type: str | None) -> None:
+    account = max(1, int(account_index or 1))
+    group = _browser_job_group(job_type)
+    key = (account, group)
+    _browser_job_slots[job_id] = key
+    _inflight_browser_counts[key] = _inflight_browser_counts.get(key, 0) + 1
+
+
+def _release_browser_slot(job_id: str, fallback_account: int = 1, fallback_job_type: str | None = "video") -> None:
+    key = _browser_job_slots.pop(job_id, None)
+    if key is None:
+        account = max(1, int(fallback_account or 1))
+        key = (account, _browser_job_group(fallback_job_type))
+    if key not in _inflight_browser_counts:
+        return
+    next_count = max(0, int(_inflight_browser_counts.get(key, 0)) - 1)
+    if next_count:
+        _inflight_browser_counts[key] = next_count
+    else:
+        _inflight_browser_counts.pop(key, None)
+
+
 async def wait_for_browser_account_available(account_index: int, *, timeout: float = 300.0) -> None:
     """Wait until a browser account is not in-flight/cooldown before doing pre-submit work."""
     account = max(1, int(account_index or 1))
     deadline = time.monotonic() + timeout
     while True:
         wait = _browser_account_wait_seconds(account)
-        busy = account in _inflight_browser_accounts
+        busy = _browser_inflight_count(account, "image") >= _browser_submit_limit("image")
         if wait <= 0 and not busy:
             return
         if time.monotonic() >= deadline:
@@ -164,7 +207,7 @@ async def request_browser_upload_post(
         _pending_browser_submit.pop(job_id, None)
         _inflight_jobs.discard(job_id)
         account_for_job = _browser_job_accounts.pop(job_id, normalized_account_index)
-        _inflight_browser_accounts.discard(account_for_job)
+        _release_browser_slot(job_id, account_for_job, job_type)
         for i, item in enumerate(_browser_submit_queue):
             if item["jobId"] == job_id:
                 _browser_submit_queue.pop(i)
@@ -212,7 +255,7 @@ async def request_browser_submit(
         _pending_browser_submit.pop(job_id, None)
         _inflight_jobs.discard(job_id)
         account_for_job = _browser_job_accounts.pop(job_id, normalized_account_index)
-        _inflight_browser_accounts.discard(account_for_job)
+        _release_browser_slot(job_id, account_for_job, job_type)
         for i, item in enumerate(_browser_submit_queue):
             if item["jobId"] == job_id:
                 _browser_submit_queue.pop(i)
@@ -227,14 +270,21 @@ async def poll_job():
         account_index = max(1, int(job.get("accountIndex") or 1))
         if job_id in _inflight_jobs:
             continue  # đang được xử lý, bỏ qua
-        if account_index in _inflight_browser_accounts:
+        if _browser_inflight_count(account_index, job.get("jobType")) >= _browser_submit_limit(job.get("jobType")):
             continue
         if _browser_account_wait_seconds(account_index) > 0:
             continue
         _browser_submit_queue.pop(i)
         _inflight_jobs.add(job_id)
-        _inflight_browser_accounts.add(account_index)
+        _claim_browser_slot(job_id, account_index, job.get("jobType"))
         job_kind = str(job.get("jobKind") or "browser_submit")
+        logger.info(
+            "[Extension] account #%s browser slot %s/%s for %s",
+            account_index,
+            _browser_inflight_count(account_index, job.get("jobType")),
+            _browser_submit_limit(job.get("jobType")),
+            job.get("jobType", "video"),
+        )
         logger.info(
             "📤 [Extension] poll-job -> job_%s (%s, %s, account #%s)",
             job_id[:8],
@@ -339,8 +389,8 @@ async def submit_browser(req: BrowserSubmitResponse):
     if fut and not fut.done():
         expected_account = int(mapped_account or (queued_job or {}).get("accountIndex") or 1)
         received_account = int(req.accountIndex or expected_account)
-        _inflight_browser_accounts.discard(expected_account)
-        _inflight_browser_accounts.discard(received_account)
+        expected_type = str((queued_job or {}).get("jobType") or "video")
+        _release_browser_slot(req.jobId, expected_account, expected_type)
         logger.info(
             "✅ [Extension] submit-browser cho job_%s | account #%s | status=%s",
             req.jobId[:8],
@@ -371,7 +421,8 @@ async def submit_browser(req: BrowserSubmitResponse):
         return {"ok": True}
 
     fallback_account = int(mapped_account or req.accountIndex or 1)
-    _inflight_browser_accounts.discard(fallback_account)
+    fallback_type = str((queued_job or {}).get("jobType") or "video")
+    _release_browser_slot(req.jobId, fallback_account, fallback_type)
     if int(req.status or 0) == 403 and _is_unusual_activity(req.body):
         _set_browser_account_cooldown(fallback_account, req.body)
     logger.warning("⚠️ [Extension] submit-browser bị trễ hoặc job không còn: job_%s", req.jobId[:8])
@@ -477,6 +528,7 @@ async def extension_status():
         "pending_captcha_jobs": len(_captcha_queue),
         "pending_browser_submit_jobs": len(_browser_submit_queue),
         "waiting_futures": len(_pending_captcha) + len(_pending_browser_submit),
+        "inflight_browser_counts": {f"{acc}:{group}": count for (acc, group), count in _inflight_browser_counts.items()},
         "last_token_capture": dict(_last_token_capture),
         "queue_preview": [
             {

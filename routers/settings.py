@@ -55,6 +55,11 @@ async def save_config_route(req: SaveConfigRequest):
     # Allow account keys + whitelisted top-level keys only
     for k, v in req.config.items():
         if k.startswith("account") or k in _ALLOWED_CONFIG_KEYS:
+            if k in {"MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE"}:
+                try:
+                    v = max(1, min(3, int(v)))
+                except Exception:
+                    v = 2
             current[k] = v
     save_config(current)
     return {"ok": True}
@@ -98,7 +103,13 @@ async def save_value(body: dict):
     if not key.startswith("account") and key not in _SAVE_VALUE_WHITELIST:
         raise HTTPException(400, f"Key '{key}' không được phép ghi")
     cfg = load_config()
-    cfg[key] = body["value"]
+    value = body["value"]
+    if key in {"MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE"}:
+        try:
+            value = max(1, min(3, int(value)))
+        except Exception:
+            value = 2
+    cfg[key] = value
     if key == "GEMINI_API_KEYS":
         first = next((k.strip() for k in str(body["value"]).splitlines() if k.strip()), "")
         cfg["GEMINI_API_KEY"] = first

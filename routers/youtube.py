@@ -135,7 +135,7 @@ class MasterScriptRequest(BaseModel):
     model: str = "gemini-2.5-flash"
 
 
-_MASTER_PROMPT = """Act as a Creative Director, Lead 3D Animator, and Data Architect for a heartwarming 3D animated feature "[SERIES_NAME]".
+_MASTER_PROMPT = '''Act as [INSERT CREATIVE ROLE / PRODUCTION ROLE] for "[SERIES_NAME]".
 
 Your task is to generate a bulletproof video production plan in a **DUAL FORMAT** (Part 1: Production Header, Part 2: JSON Array).
 
@@ -150,16 +150,16 @@ Your task is to generate a bulletproof video production plan in a **DUAL FORMAT*
 2. **JSON STRUCTURE:** Use the EXACT JSON schema provided below. Do NOT add, remove, or rename any keys.
 3. **SAFETY POLICY:** [INSERT SAFETY RULES]
 4. **NO TRADEMARKS:** [INSERT IP / BRAND RESTRICTIONS]
-5. **EMOTIONAL CORE (CRITICAL):** [INSERT CORE EMOTIONAL RULE]
-6. **NO HUMANS:** Absolutely no humans, no human-like people, no human faces, no human hands, no human bodies, no human silhouettes, and no human photos or human figures anywhere in any scene or prompt.
-7. **NO TEXT ON SCREEN:** Do not generate visible text, captions, signage, labels, logos, subtitles, letters, or written elements inside the image content.
-8. **NO DIALOGUE / NO VOICEOVER:** Do not include spoken dialogue, narration, or character speech. All storytelling must be visual only.
+5. **CORE INTENT:** [INSERT CORE INTENT / EMOTIONAL OR INFORMATIONAL RULE]
+6. **HUMAN / CHARACTER POLICY:** [INSERT HUMAN, CHARACTER, CAST, OR SUBJECT RULES]
+7. **TEXT ON SCREEN POLICY:** [INSERT TEXT, CAPTION, SIGNAGE, LOGO, SUBTITLE, OR WRITTEN-ELEMENT RULES]
+8. **DIALOGUE / VOICEOVER POLICY:** [INSERT DIALOGUE, NARRATION, VOICEOVER, OR SILENT-STORYTELLING RULES]
 
 ### CAMERA, MOTION & TIMING:
 * **GOLDEN RULE:** [INSERT CINEMATIC MOTION RULE]
 * **HIGH TENSION / ACTION:** [INSERT DURATION + MOVEMENT + CAMERA RULE]
-* **TENDER / EMOTIONAL:** [INSERT DURATION + MOVEMENT + CAMERA RULE]
-* **WONDER / ESTABLISHING:** [INSERT DURATION + MOVEMENT + CAMERA RULE]
+* **LOW-INTENSITY / DETAIL MOMENTS:** [INSERT DURATION + MOVEMENT + CAMERA RULE]
+* **ESTABLISHING / CONTEXT MOMENTS:** [INSERT DURATION + MOVEMENT + CAMERA RULE]
 * **CINEMATOGRAPHY:** [INSERT SHOT VARIETY RULES]
 
 ### ASSET BIBLE & 3D STYLE GUIDE:
@@ -170,15 +170,15 @@ Your task is to generate a bulletproof video production plan in a **DUAL FORMAT*
 
 ### NARRATIVE STYLE:
 * **CORE THEME:** [INSERT CORE THEME]
-* **EMOTIONAL ARC TEMPLATE:**
+* **NARRATIVE / CONTENT ARC TEMPLATE:**
   1. [STEP 1]
   2. [STEP 2]
   3. [STEP 3]
   4. [STEP 4]
   5. [STEP 5]
   6. [STEP 6]
-* **DUAL-EMOTION STORYTELLING:** [INSERT TONE RULES]
-* **THE NARRATOR:** None. No narrator, no voiceover, no spoken lines.
+* **TONE / DELIVERY STYLE:** [INSERT TONE RULES]
+* **THE NARRATOR / PRESENTER:** [INSERT NARRATOR, PRESENTER, VOICEOVER, OR NO-NARRATOR RULE]
 
 ### CHARACTER VISUAL DATABASE:
 **CASTING RULE:** [INSERT CASTING LIMIT / ON-SCREEN RULE]
@@ -224,11 +224,11 @@ Define locations once, then reuse exactly.
 * **SERIES TITLE:** [INSERT EPISODE TITLE]
 * **BATCH PROGRESS:** [INSERT CURRENT BATCH STATUS]
 * **CAST:** [INSERT CODE NAMES + ROLES]
-* **EMOTIONAL CORE:** [INSERT 1-SENTENCE ARC SUMMARY]
+* **CORE INTENT:** [INSERT 1-SENTENCE ARC OR CONTENT SUMMARY]
 * **LOCATIONS LOCKED:** [INSERT LOCKED LOCATIONS USED]
 
-**PART 2: SCRIPT DATA (JSON ARRAY)**
-Output a single JSON Array `[...]` containing exactly [INSERT COUNT] segment objects. Use this schema strictly:
+**PART 2: SCRIPT DATA (JSON ARRAY SCHEMA)**
+Keep exactly ONE sample object in this JSON block as the reusable schema. Do NOT expand it into the full scene list here. Do NOT output all scenes in this master prompt. The full scene JSON will be generated later by using this completed master prompt.
 
 ```json
 [
@@ -244,7 +244,7 @@ Output a single JSON Array `[...]` containing exactly [INSERT COUNT] segment obj
     "style": "[INSERT STYLE STRING]",
     "sfx": "[INSERT NON-VERBAL SFX / AMBIENCE / MUSIC ONLY]",
     "background": "[INSERT LOCKED LOCATION DESCRIPTION]",
-    "prompt": "Priority: Strictly follow the official character references and preserve exact character design consistency. Absolutely no humans, no human-like people, no human faces, no human hands, no human bodies, no human silhouettes, and no human photos or human figures anywhere in the frame. No visible text, no captions, no labels, no signage, no logos, no subtitles, no letters, and no written elements inside the image. [INSERT FULL IMAGE PROMPT]",
+    "prompt": "Priority: Strictly follow the official references, style rules, and continuity requirements. [INSERT SUBJECT / HUMAN / CHARACTER POLICY]. [INSERT TEXT / LOGO / SUBTITLE POLICY]. [INSERT FULL IMAGE PROMPT]",
     "scene_index": [INSERT INTEGER],
     "duration_seconds": "[INSERT INTEGER OR RULE-BASED VALUE]",
     "shot": {
@@ -254,7 +254,7 @@ Output a single JSON Array `[...]` containing exactly [INSERT COUNT] segment obj
       "composition": "[INSERT COMPOSITION]"
     },
     "action": "[INSERT ACTION SUMMARY]",
-    "negative": "[INSERT NEGATIVE PROMPT, including humans, human-like figures, text, letters, subtitles, logos, signage, watermarks, and dialogue indicators]",
+    "negative": "[INSERT NEGATIVE PROMPT based on the project rules, including unwanted subjects, styles, text, logos, artifacts, or continuity errors]",
     "attachments": {
       "characters": [
         "[Code Name 1]",
@@ -272,13 +272,17 @@ Output a single JSON Array `[...]` containing exactly [INSERT COUNT] segment obj
 ]
 ```
 
-Do not output any narration script, dialogue, subtitle text, or voiceover text."""
+Do not output extra explanation outside the required format.'''
+
+
+def _load_master_prompt() -> str:
+    return _MASTER_PROMPT
 
 
 @router.post("/master-script")
 async def master_script(req: MasterScriptRequest):
     adapter, model = _get_adapter(req.model)
-    master_prompt = _MASTER_PROMPT
+    master_prompt = _load_master_prompt()
 
     job_id = await job_store.create_job("master_script", {"youtube_url": req.youtube_url, "model": req.model})
 
@@ -325,7 +329,7 @@ async def auto_master_prompt(req: AutoMasterPromptRequest):
     duration_str = f"{mins}:{secs:02d}" if mins else f"{secs}s"
 
     filled = (
-        _MASTER_PROMPT
+        _load_master_prompt()
         .replace("[INSERT TARGET DURATION]", f"{duration_str} ({req.duration_seconds}s total) — {type_label}")
         .replace("[INSERT SCENE COUNT]", str(req.scene_count))
         .replace("[INSERT BATCH / CONTINUATION RULE]", "Generate all scenes in one response")
@@ -338,6 +342,8 @@ async def auto_master_prompt(req: AutoMasterPromptRequest):
         f"{req.idea}\n\n"
         f"Viết master prompt cho idea trên theo form này, giữ nguyên bố cục master prompt "
         f"và làm đầy đủ các yêu cầu trong đó và gửi tôi Master Prompt hoàn chỉnh:\n\n"
+        "IMPORTANT: In PART 2, keep exactly one JSON object as the schema sample. "
+        "Do not expand it into the full scene list inside this master prompt.\n\n"
         f"{filled}"
     )
 

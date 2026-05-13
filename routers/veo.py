@@ -781,6 +781,7 @@ async def studio_video(
     if not result.get("ok"):
         raise HTTPException(400, f"API error: {result.get('body', '')}")
 
+    logger.info("[StudioVideo] browser result body: %s", str(result.get("body", ""))[:800])
     operations = adapter.parse_operations(result.get("body", ""))
     job_id = await job_store.create_job(
         "studio_video",
