@@ -572,3 +572,116 @@ function exportCaHashtags() {
   const text = tags.map(h => `#${h.tag}`).join(' ');
   navigator.clipboard.writeText(text).then(() => toast(`Đã copy ${tags.length} hashtags`, 'success'));
 }
+
+
+// ── YouTube Comment Extractor ────────────────────────────────────────────────
+window.init_ytb_comments = function () {
+  const btn = document.getElementById('ytc-fetch-btn');
+  if (!btn || btn._bound) return;
+  btn._bound = true;
+
+  let _allComments = [];
+
+  function setStatus(show, text = '') {
+    const el = document.getElementById('ytc-status');
+    const txt = document.getElementById('ytc-status-text');
+    if (el) el.style.display = show ? '' : 'none';
+    if (txt) txt.textContent = text;
+  }
+
+  function renderComments(list) {
+    const container = document.getElementById('ytc-results');
+    if (!container) return;
+    if (!list.length) {
+      container.innerHTML = `<div style="text-align:center;padding:40px 20px;color:var(--text3);font-size:13px;">Không có comment nào</div>`;
+      return;
+    }
+    container.innerHTML = list.map((c, i) => `
+      <div class="card" style="margin-bottom:10px;padding:14px 16px;cursor:default;" data-idx="${i}">
+        <div style="display:flex;align-items:flex-start;gap:12px;">
+          <div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,var(--accent),color-mix(in srgb,var(--accent) 40%,#7c3aed));display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;flex-shrink:0;">${(c.author || '?')[0].toUpperCase()}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px;">
+              <span style="font-size:13px;font-weight:600;color:var(--text);">${_esc(c.author || 'Ẩn danh')}</span>
+              ${c.pinned ? `<span style="font-size:10px;font-weight:600;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);padding:2px 7px;border-radius:10px;border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);">📌 Ghim</span>` : ''}
+              <span style="font-size:11px;color:var(--text3);">${_esc(c.published || '')}</span>
+            </div>
+            <div style="font-size:13px;color:var(--text2);line-height:1.6;white-space:pre-wrap;word-break:break-word;">${_esc(c.text || '')}</div>
+            <div style="display:flex;align-items:center;gap:14px;margin-top:8px;">
+              <span style="font-size:12px;color:var(--text3);display:flex;align-items:center;gap:4px;">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 9V5a3 3 0 0 0-3-3l-4 9v11h11.28a2 2 0 0 0 2-1.7l1.38-9a2 2 0 0 0-2-2.3H14z"/><path d="M7 22H4a2 2 0 0 1-2-2v-7a2 2 0 0 1 2-2h3"/></svg>
+                ${_esc(c.likes || '0')}
+              </span>
+              <button onclick="_ytcCopyOne(${i})" style="background:none;border:none;cursor:pointer;font-size:11px;color:var(--text3);padding:0;display:flex;align-items:center;gap:3px;" title="Copy comment này">
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                Copy
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>`).join('');
+  }
+
+  function _esc(s) {
+    return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  window._ytcCopyOne = function(idx) {
+    const c = _allComments[idx];
+    if (!c) return;
+    navigator.clipboard.writeText(c.text || '').then(() => toast('Đã copy comment', 'success'));
+  };
+
+  btn.addEventListener('click', async () => {
+    const url = document.getElementById('ytc-url')?.value.trim();
+    const max = parseInt(document.getElementById('ytc-max')?.value || '100', 10);
+    if (!url) return toast('Vui lòng nhập link YouTube', 'error');
+
+    btn.disabled = true;
+    setStatus(true, 'Đang lấy comment...');
+    document.getElementById('ytc-toolbar').style.display = 'none';
+    document.getElementById('ytc-results').innerHTML = '';
+    _allComments = [];
+
+    try {
+      const res = await API.post('/api/youtube/get-comments', { url, max_comments: max });
+      if (!res.ok) { toast(res.detail || 'Lỗi', 'error'); return; }
+      _allComments = res.comments || [];
+      document.getElementById('ytc-count-badge').textContent = `${_allComments.length} comment`;
+      document.getElementById('ytc-toolbar').style.display = '';
+      renderComments(_allComments);
+      toast(`Đã lấy ${_allComments.length} comment`, 'success');
+    } catch (e) {
+      toast('Lỗi: ' + e.message, 'error');
+    } finally {
+      btn.disabled = false;
+      setStatus(false);
+    }
+  });
+
+  // Live search filter
+  document.getElementById('ytc-search')?.addEventListener('input', e => {
+    const q = e.target.value.toLowerCase();
+    const filtered = q ? _allComments.filter(c => (c.text || '').toLowerCase().includes(q) || (c.author || '').toLowerCase().includes(q)) : _allComments;
+    renderComments(filtered);
+  });
+
+  // Copy all
+  document.getElementById('ytc-copy-btn')?.addEventListener('click', () => {
+    if (!_allComments.length) return toast('Chưa có comment', 'info');
+    const text = _allComments.map(c => c.text || '').join('\n\n');
+    navigator.clipboard.writeText(text).then(() => toast(`Đã copy ${_allComments.length} comment`, 'success'));
+  });
+
+  // Export CSV
+  document.getElementById('ytc-export-btn')?.addEventListener('click', () => {
+    if (!_allComments.length) return toast('Chưa có comment', 'info');
+    const header = 'Tác giả,Nội dung,Lượt thích,Thời gian,Ghim\n';
+    const rows = _allComments.map(c =>
+      [`"${(c.author||'').replace(/"/g,'""')}"`,`"${(c.text||'').replace(/"/g,'""')}"`,`"${c.likes||'0'}"`,`"${c.published||''}"`,c.pinned?'Có':'Không'].join(',')
+    ).join('\n');
+    const blob = new Blob(['﻿' + header + rows], { type: 'text/csv;charset=utf-8;' });
+    const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'youtube_comments.csv'; a.click();
+    toast(`Đã xuất ${_allComments.length} comment CSV`, 'success');
+  });
+};

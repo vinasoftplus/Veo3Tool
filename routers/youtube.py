@@ -1,10 +1,16 @@
-"""YouTube routes — View Hunter, Script Analyzer."""
+"""YouTube routes — View Hunter, Script Analyzer, Comment Extractor."""
 from __future__ import annotations
 
 import asyncio
+import re
+import json as _json
+import httpx
+import logging
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
+logger = logging.getLogger("youtube.router")
 
 from services import job_store
 from services.config_service import load_config, get_gemini_keys
@@ -396,3 +402,266 @@ async def channel_analyze(req: ChannelAnalyzeRequest):
         return {"ok": True, **result}
     except Exception as e:
         raise HTTPException(500, str(e))
+
+
+# ---------------------------------------------------------------------------
+# Comment Extractor (InnerTube API — no API key needed)
+# ---------------------------------------------------------------------------
+
+_INNERTUBE_CLIENT = {
+    "hl": "en",
+    "gl": "VN",
+    "clientName": "WEB",
+    "clientVersion": "2.20240101.00.00",
+    "userAgent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "platform": "DESKTOP",
+}
+
+_INNERTUBE_HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept-Language": "en-US,en;q=0.9",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+}
+
+
+def _extract_video_id(url_or_id: str) -> str:
+    url_or_id = url_or_id.strip()
+    # Already an ID (11 chars alphanumeric+dash+underscore)
+    if re.match(r'^[A-Za-z0-9_\-]{11}$', url_or_id):
+        return url_or_id
+    m = re.search(r'(?:v=|youtu\.be/|embed/|shorts/)([A-Za-z0-9_\-]{11})', url_or_id)
+    if m:
+        return m.group(1)
+    raise ValueError(f"Không nhận ra video ID từ: {url_or_id}")
+
+
+async def _fetch_innertube_key_and_token(video_id: str) -> tuple[str, str]:
+    """Fetch page HTML, extract INNERTUBE_API_KEY and first comment continuation token."""
+    url = f"https://www.youtube.com/watch?v={video_id}"
+    async with httpx.AsyncClient(headers=_INNERTUBE_HEADERS, follow_redirects=True, timeout=20) as client:
+        r = await client.get(url)
+        html = r.text
+
+    # API key
+    api_key_m = re.search(r'"INNERTUBE_API_KEY"\s*:\s*"([^"]+)"', html) or \
+                re.search(r'"innertubeApiKey"\s*:\s*"([^"]+)"', html)
+    api_key = api_key_m.group(1) if api_key_m else "AIzaSyAO_FJ2SlqU8Q4STEHLGCilw_Y9_11qcW8"
+
+    # Parse ytInitialData JSON to find comment section continuation token
+    token = ""
+    yd_m = re.search(r'var ytInitialData\s*=\s*(\{.+?\});\s*(?:var |window\[|</script)', html, re.DOTALL)
+    if yd_m:
+        try:
+            yd = _json.loads(yd_m.group(1))
+            # Walk: contents → twoColumnWatchNextResults → results → results → contents
+            results = (yd.get("contents") or {}) \
+                .get("twoColumnWatchNextResults", {}) \
+                .get("results", {}) \
+                .get("results", {}) \
+                .get("contents", [])
+            for section in results:
+                isr = section.get("itemSectionRenderer", {})
+                if isr.get("sectionIdentifier") == "comment-item-section" or \
+                   any("comment" in str(c).lower() for c in isr.get("contents", [])[:1]):
+                    for cont in isr.get("continuations", []):
+                        t = (cont.get("reloadContinuationData") or cont.get("nextContinuationData") or {}).get("continuation", "")
+                        if t:
+                            token = t
+                            break
+                if token:
+                    break
+            # Fallback: find any engagementPanel with comments
+            if not token:
+                panels = yd.get("engagementPanels", [])
+                for panel in panels:
+                    ep_r = panel.get("engagementPanelSectionListRenderer", {})
+                    header = str(ep_r.get("header", ""))
+                    if "comment" in header.lower():
+                        for cont in ep_r.get("continuations", []):
+                            t = (cont.get("reloadContinuationData") or cont.get("nextContinuationData") or {}).get("continuation", "")
+                            if t:
+                                token = t
+                                break
+        except Exception as e:
+            logger.warning("ytInitialData parse error: %s", e)
+
+    # Regex fallback: all long tokens, pick one near "comment"
+    if not token:
+        # find token right after commentSectionRenderer
+        m = re.search(r'comment[^"]{0,200}"token"\s*:\s*"([A-Za-z0-9_\-]{30,})"', html, re.DOTALL)
+        if m:
+            token = m.group(1)
+    if not token:
+        tokens = re.findall(r'"token"\s*:\s*"([A-Za-z0-9_\-]{50,})"', html)
+        token = tokens[-1] if tokens else ""
+
+    logger.info("video=%s api_key=%s... token=%s...", video_id, api_key[:12], token[:20] if token else "NONE")
+
+    if not token:
+        raise ValueError("Không lấy được continuation token — video có thể tắt comment hoặc private.")
+
+    return api_key, token
+
+
+def _parse_comment_renderer(comment_r: dict) -> dict:
+    runs = (comment_r.get("authorText") or {}).get("runs", [])
+    author = runs[0].get("text", "") if runs else ""
+    text_runs = (comment_r.get("contentText") or {}).get("runs", [])
+    text = "".join(r.get("text", "") for r in text_runs)
+    likes_obj = comment_r.get("voteCount") or {}
+    likes = likes_obj.get("simpleText") or likes_obj.get("accessibility", {}).get("accessibilityData", {}).get("label", "0")
+    pub_obj = comment_r.get("publishedTimeText") or {}
+    runs2 = pub_obj.get("runs", [])
+    published = runs2[0].get("text", "") if runs2 else pub_obj.get("simpleText", "")
+    is_pinned = bool(comment_r.get("pinnedCommentBadge"))
+    return {"author": author, "text": text, "likes": likes, "published": published, "pinned": is_pinned}
+
+
+def _walk_items(items: list) -> tuple[list[dict], str]:
+    """Extract comments and next continuation token from a list of continuationItems."""
+    comments: list[dict] = []
+    next_cont = ""
+    for item in items:
+        # commentThreadRenderer (top-level comments)
+        thread = item.get("commentThreadRenderer", {})
+        comment_r = (thread.get("comment") or {}).get("commentRenderer", {})
+        if comment_r:
+            comments.append(_parse_comment_renderer(comment_r))
+
+        # commentRenderer directly (replies)
+        direct_r = item.get("commentRenderer", {})
+        if direct_r:
+            comments.append(_parse_comment_renderer(direct_r))
+
+        # continuationItemRenderer → next page token
+        cont_item = item.get("continuationItemRenderer", {})
+        if cont_item:
+            # pattern 1: continuationEndpoint.continuationCommand.token
+            ep = cont_item.get("continuationEndpoint", {})
+            token = (ep.get("continuationCommand") or {}).get("token", "")
+            if not token:
+                # pattern 2: button.buttonRenderer.command.continuationCommand.token
+                btn_cmd = (cont_item.get("button") or {}).get("buttonRenderer", {}).get("command", {})
+                token = (btn_cmd.get("continuationCommand") or {}).get("token", "")
+            if token:
+                next_cont = token
+
+    return comments, next_cont
+
+
+async def _fetch_comments_page(api_key: str, continuation: str) -> tuple[list[dict], str]:
+    """One page of comments via InnerTube /next. Returns (comments, next_continuation)."""
+    url = f"https://www.youtube.com/youtubei/v1/next?key={api_key}"
+    body: dict = {
+        "context": {"client": _INNERTUBE_CLIENT},
+        "continuation": continuation,
+    }
+    headers = {
+        **_INNERTUBE_HEADERS,
+        "Content-Type": "application/json",
+        "X-YouTube-Client-Name": "1",
+        "X-YouTube-Client-Version": _INNERTUBE_CLIENT["clientVersion"],
+        "Origin": "https://www.youtube.com",
+        "Referer": "https://www.youtube.com/",
+    }
+    async with httpx.AsyncClient(timeout=20) as client:
+        r = await client.post(url, json=body, headers=headers)
+    data = r.json()
+
+    comments: list[dict] = []
+    next_cont = ""
+
+    # ── Path 1: onResponseReceivedEndpoints (classic + modern) ──────────────
+    endpoints = data.get("onResponseReceivedEndpoints", [])
+    for ep in endpoints:
+        items = (ep.get("reloadContinuationItemsCommand") or {}).get("continuationItems") or \
+                (ep.get("appendContinuationItemsAction") or {}).get("continuationItems", [])
+        if items:
+            c, n = _walk_items(items)
+            comments.extend(c)
+            if n:
+                next_cont = n
+
+    # ── Path 2: frameworkUpdates.entityBatchUpdate (YouTube 2024+ format) ──
+    fw_mutations = (data.get("frameworkUpdates") or {}) \
+        .get("entityBatchUpdate", {}).get("mutations", [])
+    for m in fw_mutations:
+        payload = m.get("payload", {})
+        ce = payload.get("commentEntityPayload", {})
+        if not ce:
+            continue
+        props = ce.get("properties", {})
+        author_info = ce.get("author", {})
+        text_content = (props.get("content") or {}).get("content", "")
+        if not text_content:
+            continue
+        comments.append({
+            "author": author_info.get("displayName", ""),
+            "text": text_content,
+            "likes": str(props.get("likeCount", "0")),
+            "published": props.get("publishedTime", ""),
+            "pinned": False,
+        })
+
+    # ── next_cont from continuationEndpoint inside mutations ────────────────
+    if not next_cont:
+        for m in fw_mutations:
+            payload = m.get("payload", {})
+            cursor = payload.get("commentsSectionEntityPayload", {})
+            if cursor:
+                next_cont = cursor.get("continuationToken", "")
+                if next_cont:
+                    break
+
+    logger.info("InnerTube page: %d comments, next_cont=%s", len(comments), bool(next_cont))
+    return comments, next_cont
+
+
+class GetCommentsRequest(BaseModel):
+    url: str
+    max_comments: int = 100
+
+
+@router.post("/get-comments")
+async def get_comments(req: GetCommentsRequest):
+    try:
+        video_id = _extract_video_id(req.url)
+    except ValueError as e:
+        raise HTTPException(400, str(e))
+
+    try:
+        api_key, first_token = await _fetch_innertube_key_and_token(video_id)
+    except Exception as e:
+        logger.warning("get-comments fetch page error: %s", e)
+        raise HTTPException(500, f"Không tải được trang video: {e}")
+
+    all_comments: list[dict] = []
+    continuation = first_token
+    # Allow extra pages for "header/sort" pages that return 0 comments
+    max_pages = max(1, req.max_comments // 20) + 10
+    empty_streak = 0
+
+    for _ in range(max_pages):
+        if not continuation or len(all_comments) >= req.max_comments:
+            break
+        try:
+            page_comments, continuation = await _fetch_comments_page(api_key, continuation)
+            if page_comments:
+                all_comments.extend(page_comments)
+                empty_streak = 0
+            else:
+                empty_streak += 1
+                # Stop if 3 consecutive empty pages with no next token
+                if empty_streak >= 3 and not continuation:
+                    break
+        except Exception as e:
+            logger.warning("get-comments page error: %s", e)
+            break
+
+    all_comments = all_comments[:req.max_comments]
+    return {
+        "ok": True,
+        "video_id": video_id,
+        "total": len(all_comments),
+        "comments": all_comments,
+    }

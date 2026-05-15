@@ -1,0 +1,82 @@
+Request URL
+https://assets.grok.com/users/416a3753-673b-4558-aa46-dc8b92448389/generated/a60c7687-f6b7-42e8-b8e0-c463223621ad/generated_video.mp4?cache=1&dl=1
+Request Method
+GET
+Status Code
+200 OK
+Remote Address
+104.18.28.234:443
+Referrer Policy
+origin-when-cross-origin
+accept-ranges
+bytes
+access-control-allow-credentials
+true
+access-control-allow-origin
+https://grok.com
+alt-svc
+h3=":443"; ma=86400
+cache-control
+private, max-age=43200
+cf-cache-status
+DYNAMIC
+cf-ray
+9fbf7dd639080470-HKG
+content-length
+6810974
+content-security-policy
+default-src 'none'; script-src 'none'; style-src 'none'; frame-ancestors https://grok.com https://grokipedia.com;
+content-type
+video/mp4
+date
+Fri, 15 May 2026 04:45:09 GMT
+etag
+users/416a3753-673b-4558-aa46-dc8b92448389/generated/a60c7687-f6b7-42e8-b8e0-c463223621ad/generated_video.mp4
+priority
+u=1,i
+server
+cloudflare
+server-timing
+cfExtPri
+speculation-rules
+"/cdn-cgi/speculation"
+strict-transport-security
+max-age=31536000; includeSubDomains
+vary
+origin, access-control-request-method, access-control-request-headers, accept-encoding
+:authority
+assets.grok.com
+:method
+GET
+:path
+/users/416a3753-673b-4558-aa46-dc8b92448389/generated/a60c7687-f6b7-42e8-b8e0-c463223621ad/generated_video.mp4?cache=1&dl=1
+:scheme
+https
+accept
+*/*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+cookie
+OptanonAlertBoxClosed=2026-05-04T07:39:56.700Z; __stripe_mid=296a660f-7ebf-4db5-8376-d32159038318509da1; __stripe_sid=964fb55b-cbc2-44c8-a36b-e18674f720437a91ee; cf_clearance=Gm4k_BIn3x04yog4raa6nZ29AOA85bWQPs6U9mM4YKU-1778819364-1.2.1.1-aM0bYZFSejp26e516A_u1HYRL2Rh6LLqsYRPZlDaRM9RkNGmitrt.hpelLTRVrGqy5KUqL3VZRvO3iPEarM48imMSbYEvef9jVlSpv3xesaw5TUdawfCWm_e9pgWeB0u_CX.hXO7wBLWAmLzSPzprJPrdhYO8vab3N3PtKSKJ_58FScrLLELWzodkriU7xmsqyh3swuvg0pTVA7UTh2WvQq6jxwxF4NCgtG06FKw_yFvHsp8TVIVR4cG9BwZSajmdi0ic6h9uACvi3wIBU1a.qIaoKDjwWb0NTcJb9LkvtDzKyxoSqEgK88Hj97eDpXiMBY8Td.jY0jY9aYJjNZdmz4jeDmWOuo5sW1QA5lKoBahjct_8NMNpgJrX.m9rswQh3AQXhAcWysgWqlFycfbA0nIxStoVXb9uiWRp6mHnhc; sso=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiNjk1MWEzMTctMzhiZi00NjdhLThmYzEtZmUyNzU5OTNkODFjIn0.3OJQJjFecQi_jhsLqKJ7PDleUIRrLWvwl1ELzbtp6ts; sso-rw=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiNjk1MWEzMTctMzhiZi00NjdhLThmYzEtZmUyNzU5OTNkODFjIn0.3OJQJjFecQi_jhsLqKJ7PDleUIRrLWvwl1ELzbtp6ts; x-userid=416a3753-673b-4558-aa46-dc8b92448389; mp_ea93da913ddb66b6372b89d97b1029ac_mixpanel=%7B%22distinct_id%22%3A%22416a3753-673b-4558-aa46-dc8b92448389%22%2C%22%24device_id%22%3A%22df3a22bf-4772-4659-9ccf-b2486f833d93%22%2C%22%24initial_referrer%22%3A%22https%3A%2F%2Fgrok.com%2F%3F__cf_chl_tk%3DWq1.F50XcSu7_nCjjODfVGKQP2QcxWH0cyk94u0gJsM-1777880381-1.0.1.1-usr0ezXC8jg059gLwFqSsTPV3Q7gwk8eAkEheZh_8uM%22%2C%22%24initial_referring_domain%22%3A%22grok.com%22%2C%22%24user_id%22%3A%22416a3753-673b-4558-aa46-dc8b92448389%22%2C%22__mps%22%3A%7B%7D%2C%22__mpso%22%3A%7B%7D%2C%22__mpus%22%3A%7B%7D%2C%22__mpa%22%3A%7B%7D%2C%22__mpu%22%3A%7B%7D%2C%22__mpr%22%3A%5B%5D%2C%22__mpap%22%3A%5B%5D%7D; OptanonConsent=isGpcEnabled=0&datestamp=Fri+May+15+2026+11%3A32%3A27+GMT%2B0700+(Indochina+Time)&version=202603.1.0&browserGpcFlag=0&isIABGlobal=false&hosts=&consentId=416a3753-673b-4558-aa46-dc8b92448389&interactionCount=1&isAnonUser=0&prevHadToken=0&landingPath=NotLandingPage&groups=C0001%3A1%2CC0004%3A0%2CC0002%3A0&intType=3&crTime=1777880397388&geolocation=VN%3B26&AwaitingReconsent=false; __cf_bm=JvZHszjWu0FALbE16fQfMVhYwEZLLQDqspFY6R_c97Y-1778819676.4079275-1.0.1.1-mfBxv.b11KMEzBIGZDaLyAiywsGbE27YqRnAFI1j8nfo.GWOc4hODopZ.aelGtwF_dndgEAH1.IDgBPFEynkZGrLhsZ4gSz3.91Zc95KBffQAro8rUOJFS80v_Sa71KL
+origin
+https://grok.com
+priority
+u=1, i
+referer
+https://grok.com/
+sec-ch-ua
+"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Windows"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+same-site
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36

@@ -115,6 +115,10 @@ def _resolve_video_model_key(kind: str, account: dict, aspect_ratio: str, model:
     normalized = str(model or "auto").strip().lower()
 
     if kind == "t2v":
+        if normalized == "flow_lite_low_priority":
+            return "veo_3_1_t2v_lite_low_priority"
+        if normalized == "flow_lite":
+            return "veo_3_1_t2v_lite"
         if normalized == "flow_fast_relaxed":
             if acc_type == "ULTRA":
                 return _T2V_MODEL_KEYS.get((acc_type, f"{orient}_relaxed"), _T2V_MODEL_KEYS.get((acc_type, orient), "veo_3_1_t2v_fast_ultra"))
@@ -149,6 +153,10 @@ def _resolve_video_model_key(kind: str, account: dict, aspect_ratio: str, model:
         return _I2V_MODEL_KEYS.get((acc_type, orient), "veo_3_1_i2v_s_fast_ultra")
 
     if kind == "r2v":
+        if normalized == "flow_lite_low_priority":
+            return "veo_3_1_r2v_lite_low_priority"
+        if normalized == "flow_lite":
+            return "veo_3_1_r2v_lite"
         relaxed_map = {
             "landscape": "veo_3_1_r2v_fast_landscape_ultra_relaxed",
             "portrait": "veo_3_1_r2v_fast_portrait_ultra_relaxed",
@@ -318,17 +326,19 @@ class GoogleLabsAdapter:
         model: str = "auto",
         seed: int | None = None,
         recaptcha_token: str = "",
+        structured_prompt_parts: list[dict] | None = None,
     ) -> dict:
         model_key = _resolve_video_model_key("t2v", account, aspect_ratio, model)
         eff_seed = seed if seed is not None else _random_seed()
 
-        request_item = {
-            "aspectRatio": aspect_ratio,
-            "seed": eff_seed,
-            "textInput": {"prompt": prompt},
-            "videoModelKey": model_key,
-            "metadata": {"sceneId": str(uuid.uuid4())},
-        }
+        def _make_t2v_req() -> dict:
+            return {
+                "aspectRatio": aspect_ratio,
+                "seed": eff_seed,
+                "textInput": {"prompt": prompt},
+                "videoModelKey": model_key,
+                "metadata": {"sceneId": str(uuid.uuid4())},
+            }
         return {
             "clientContext": {
                 "recaptchaContext": {
@@ -340,7 +350,7 @@ class GoogleLabsAdapter:
                 "tool": "PINHOLE",
                 "userPaygateTier": _paygate(account),
             },
-            "requests": [dict(request_item) for _ in range(max(1, output_count))],
+            "requests": [_make_t2v_req() for _ in range(max(1, output_count))],
         }
 
     def build_image_to_video_payload(
@@ -355,14 +365,15 @@ class GoogleLabsAdapter:
     ) -> dict:
         model_key = _resolve_video_model_key("i2v", account, aspect_ratio, model)
 
-        request_item = {
-            "aspectRatio": aspect_ratio,
-            "seed": _random_seed(),
-            "textInput": {"prompt": prompt},
-            "videoModelKey": model_key,
-            "startImage": {"mediaId": media_id},
-            "metadata": {"sceneId": str(uuid.uuid4())},
-        }
+        def _make_i2v_req() -> dict:
+            return {
+                "aspectRatio": aspect_ratio,
+                "seed": _random_seed(),
+                "textInput": {"prompt": prompt},
+                "videoModelKey": model_key,
+                "startImage": {"mediaId": media_id},
+                "metadata": {"sceneId": str(uuid.uuid4())},
+            }
         return {
             "clientContext": {
                 "recaptchaContext": {"token": recaptcha_token},
@@ -371,7 +382,7 @@ class GoogleLabsAdapter:
                 "tool": "PINHOLE",
                 "userPaygateTier": _paygate(account),
             },
-            "requests": [dict(request_item) for _ in range(max(1, output_count))],
+            "requests": [_make_i2v_req() for _ in range(max(1, output_count))],
         }
 
     # --- Upload image ---
@@ -410,20 +421,34 @@ class GoogleLabsAdapter:
         return await _async_send(URL_FLOW_UPLOAD, payload, _token(account), _cookie(account))
 
     def parse_upload_media_id(self, response_body: str) -> str | None:
+        def _pick(value: Any) -> str | None:
+            if value is None:
+                return None
+            if isinstance(value, str):
+                text = value.strip()
+                if not text or text.startswith("{") or text.startswith("["):
+                    return None
+                return text
+            if isinstance(value, dict):
+                for key in ("mediaId", "mediaGenerationId", "name", "id"):
+                    picked = _pick(value.get(key))
+                    if picked:
+                        return picked
+            return None
+
         try:
             body = json.loads(response_body)
-            # Try multiple paths
-            for key in ("mediaId", "mediaGenerationId", "name"):
-                val = body.get(key)
-                if val:
-                    return str(val)
-            # Nested
+            if not isinstance(body, dict):
+                return None
+            for key in ("mediaId", "mediaGenerationId", "name", "id"):
+                picked = _pick(body.get(key))
+                if picked:
+                    return picked
             for v in body.values():
                 if isinstance(v, dict):
-                    for key in ("mediaId", "mediaGenerationId", "name"):
-                        val = v.get(key)
-                        if val:
-                            return str(val)
+                    picked = _pick(v)
+                    if picked:
+                        return picked
         except Exception:
             pass
         return None
@@ -486,6 +511,7 @@ class GoogleLabsAdapter:
         model: str = "auto",
         seed: int | None = None,
         recaptcha_token: str = "",
+        structured_prompt_parts: list[dict] | None = None,
     ) -> dict:
         payload = self.build_text_to_video_payload(
             prompt=prompt,
@@ -533,18 +559,20 @@ class GoogleLabsAdapter:
         recaptcha_token: str = "",
     ) -> dict:
         model_key = _resolve_video_model_key("i2v", account, aspect_ratio, model)
-        request_item: dict[str, Any] = {
-            "aspectRatio": aspect_ratio,
-            "seed": _random_seed(),
-            "videoModelKey": model_key,
-            "startImage": {"mediaId": start_media_id},
-            "metadata": {"sceneId": str(uuid.uuid4())},
-        }
-        if end_media_id:
-            request_item["endImage"] = {"mediaId": end_media_id}
-            request_item["textInput"] = {"structuredPrompt": {"parts": [{"text": prompt}]}}
-        else:
-            request_item["textInput"] = {"prompt": prompt}
+        def _make_startend_req() -> dict:
+            r: dict[str, Any] = {
+                "aspectRatio": aspect_ratio,
+                "seed": _random_seed(),
+                "videoModelKey": model_key,
+                "startImage": {"mediaId": start_media_id},
+                "metadata": {"sceneId": str(uuid.uuid4())},
+            }
+            if end_media_id:
+                r["endImage"] = {"mediaId": end_media_id}
+                r["textInput"] = {"structuredPrompt": {"parts": [{"text": prompt}]}}
+            else:
+                r["textInput"] = {"prompt": prompt}
+            return r
         return {
             "clientContext": {
                 "recaptchaContext": {"token": recaptcha_token},
@@ -553,7 +581,7 @@ class GoogleLabsAdapter:
                 "tool": "PINHOLE",
                 "userPaygateTier": _paygate(account),
             },
-            "requests": [dict(request_item) for _ in range(max(1, output_count))],
+            "requests": [_make_startend_req() for _ in range(max(1, output_count))],
         }
 
     def build_reference_video_payload(
@@ -566,6 +594,7 @@ class GoogleLabsAdapter:
         model: str = "auto",
         seed: int | None = None,
         recaptcha_token: str = "",
+        structured_prompt_parts: list[dict] | None = None,
     ) -> dict:
         model_key = _resolve_video_model_key("r2v", account, aspect_ratio, model)
         refs = [
@@ -574,14 +603,17 @@ class GoogleLabsAdapter:
         ]
         if not refs:
             return {}
-        request_item = {
-            "aspectRatio": aspect_ratio,
-            "seed": seed if seed is not None else _random_seed(),
-            "textInput": {"structuredPrompt": {"parts": [{"text": prompt}]}},
-            "videoModelKey": model_key,
-            "metadata": {"sceneId": str(uuid.uuid4())},
-            "referenceImages": refs,
-        }
+        eff_seed = seed if seed is not None else _random_seed()
+        prompt_parts = structured_prompt_parts if structured_prompt_parts else [{"text": prompt}]
+        def _make_ref_req() -> dict:
+            return {
+                "aspectRatio": aspect_ratio,
+                "seed": eff_seed,
+                "textInput": {"structuredPrompt": {"parts": prompt_parts}},
+                "videoModelKey": model_key,
+                "metadata": {"sceneId": str(uuid.uuid4())},
+                "referenceImages": refs,
+            }
         return {
             "clientContext": {
                 "recaptchaContext": {"token": recaptcha_token, "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"},
@@ -590,7 +622,7 @@ class GoogleLabsAdapter:
                 "tool": "PINHOLE",
                 "userPaygateTier": _paygate(account),
             },
-            "requests": [json.loads(json.dumps(request_item)) for _ in range(max(1, output_count))],
+            "requests": [_make_ref_req() for _ in range(max(1, output_count))],
         }
 
     async def startend_video(
@@ -605,22 +637,20 @@ class GoogleLabsAdapter:
         recaptcha_token: str = "",
     ) -> dict:
         model_key = _resolve_video_model_key("i2v", account, aspect_ratio, model)
-
-        request_item: dict[str, Any] = {
-            "aspectRatio": aspect_ratio,
-            "seed": _random_seed(),
-            "videoModelKey": model_key,
-            "startImage": {"mediaId": start_media_id},
-            "metadata": {"sceneId": str(uuid.uuid4())},
-        }
-        if end_media_id:
-            request_item["endImage"] = {"mediaId": end_media_id}
-            request_item["textInput"] = {
-                "structuredPrompt": {"parts": [{"text": prompt}]}
+        def _make_se_req() -> dict:
+            r: dict[str, Any] = {
+                "aspectRatio": aspect_ratio,
+                "seed": _random_seed(),
+                "videoModelKey": model_key,
+                "startImage": {"mediaId": start_media_id},
+                "metadata": {"sceneId": str(uuid.uuid4())},
             }
-        else:
-            request_item["textInput"] = {"prompt": prompt}
-
+            if end_media_id:
+                r["endImage"] = {"mediaId": end_media_id}
+                r["textInput"] = {"structuredPrompt": {"parts": [{"text": prompt}]}}
+            else:
+                r["textInput"] = {"prompt": prompt}
+            return r
         url = URL_STARTEND if end_media_id else URL_I2V
         payload = {
             "clientContext": {
@@ -630,7 +660,7 @@ class GoogleLabsAdapter:
                 "tool": "PINHOLE",
                 "userPaygateTier": _paygate(account),
             },
-            "requests": [dict(request_item) for _ in range(max(1, output_count))],
+            "requests": [_make_se_req() for _ in range(max(1, output_count))],
         }
         return await _async_send(url, payload, _token(account), _cookie(account))
 
@@ -645,6 +675,7 @@ class GoogleLabsAdapter:
         model: str = "auto",
         seed: int | None = None,
         recaptcha_token: str = "",
+        structured_prompt_parts: list[dict] | None = None,
     ) -> dict:
         model_key = _resolve_video_model_key("r2v", account, aspect_ratio, model)
         refs = [
@@ -655,14 +686,17 @@ class GoogleLabsAdapter:
         if not refs:
             return {"ok": False, "status": 0, "body": "No reference media IDs"}
 
-        request_item = {
-            "aspectRatio": aspect_ratio,
-            "seed": seed if seed is not None else _random_seed(),
-            "textInput": {"structuredPrompt": {"parts": [{"text": prompt}]}},
-            "videoModelKey": model_key,
-            "metadata": {"sceneId": str(uuid.uuid4())},
-            "referenceImages": refs,
-        }
+        eff_seed2 = seed if seed is not None else _random_seed()
+        prompt_parts = structured_prompt_parts if structured_prompt_parts else [{"text": prompt}]
+        def _make_rv_req() -> dict:
+            return {
+                "aspectRatio": aspect_ratio,
+                "seed": eff_seed2,
+                "textInput": {"structuredPrompt": {"parts": prompt_parts}},
+                "videoModelKey": model_key,
+                "metadata": {"sceneId": str(uuid.uuid4())},
+                "referenceImages": refs,
+            }
         payload = {
             "clientContext": {
                 "recaptchaContext": {"token": recaptcha_token, "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB"},
@@ -671,13 +705,29 @@ class GoogleLabsAdapter:
                 "tool": "PINHOLE",
                 "userPaygateTier": _paygate(account),
             },
-            "requests": [json.loads(json.dumps(request_item)) for _ in range(max(1, output_count))],
+            "requests": [_make_rv_req() for _ in range(max(1, output_count))],
         }
         return await _async_send(URL_REF_VIDEO, payload, _token(account), _cookie(account))
 
     # --- Check video status ---
     async def check_video_status(self, operations: list[dict], token: str) -> dict:
-        payload = {"operations": operations}
+        clean_operations: list[dict] = []
+        for item in operations or []:
+            if not isinstance(item, dict):
+                continue
+            if item.get("_format") == "workflow":
+                name = str(item.get("_primary_media_id") or item.get("primaryMediaId") or "").strip()
+            else:
+                op = item.get("operation") if isinstance(item.get("operation"), dict) else {}
+                name = str(op.get("name") or item.get("name") or "").strip()
+            if name:
+                clean_operations.append({
+                    "operation": {"name": name},
+                    "sceneId": str(item.get("sceneId") or ""),
+                    "status": str(item.get("status") or "MEDIA_GENERATION_STATUS_PENDING"),
+                })
+
+        payload = {"operations": clean_operations or operations}
         return await _async_send(URL_STATUS, payload, token)
 
     # --- Upscale video ---
@@ -687,8 +737,13 @@ class GoogleLabsAdapter:
             return operation_name
         return media_id
 
-    def build_upscale_payload(self, media_id: str, account: dict | None = None, recaptcha_token: str = "") -> dict:
-        UPSCALE_MODEL = "veo_3_1_upsampler_1080p"
+    def build_upscale_payload(self, media_id: str, account: dict | None = None, recaptcha_token: str = "", resolution: str = "1080p") -> dict:
+        if resolution == "4k":
+            res_key = "VIDEO_RESOLUTION_4K"
+            model_key = "veo_3_1_upsampler_4k"
+        else:
+            res_key = "VIDEO_RESOLUTION_1080P"
+            model_key = "veo_3_1_upsampler_1080p"
         return {
             "clientContext": {
                 "sessionId": str(uuid.uuid4()),
@@ -698,10 +753,10 @@ class GoogleLabsAdapter:
                 "recaptchaContext": {"token": recaptcha_token},
             },
             "requests": [{
-                "resolution": "VIDEO_RESOLUTION_1080P",
+                "resolution": res_key,
                 "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
                 "seed": _random_seed(),
-                "videoModelKey": UPSCALE_MODEL,
+                "videoModelKey": model_key,
                 "metadata": {"workflowId": str(uuid.uuid4())},
                 "videoInput": {"mediaId": media_id},
             }],
@@ -847,8 +902,47 @@ class GoogleLabsAdapter:
             body = json.loads(response_body)
         except Exception:
             return []
-        ops = body.get("operations", [])
         results = []
+
+        workflows = body.get("workflows", [])
+        if isinstance(workflows, list):
+            for item in workflows:
+                if not isinstance(item, dict):
+                    continue
+                workflow = item.get("workflow") if isinstance(item.get("workflow"), dict) else item
+                metadata = workflow.get("metadata") if isinstance(workflow.get("metadata"), dict) else {}
+                primary_media_id = (
+                    item.get("primaryMediaId")
+                    or workflow.get("primaryMediaId")
+                    or metadata.get("primaryMediaId")
+                    or item.get("mediaId")
+                    or workflow.get("mediaId")
+                    or item.get("name")
+                    or workflow.get("name")
+                )
+                project_id = (
+                    item.get("projectId")
+                    or workflow.get("projectId")
+                    or metadata.get("projectId")
+                    or body.get("projectId")
+                )
+                operation_name = ""
+                op = item.get("operation") or workflow.get("operation")
+                if isinstance(op, dict):
+                    operation_name = str(op.get("name") or "")
+                elif op:
+                    operation_name = str(op)
+                if primary_media_id:
+                    results.append({
+                        "_format": "workflow",
+                        "_primary_media_id": str(primary_media_id),
+                        "_project_id": str(project_id or ""),
+                        "operation": {"name": operation_name or str(primary_media_id)},
+                        "sceneId": item.get("sceneId") or workflow.get("sceneId") or str(uuid.uuid4()),
+                        "status": item.get("status") or workflow.get("status") or "MEDIA_GENERATION_STATUS_ACTIVE",
+                    })
+
+        ops = body.get("operations", [])
         for item in ops:
             op = item.get("operation", {}) or {}
             name = op.get("name")
@@ -870,16 +964,27 @@ class GoogleLabsAdapter:
 
         videos = []
 
+        def _status_of(obj: dict) -> str:
+            return str(obj.get("mediaGenerationStatus") or obj.get("status") or "").upper()
+
+        def _is_success(status: str) -> bool:
+            return "SUCCESS" in status or "SUCCEEDED" in status
+
+        def _is_failure(status: str) -> bool:
+            return "FAILED" in status or "REJECTED" in status or "CANCELLED" in status or "ERROR" in status
+
         def _collect(obj: Any):
             if isinstance(obj, dict):
                 url = obj.get("fifeUrl") or obj.get("downloadUrl") or obj.get("videoUrl") or obj.get("uri")
-                status = str(obj.get("mediaGenerationStatus", "")).upper()
-                if url and "SUCCEEDED" in status:
+                status = _status_of(obj)
+                if url and _is_success(status):
                     videos.append({
                         "videoUrl": url,
                         "mediaId": obj.get("mediaId") or obj.get("mediaGenerationId") or obj.get("name", ""),
                         "operationName": obj.get("operationName") or obj.get("name", ""),
                     })
+                elif status and _is_failure(status):
+                    logger.warning("[VideoStatus] failed object status=%s keys=%s", status, list(obj.keys()))
                 for v in obj.values():
                     _collect(v)
             elif isinstance(obj, list):
@@ -892,9 +997,13 @@ class GoogleLabsAdapter:
         if not videos:
             def _collect_any(obj: Any):
                 if isinstance(obj, dict):
-                    url = obj.get("fifeUrl") or obj.get("downloadUrl")
+                    url = obj.get("fifeUrl") or obj.get("downloadUrl") or obj.get("videoUrl") or obj.get("uri")
                     if url:
-                        videos.append({"videoUrl": url, "mediaId": ""})
+                        videos.append({
+                            "videoUrl": url,
+                            "mediaId": obj.get("mediaId") or obj.get("mediaGenerationId") or obj.get("name", ""),
+                            "operationName": obj.get("operationName") or obj.get("name", ""),
+                        })
                     for v in obj.values():
                         _collect_any(v)
                 elif isinstance(obj, list):

@@ -1,0 +1,727 @@
+Header:
+equest URL
+https://grok.com/rest/media/post/create
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+104.18.29.234:443
+Referrer Policy
+origin-when-cross-origin
+alt-svc
+h3=":443"; ma=86400
+cf-cache-status
+DYNAMIC
+cf-ray
+9fbf6e817a2b714d-HKG
+content-encoding
+gzip
+content-type
+application/json
+date
+Fri, 15 May 2026 04:34:41 GMT
+priority
+u=1,i
+server
+cloudflare
+server-timing
+cfExtPri
+strict-transport-security
+max-age=31536000; includeSubDomains
+vary
+Origin, origin, access-control-request-method, access-control-request-headers, accept-encoding
+x-trace-id
+e4db19310054e7e4825101d63666d4ae
+:authority
+grok.com
+:method
+POST
+:path
+/rest/media/post/create
+:scheme
+https
+accept
+*/*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+baggage
+sentry-environment=production,sentry-release=daed7297ad6a9cc19e8900c1c9bce35b1c00d125,sentry-public_key=b311e0f2690c81f25e2c4cf6d4f7ce1c,sentry-trace_id=b6622a0880b0d93bb2344f0980ee1d64,sentry-org_id=4508179396558848,sentry-sampled=false,sentry-sample_rand=0.8192018137442495,sentry-sample_rate=0
+content-length
+77
+content-type
+application/json
+cookie
+i18nextLng=en; OptanonAlertBoxClosed=2026-05-04T07:39:56.700Z; __stripe_mid=296a660f-7ebf-4db5-8376-d32159038318509da1; __stripe_sid=964fb55b-cbc2-44c8-a36b-e18674f720437a91ee; cf_clearance=Gm4k_BIn3x04yog4raa6nZ29AOA85bWQPs6U9mM4YKU-1778819364-1.2.1.1-aM0bYZFSejp26e516A_u1HYRL2Rh6LLqsYRPZlDaRM9RkNGmitrt.hpelLTRVrGqy5KUqL3VZRvO3iPEarM48imMSbYEvef9jVlSpv3xesaw5TUdawfCWm_e9pgWeB0u_CX.hXO7wBLWAmLzSPzprJPrdhYO8vab3N3PtKSKJ_58FScrLLELWzodkriU7xmsqyh3swuvg0pTVA7UTh2WvQq6jxwxF4NCgtG06FKw_yFvHsp8TVIVR4cG9BwZSajmdi0ic6h9uACvi3wIBU1a.qIaoKDjwWb0NTcJb9LkvtDzKyxoSqEgK88Hj97eDpXiMBY8Td.jY0jY9aYJjNZdmz4jeDmWOuo5sW1QA5lKoBahjct_8NMNpgJrX.m9rswQh3AQXhAcWysgWqlFycfbA0nIxStoVXb9uiWRp6mHnhc; sso=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiNjk1MWEzMTctMzhiZi00NjdhLThmYzEtZmUyNzU5OTNkODFjIn0.3OJQJjFecQi_jhsLqKJ7PDleUIRrLWvwl1ELzbtp6ts; sso-rw=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiNjk1MWEzMTctMzhiZi00NjdhLThmYzEtZmUyNzU5OTNkODFjIn0.3OJQJjFecQi_jhsLqKJ7PDleUIRrLWvwl1ELzbtp6ts; x-userid=416a3753-673b-4558-aa46-dc8b92448389; mp_ea93da913ddb66b6372b89d97b1029ac_mixpanel=%7B%22distinct_id%22%3A%22416a3753-673b-4558-aa46-dc8b92448389%22%2C%22%24device_id%22%3A%22df3a22bf-4772-4659-9ccf-b2486f833d93%22%2C%22%24initial_referrer%22%3A%22https%3A%2F%2Fgrok.com%2F%3F__cf_chl_tk%3DWq1.F50XcSu7_nCjjODfVGKQP2QcxWH0cyk94u0gJsM-1777880381-1.0.1.1-usr0ezXC8jg059gLwFqSsTPV3Q7gwk8eAkEheZh_8uM%22%2C%22%24initial_referring_domain%22%3A%22grok.com%22%2C%22%24user_id%22%3A%22416a3753-673b-4558-aa46-dc8b92448389%22%2C%22__mps%22%3A%7B%7D%2C%22__mpso%22%3A%7B%7D%2C%22__mpus%22%3A%7B%7D%2C%22__mpa%22%3A%7B%7D%2C%22__mpu%22%3A%7B%7D%2C%22__mpr%22%3A%5B%5D%2C%22__mpap%22%3A%5B%5D%7D; OptanonConsent=isGpcEnabled=0&datestamp=Fri+May+15+2026+11%3A32%3A27+GMT%2B0700+(Indochina+Time)&version=202603.1.0&browserGpcFlag=0&isIABGlobal=false&hosts=&consentId=416a3753-673b-4558-aa46-dc8b92448389&interactionCount=1&isAnonUser=0&prevHadToken=0&landingPath=NotLandingPage&groups=C0001%3A1%2CC0004%3A0%2CC0002%3A0&intType=3&crTime=1777880397388&geolocation=VN%3B26&AwaitingReconsent=false; __cf_bm=JvZHszjWu0FALbE16fQfMVhYwEZLLQDqspFY6R_c97Y-1778819676.4079275-1.0.1.1-mfBxv.b11KMEzBIGZDaLyAiywsGbE27YqRnAFI1j8nfo.GWOc4hODopZ.aelGtwF_dndgEAH1.IDgBPFEynkZGrLhsZ4gSz3.91Zc95KBffQAro8rUOJFS80v_Sa71KL
+origin
+https://grok.com
+priority
+u=1, i
+referer
+https://grok.com/imagine
+sec-ch-ua
+"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"
+sec-ch-ua-arch
+"x86"
+sec-ch-ua-bitness
+"64"
+sec-ch-ua-full-version
+"148.0.7778.96"
+sec-ch-ua-full-version-list
+"Chromium";v="148.0.7778.96", "Google Chrome";v="148.0.7778.96", "Not/A)Brand";v="99.0.0.0"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-model
+""
+sec-ch-ua-platform
+"Windows"
+sec-ch-ua-platform-version
+"10.0.0"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+same-origin
+sentry-trace
+b6622a0880b0d93bb2344f0980ee1d64-8042e0bd05edc73d-0
+traceparent
+00-e4db19310054e7e4825101d63666d4ae-04039a54c87e5663-00
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
+x-statsig-id
+O9GqViZAyrKvnjaXms6MBgVDEVVtIUlWcp/R5v7tLqz9fBxJp6K5hEwAGULDz3OOtcoFjD7w9p0PO3ERZRbCp02/wUBTOA
+x-xai-request-id
+55529623-20d1-4180-94db-3c8b06ee3859
+Agentic extensions debugging
+You can now debug extensions through
+Payload:
+{"mediaType":"MEDIA_POST_TYPE_VIDEO","prompt":"tạo video 1 con chó vàng"}
+
+Response:
+{
+    "post": {
+        "id": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+        "userId": "416a3753-673b-4558-aa46-dc8b92448389",
+        "createTime": "2026-05-15T04:34:41.644711939Z",
+        "prompt": "tạo video 1 con chó vàng",
+        "mediaType": "MEDIA_POST_TYPE_VIDEO",
+        "mediaUrl": "",
+        "mimeType": "video/mp4",
+        "audioUrls": [],
+        "childPosts": [],
+        "originalPrompt": "tạo video 1 con chó vàng",
+        "mode": "text",
+        "thumbnailImageUrl": "https://imagine-public.x.ai/imagine-public/images/21d8b635-e385-4cff-8faf-6716975dbd2a.png",
+        "availableActions": [],
+        "images": [],
+        "videos": [
+            {
+                "id": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "userId": "416a3753-673b-4558-aa46-dc8b92448389",
+                "createTime": "2026-05-15T04:34:41.644711939Z",
+                "prompt": "tạo video 1 con chó vàng",
+                "mediaType": "MEDIA_POST_TYPE_VIDEO",
+                "mediaUrl": "",
+                "mimeType": "video/mp4",
+                "audioUrls": [],
+                "childPosts": [],
+                "originalPrompt": "tạo video 1 con chó vàng",
+                "mode": "text",
+                "thumbnailImageUrl": "https://imagine-public.x.ai/imagine-public/images/21d8b635-e385-4cff-8faf-6716975dbd2a.png",
+                "availableActions": [],
+                "images": [],
+                "videos": [],
+                "inputMediaItems": []
+            }
+        ],
+        "inputMediaItems": []
+    }
+}
+Header:
+Request URL
+https://grok.com/rest/media/post/like
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+104.18.29.234:443
+Referrer Policy
+origin-when-cross-origin
+alt-svc
+h3=":443"; ma=86400
+cf-cache-status
+DYNAMIC
+cf-ray
+9fbf6e834b70714d-HKG
+content-length
+2
+content-type
+application/json
+date
+Fri, 15 May 2026 04:34:42 GMT
+priority
+u=1,i
+server
+cloudflare
+server-timing
+cfExtPri
+strict-transport-security
+max-age=31536000; includeSubDomains
+vary
+Origin, origin, access-control-request-method, access-control-request-headers, accept-encoding
+x-trace-id
+b3391c5eb6926770746af7e417dc23b2
+:authority
+grok.com
+:method
+POST
+:path
+/rest/media/post/like
+:scheme
+https
+accept
+*/*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+baggage
+sentry-environment=production,sentry-release=daed7297ad6a9cc19e8900c1c9bce35b1c00d125,sentry-public_key=b311e0f2690c81f25e2c4cf6d4f7ce1c,sentry-trace_id=b6622a0880b0d93bb2344f0980ee1d64,sentry-org_id=4508179396558848,sentry-sampled=false,sentry-sample_rand=0.8192018137442495,sentry-sample_rate=0
+content-length
+45
+content-type
+application/json
+cookie
+i18nextLng=en; OptanonAlertBoxClosed=2026-05-04T07:39:56.700Z; __stripe_mid=296a660f-7ebf-4db5-8376-d32159038318509da1; __stripe_sid=964fb55b-cbc2-44c8-a36b-e18674f720437a91ee; cf_clearance=Gm4k_BIn3x04yog4raa6nZ29AOA85bWQPs6U9mM4YKU-1778819364-1.2.1.1-aM0bYZFSejp26e516A_u1HYRL2Rh6LLqsYRPZlDaRM9RkNGmitrt.hpelLTRVrGqy5KUqL3VZRvO3iPEarM48imMSbYEvef9jVlSpv3xesaw5TUdawfCWm_e9pgWeB0u_CX.hXO7wBLWAmLzSPzprJPrdhYO8vab3N3PtKSKJ_58FScrLLELWzodkriU7xmsqyh3swuvg0pTVA7UTh2WvQq6jxwxF4NCgtG06FKw_yFvHsp8TVIVR4cG9BwZSajmdi0ic6h9uACvi3wIBU1a.qIaoKDjwWb0NTcJb9LkvtDzKyxoSqEgK88Hj97eDpXiMBY8Td.jY0jY9aYJjNZdmz4jeDmWOuo5sW1QA5lKoBahjct_8NMNpgJrX.m9rswQh3AQXhAcWysgWqlFycfbA0nIxStoVXb9uiWRp6mHnhc; sso=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiNjk1MWEzMTctMzhiZi00NjdhLThmYzEtZmUyNzU5OTNkODFjIn0.3OJQJjFecQi_jhsLqKJ7PDleUIRrLWvwl1ELzbtp6ts; sso-rw=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiNjk1MWEzMTctMzhiZi00NjdhLThmYzEtZmUyNzU5OTNkODFjIn0.3OJQJjFecQi_jhsLqKJ7PDleUIRrLWvwl1ELzbtp6ts; x-userid=416a3753-673b-4558-aa46-dc8b92448389; mp_ea93da913ddb66b6372b89d97b1029ac_mixpanel=%7B%22distinct_id%22%3A%22416a3753-673b-4558-aa46-dc8b92448389%22%2C%22%24device_id%22%3A%22df3a22bf-4772-4659-9ccf-b2486f833d93%22%2C%22%24initial_referrer%22%3A%22https%3A%2F%2Fgrok.com%2F%3F__cf_chl_tk%3DWq1.F50XcSu7_nCjjODfVGKQP2QcxWH0cyk94u0gJsM-1777880381-1.0.1.1-usr0ezXC8jg059gLwFqSsTPV3Q7gwk8eAkEheZh_8uM%22%2C%22%24initial_referring_domain%22%3A%22grok.com%22%2C%22%24user_id%22%3A%22416a3753-673b-4558-aa46-dc8b92448389%22%2C%22__mps%22%3A%7B%7D%2C%22__mpso%22%3A%7B%7D%2C%22__mpus%22%3A%7B%7D%2C%22__mpa%22%3A%7B%7D%2C%22__mpu%22%3A%7B%7D%2C%22__mpr%22%3A%5B%5D%2C%22__mpap%22%3A%5B%5D%7D; OptanonConsent=isGpcEnabled=0&datestamp=Fri+May+15+2026+11%3A32%3A27+GMT%2B0700+(Indochina+Time)&version=202603.1.0&browserGpcFlag=0&isIABGlobal=false&hosts=&consentId=416a3753-673b-4558-aa46-dc8b92448389&interactionCount=1&isAnonUser=0&prevHadToken=0&landingPath=NotLandingPage&groups=C0001%3A1%2CC0004%3A0%2CC0002%3A0&intType=3&crTime=1777880397388&geolocation=VN%3B26&AwaitingReconsent=false; __cf_bm=JvZHszjWu0FALbE16fQfMVhYwEZLLQDqspFY6R_c97Y-1778819676.4079275-1.0.1.1-mfBxv.b11KMEzBIGZDaLyAiywsGbE27YqRnAFI1j8nfo.GWOc4hODopZ.aelGtwF_dndgEAH1.IDgBPFEynkZGrLhsZ4gSz3.91Zc95KBffQAro8rUOJFS80v_Sa71KL
+origin
+https://grok.com
+priority
+u=1, i
+referer
+https://grok.com/imagine
+sec-ch-ua
+"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"
+sec-ch-ua-arch
+"x86"
+sec-ch-ua-bitness
+"64"
+sec-ch-ua-full-version
+"148.0.7778.96"
+sec-ch-ua-full-version-list
+"Chromium";v="148.0.7778.96", "Google Chrome";v="148.0.7778.96", "Not/A)Brand";v="99.0.0.0"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-model
+""
+sec-ch-ua-platform
+"Windows"
+sec-ch-ua-platform-version
+"10.0.0"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+same-origin
+sentry-trace
+b6622a0880b0d93bb2344f0980ee1d64-83c62d32b512d35d-0
+traceparent
+00-b3391c5eb6926770746af7e417dc23b2-869074c29623b3cc-00
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
+x-statsig-id
+YIrxDX0bken0xW3MwZXXXV4YSg42ehINKcSKvaW2dfemJ0cS/Pni3xdbQhmYlCjV7pFe12W8L/XkADpM+PVc2ARBwPjqYw
+x-xai-request-id
+3cb6800b-cfa7-4fec-bd0f-b3c8c848ee79
+Agentic extensions debugging
+You can now debug extensions through a coding agent using new tools in DevTools for agents, available through the MCP server.
+Payload:
+{"id":"a60c7687-f6b7-42e8-b8e0-c463223621ad"}
+Response: {}
+Header:
+Request URL
+https://grok.com/rest/app-chat/conversations/new
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+104.18.29.234:443
+Referrer Policy
+origin-when-cross-origin
+alt-svc
+h3=":443"; ma=86400
+cf-cache-status
+DYNAMIC
+cf-ray
+9fbf6e834b6e714d-HKG
+content-encoding
+gzip
+content-type
+application/json
+date
+Fri, 15 May 2026 04:34:42 GMT
+priority
+u=1,i
+server
+cloudflare
+server-timing
+cfExtPri
+strict-transport-security
+max-age=31536000; includeSubDomains
+vary
+Origin, origin, access-control-request-method, access-control-request-headers, accept-encoding
+x-trace-id
+bf6f85c62e0e0e3bd9e5083e64fb0064
+:authority
+grok.com
+:method
+POST
+:path
+/rest/app-chat/conversations/new
+:scheme
+https
+accept
+*/*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+baggage
+sentry-environment=production,sentry-release=daed7297ad6a9cc19e8900c1c9bce35b1c00d125,sentry-public_key=b311e0f2690c81f25e2c4cf6d4f7ce1c,sentry-trace_id=b6622a0880b0d93bb2344f0980ee1d64,sentry-org_id=4508179396558848,sentry-sampled=false,sentry-sample_rand=0.8192018137442495,sentry-sample_rate=0
+content-length
+343
+content-type
+application/json
+cookie
+i18nextLng=en; OptanonAlertBoxClosed=2026-05-04T07:39:56.700Z; __stripe_mid=296a660f-7ebf-4db5-8376-d32159038318509da1; __stripe_sid=964fb55b-cbc2-44c8-a36b-e18674f720437a91ee; cf_clearance=Gm4k_BIn3x04yog4raa6nZ29AOA85bWQPs6U9mM4YKU-1778819364-1.2.1.1-aM0bYZFSejp26e516A_u1HYRL2Rh6LLqsYRPZlDaRM9RkNGmitrt.hpelLTRVrGqy5KUqL3VZRvO3iPEarM48imMSbYEvef9jVlSpv3xesaw5TUdawfCWm_e9pgWeB0u_CX.hXO7wBLWAmLzSPzprJPrdhYO8vab3N3PtKSKJ_58FScrLLELWzodkriU7xmsqyh3swuvg0pTVA7UTh2WvQq6jxwxF4NCgtG06FKw_yFvHsp8TVIVR4cG9BwZSajmdi0ic6h9uACvi3wIBU1a.qIaoKDjwWb0NTcJb9LkvtDzKyxoSqEgK88Hj97eDpXiMBY8Td.jY0jY9aYJjNZdmz4jeDmWOuo5sW1QA5lKoBahjct_8NMNpgJrX.m9rswQh3AQXhAcWysgWqlFycfbA0nIxStoVXb9uiWRp6mHnhc; sso=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiNjk1MWEzMTctMzhiZi00NjdhLThmYzEtZmUyNzU5OTNkODFjIn0.3OJQJjFecQi_jhsLqKJ7PDleUIRrLWvwl1ELzbtp6ts; sso-rw=eyJ0eXAiOiJKV1QiLCJhbGciOiJIUzI1NiJ9.eyJzZXNzaW9uX2lkIjoiNjk1MWEzMTctMzhiZi00NjdhLThmYzEtZmUyNzU5OTNkODFjIn0.3OJQJjFecQi_jhsLqKJ7PDleUIRrLWvwl1ELzbtp6ts; x-userid=416a3753-673b-4558-aa46-dc8b92448389; mp_ea93da913ddb66b6372b89d97b1029ac_mixpanel=%7B%22distinct_id%22%3A%22416a3753-673b-4558-aa46-dc8b92448389%22%2C%22%24device_id%22%3A%22df3a22bf-4772-4659-9ccf-b2486f833d93%22%2C%22%24initial_referrer%22%3A%22https%3A%2F%2Fgrok.com%2F%3F__cf_chl_tk%3DWq1.F50XcSu7_nCjjODfVGKQP2QcxWH0cyk94u0gJsM-1777880381-1.0.1.1-usr0ezXC8jg059gLwFqSsTPV3Q7gwk8eAkEheZh_8uM%22%2C%22%24initial_referring_domain%22%3A%22grok.com%22%2C%22%24user_id%22%3A%22416a3753-673b-4558-aa46-dc8b92448389%22%2C%22__mps%22%3A%7B%7D%2C%22__mpso%22%3A%7B%7D%2C%22__mpus%22%3A%7B%7D%2C%22__mpa%22%3A%7B%7D%2C%22__mpu%22%3A%7B%7D%2C%22__mpr%22%3A%5B%5D%2C%22__mpap%22%3A%5B%5D%7D; OptanonConsent=isGpcEnabled=0&datestamp=Fri+May+15+2026+11%3A32%3A27+GMT%2B0700+(Indochina+Time)&version=202603.1.0&browserGpcFlag=0&isIABGlobal=false&hosts=&consentId=416a3753-673b-4558-aa46-dc8b92448389&interactionCount=1&isAnonUser=0&prevHadToken=0&landingPath=NotLandingPage&groups=C0001%3A1%2CC0004%3A0%2CC0002%3A0&intType=3&crTime=1777880397388&geolocation=VN%3B26&AwaitingReconsent=false; __cf_bm=JvZHszjWu0FALbE16fQfMVhYwEZLLQDqspFY6R_c97Y-1778819676.4079275-1.0.1.1-mfBxv.b11KMEzBIGZDaLyAiywsGbE27YqRnAFI1j8nfo.GWOc4hODopZ.aelGtwF_dndgEAH1.IDgBPFEynkZGrLhsZ4gSz3.91Zc95KBffQAro8rUOJFS80v_Sa71KL
+origin
+https://grok.com
+priority
+u=1, i
+referer
+https://grok.com/imagine
+sec-ch-ua
+"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"
+sec-ch-ua-arch
+"x86"
+sec-ch-ua-bitness
+"64"
+sec-ch-ua-full-version
+"148.0.7778.96"
+sec-ch-ua-full-version-list
+"Chromium";v="148.0.7778.96", "Google Chrome";v="148.0.7778.96", "Not/A)Brand";v="99.0.0.0"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-model
+""
+sec-ch-ua-platform
+"Windows"
+sec-ch-ua-platform-version
+"10.0.0"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+same-origin
+sentry-trace
+b6622a0880b0d93bb2344f0980ee1d64-a786dd9ca0861b2c-0
+traceparent
+00-bf6f85c62e0e0e3bd9e5083e64fb0064-90a9b5770f8c36ad-00
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
+x-statsig-id
+HfeMcABm7JSJuBCxvOiqICNlN3NLB29wVLn3wNjLCIrbWjpvgYSfomomP2Tl6VWok+wjqhjMYkLD/03RfmF0ti92Le7RHg
+x-xai-request-id
+fa01decd-7ddf-47d6-ae88-c72755cd70a9
+Payload:
+{"temporary":true,"modelName":"imagine-video-gen","message":"tạo video 1 con chó vàng --mode=custom","enableSideBySide":true,"responseMetadata":{"experiments":[],"modelConfigOverride":{"modelMap":{"videoGenModelConfig":{"parentPostId":"a60c7687-f6b7-42e8-b8e0-c463223621ad","aspectRatio":"9:16","videoLength":6,"resolutionName":"720p"}}}}}
+Response:
+{
+    "result": {
+        "conversation": {
+            "conversationId": "0c4d2b52-a856-4905-a57d-9a8aa10a5103",
+            "title": "New conversation",
+            "starred": false,
+            "createTime": "2026-05-15T04:34:41.991188Z",
+            "modifyTime": "2026-05-15T04:34:41.992188Z",
+            "systemPromptName": "",
+            "temporary": true,
+            "mediaTypes": [],
+            "workspaces": [],
+            "taskResult": null
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "userResponse": {
+                "responseId": "99253b14-6962-4b0b-8236-1bbfb26221fa",
+                "message": "tạo video 1 con chó vàng --mode=custom",
+                "sender": "human",
+                "createTime": "2026-05-15T04:34:42.022Z",
+                "manual": false,
+                "partial": false,
+                "shared": false,
+                "query": "",
+                "queryType": "",
+                "webSearchResults": [],
+                "xpostIds": [],
+                "xposts": [],
+                "generatedImageUrls": [],
+                "imageAttachments": [],
+                "fileAttachments": [],
+                "cardAttachmentsJson": [],
+                "fileUris": [],
+                "fileAttachmentsMetadata": [],
+                "isControl": false,
+                "steps": [],
+                "imageEditUris": [],
+                "mediaTypes": [],
+                "webpageUrls": [],
+                "metadata": {
+                    "experiments": [],
+                    "modelConfigOverride": {
+                        "modelMap": {
+                            "videoGenModelConfig": {
+                                "aspectRatio": "9:16",
+                                "isVideoExtension": false,
+                                "isVideoRemix": false,
+                                "originalPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                                "resolutionName": "720p",
+                                "rootPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                                "videoLength": 6
+                            }
+                        }
+                    }
+                },
+                "citedWebSearchResults": [],
+                "toolResponses": [],
+                "model": "imagine-video-gen",
+                "ragResults": [],
+                "citedRagResults": [],
+                "searchProductResults": [],
+                "connectorSearchResults": [],
+                "collectionSearchResults": [],
+                "streamErrors": [],
+                "citedXposts": [],
+                "citedConnectorSearchResults": [],
+                "citedCollectionSearchResults": [],
+                "chunks": []
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "99253b14-6962-4b0b-8236-1bbfb26221fa"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "queryAction": {
+                "query": "",
+                "type": "imagine"
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "imageAttachmentInfo": {
+                "imageAttachmentCount": 1
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "streamingVideoGenerationResponse": {
+                "videoId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "progress": 1,
+                "audioUrls": [],
+                "videoPrompt": "tạo video 1 con chó vàng",
+                "audioTranscripts": [],
+                "moderated": false,
+                "mode": "custom",
+                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "height": 1280,
+                "width": 720,
+                "resolutionName": "720p"
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "streamingVideoGenerationResponse": {
+                "videoId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "progress": 5,
+                "audioUrls": [],
+                "videoPrompt": "tạo video 1 con chó vàng",
+                "audioTranscripts": [],
+                "moderated": false,
+                "mode": "custom",
+                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "height": 1280,
+                "width": 720,
+                "resolutionName": "720p"
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "streamingVideoGenerationResponse": {
+                "videoId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "progress": 19,
+                "audioUrls": [],
+                "videoPrompt": "tạo video 1 con chó vàng",
+                "audioTranscripts": [],
+                "moderated": false,
+                "mode": "custom",
+                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "height": 1280,
+                "width": 720,
+                "resolutionName": "720p"
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "streamingVideoGenerationResponse": {
+                "videoId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "progress": 34,
+                "audioUrls": [],
+                "videoPrompt": "tạo video 1 con chó vàng",
+                "audioTranscripts": [],
+                "moderated": false,
+                "mode": "custom",
+                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "height": 1280,
+                "width": 720,
+                "resolutionName": "720p"
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "streamingVideoGenerationResponse": {
+                "videoId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "progress": 48,
+                "audioUrls": [],
+                "videoPrompt": "tạo video 1 con chó vàng",
+                "audioTranscripts": [],
+                "moderated": false,
+                "mode": "custom",
+                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "height": 1280,
+                "width": 720,
+                "resolutionName": "720p"
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "streamingVideoGenerationResponse": {
+                "videoId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "progress": 62,
+                "audioUrls": [],
+                "videoPrompt": "tạo video 1 con chó vàng",
+                "audioTranscripts": [],
+                "moderated": false,
+                "mode": "custom",
+                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "height": 1280,
+                "width": 720,
+                "resolutionName": "720p"
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "streamingVideoGenerationResponse": {
+                "videoId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "progress": 79,
+                "audioUrls": [],
+                "videoPrompt": "tạo video 1 con chó vàng",
+                "audioTranscripts": [],
+                "moderated": false,
+                "mode": "custom",
+                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "height": 1280,
+                "width": 720,
+                "resolutionName": "720p"
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "streamingVideoGenerationResponse": {
+                "videoId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "progress": 95,
+                "audioUrls": [],
+                "videoPrompt": "tạo video 1 con chó vàng",
+                "audioTranscripts": [],
+                "moderated": false,
+                "mode": "custom",
+                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "height": 1280,
+                "width": 720,
+                "resolutionName": "720p"
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "streamingVideoGenerationResponse": {
+                "videoId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "progress": 100,
+                "assetId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoUrl": "users/416a3753-673b-4558-aa46-dc8b92448389/generated/a60c7687-f6b7-42e8-b8e0-c463223621ad/generated_video.mp4",
+                "audioUrls": [],
+                "videoPrompt": "tạo video 1 con chó vàng",
+                "audioTranscripts": [],
+                "moderated": false,
+                "mode": "custom",
+                "thumbnailImageUrl": "users/416a3753-673b-4558-aa46-dc8b92448389/generated/a60c7687-f6b7-42e8-b8e0-c463223621ad/preview_image.jpg",
+                "parentPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "videoPostId": "a60c7687-f6b7-42e8-b8e0-c463223621ad",
+                "rRated": false,
+                "height": 1280,
+                "width": 720,
+                "resolutionName": "720p",
+                "isRootUserUploaded": false
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "token": "I generated a video with the prompt: 'tạo video 1 con chó vàng'",
+            "isThinking": false,
+            "isSoftStop": true,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "response": {
+            "modelResponse": {
+                "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2",
+                "message": "I generated a video with the prompt: 'tạo video 1 con chó vàng'",
+                "sender": "ASSISTANT",
+                "createTime": "2026-05-15T04:35:21.870Z",
+                "parentResponseId": "99253b14-6962-4b0b-8236-1bbfb26221fa",
+                "manual": false,
+                "partial": false,
+                "shared": false,
+                "query": "",
+                "queryType": "imagine",
+                "webSearchResults": [],
+                "xpostIds": [],
+                "xposts": [],
+                "generatedImageUrls": [],
+                "imageAttachments": [],
+                "fileAttachments": [
+                    "a60c7687-f6b7-42e8-b8e0-c463223621ad"
+                ],
+                "cardAttachmentsJson": [],
+                "fileUris": [],
+                "fileAttachmentsMetadata": [],
+                "isControl": false,
+                "steps": [],
+                "imageEditUris": [],
+                "mediaTypes": [],
+                "webpageUrls": [],
+                "metadata": {
+                    "deepsearchPreset": "",
+                    "request_metadata": {
+                        "effort": "high",
+                        "mode": "imagine",
+                        "model": "imagine-video-gen"
+                    },
+                    "request_trace_id": "bf6f85c62e0e0e3bd9e5083e64fb0064"
+                },
+                "citedWebSearchResults": [],
+                "toolResponses": [],
+                "model": "imagine-video-gen",
+                "requestMetadata": {
+                    "model": "imagine-video-gen",
+                    "mode": "MODEL_MODE_UNKNOWN",
+                    "effort": "HIGH"
+                },
+                "ragResults": [],
+                "citedRagResults": [],
+                "searchProductResults": [],
+                "connectorSearchResults": [],
+                "collectionSearchResults": [],
+                "streamErrors": [],
+                "citedXposts": [],
+                "citedConnectorSearchResults": [],
+                "citedCollectionSearchResults": [],
+                "chunks": []
+            },
+            "isThinking": false,
+            "isSoftStop": false,
+            "responseId": "809e3352-5a9d-47df-8805-45ec9b98bdc2"
+        }
+    }
+}{
+    "result": {
+        "title": {
+            "newTitle": "Golden Dog Video Generation"
+        }
+    }
+}

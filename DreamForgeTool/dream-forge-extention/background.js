@@ -26,6 +26,8 @@ const TOKEN_SOURCE_HOSTS = ['aisandbox-pa.googleapis.com'];
 // generate a fresh one-time token in the correct account tab.
 const RECAPTCHA_COOLDOWN_BASE_MS = 60 * 1000;
 const RECAPTCHA_COOLDOWN_JITTER_MS = 30 * 1000;
+const FLOW_TAB_IDLE_CLOSE_MS = 90 * 1000;
+const FLOW_TAB_IDLE_CHECK_MS = 30 * 1000;
 
 const DEBUG = true;
 const log = DEBUG ? console.log.bind(console, '[DreamForgeExt]') : () => {};
@@ -355,6 +357,84 @@ let _recaptchaMutex = Promise.resolve();
 
 // Per-account tab pool: accountIndex → tabId
 const _accountTabs = new Map();
+let _lastJobActivityAt = 0;
+let _lastIdleCleanupCheckAt = 0;
+let _idleCleanupRunning = false;
+
+function markJobActivity() {
+  _lastJobActivityAt = Date.now();
+}
+
+function _hasActiveSubmitLimiter() {
+  for (const state of _submitLimiters.values()) {
+    if ((state?.active || 0) > 0 || (state?.queue?.length || 0) > 0) return true;
+  }
+  return false;
+}
+
+function _serverStatusIsIdle(status) {
+  if (!status || !status.ok) return false;
+  if ((status.pending_captcha_jobs || 0) > 0) return false;
+  if ((status.pending_browser_submit_jobs || 0) > 0) return false;
+  if ((status.waiting_futures || 0) > 0) return false;
+  const counts = status.inflight_browser_counts || {};
+  return Object.values(counts).every(v => (Number(v) || 0) <= 0);
+}
+
+async function _fetchExtensionServerStatus() {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), 5000);
+  try {
+    const res = await fetch(`${APP_URL}/api/extension/status`, { signal: ctrl.signal });
+    return await res.json();
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
+async function _closeManagedFlowTabs() {
+  const entries = Array.from(_accountTabs.entries());
+  if (!entries.length) return 0;
+  let closed = 0;
+  for (const [accountIndex, tabId] of entries) {
+    try {
+      await chrome.tabs.get(tabId);
+      await chrome.tabs.remove(tabId);
+      closed += 1;
+      log('Closed idle Flow tab for account', accountIndex, 'tab:', tabId);
+    } catch (_) {
+      // Already closed or inaccessible.
+    } finally {
+      _accountTabs.delete(accountIndex);
+    }
+  }
+  return closed;
+}
+
+async function maybeCloseIdleFlowTabs(force = false) {
+  if (_idleCleanupRunning) return;
+  if (!_accountTabs.size) return;
+  const now = Date.now();
+  if (!force && now - _lastIdleCleanupCheckAt < FLOW_TAB_IDLE_CHECK_MS) return;
+  _lastIdleCleanupCheckAt = now;
+  if (!force && now - _lastJobActivityAt < FLOW_TAB_IDLE_CLOSE_MS) return;
+  if (_runningJobs.size > 0 || _hasActiveSubmitLimiter()) return;
+
+  _idleCleanupRunning = true;
+  try {
+    const status1 = await _fetchExtensionServerStatus().catch(() => null);
+    if (!_serverStatusIsIdle(status1)) return;
+    await new Promise(r => setTimeout(r, 3000));
+    if (_runningJobs.size > 0 || _hasActiveSubmitLimiter()) return;
+    const status2 = await _fetchExtensionServerStatus().catch(() => null);
+    if (!_serverStatusIsIdle(status2)) return;
+    const closed = await _closeManagedFlowTabs();
+    if (closed) log('Idle cleanup closed Flow tabs:', closed);
+  } finally {
+    _idleCleanupRunning = false;
+  }
+}
+
 // Per-account submit limiter. Capacity is read from MAX_CONCURRENT/MAX_CONCURRENT_IMAGE.
 async function getSubmitLimit(action = 'VIDEO_GENERATION') {
   const now = Date.now();
@@ -692,6 +772,7 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
 // Execute a single job and report result back to server
 async function executeJob(data) {
   const accountIndex = normalizeAccountIndex(data.accountIndex, 1);
+  markJobActivity();
   await chrome.storage.local.set({ currentAccountIndex: accountIndex });
 
   // Giữ SW sống trong suốt quá trình xử lý job bằng cách ping định kỳ
@@ -760,6 +841,8 @@ async function executeJob(data) {
   } finally {
     _swAlive = false;
     clearInterval(_swPing);
+    markJobActivity();
+    setTimeout(() => maybeCloseIdleFlowTabs().catch(e => log('Idle cleanup error:', e.message)), FLOW_TAB_IDLE_CLOSE_MS + 5000);
   }
 }
 
@@ -776,9 +859,16 @@ async function pollLoop() {
       const data = await res.json();
 
       if (data.hasJob && data.jobId && !_runningJobs.has(data.jobId)) {
+        markJobActivity();
         _runningJobs.add(data.jobId);
         // Fire and forget — allows next poll immediately for parallel jobs
-        executeJob(data).finally(() => _runningJobs.delete(data.jobId));
+        executeJob(data).finally(() => {
+          _runningJobs.delete(data.jobId);
+          markJobActivity();
+          maybeCloseIdleFlowTabs().catch(e => log('Idle cleanup error:', e.message));
+        });
+      } else if (!data.hasJob) {
+        maybeCloseIdleFlowTabs().catch(e => log('Idle cleanup error:', e.message));
       }
     } catch (e) {
       log('Poll error:', e.message);

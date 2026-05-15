@@ -397,10 +397,10 @@
       const out = card.outputs[card.outputIndex];
       const url = out?.video_url || out?.videoUri || out?.fifeUrl || '';
       if (card.busyImage) return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang tạo ảnh...</div></div>';
-      if (card.upscaling) return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang upscale 1080p...</div></div>';
+      if (card.upscaling) return `<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang upscale ${card.upscaleResolution === '4k' ? '4K' : '1080p'}...</div></div>`;
       if (card.status === 'processing' && card.upscaleFailed) return `<div style="text-align:center;padding:12px;color:var(--orange);font-size:12px;white-space:pre-wrap;"><div style="font-weight:700;margin-bottom:6px;">Upscale đã gửi nhưng chưa có kết quả 1080p</div><button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="Studio.retryUpscale('${card.id}')">Upscale lại</button></div>`;
       if (card.status === 'processing') return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang xử lý...</div></div>';
-      if (card.status === 'running') return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang tạo video...</div></div>';
+      if (card.status === 'running') return `<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang tạo video...</div>${card.error ? `<div style="margin-top:8px;color:var(--orange);font-size:12px;white-space:pre-wrap;">${card.error}</div>` : ''}</div>`;
       if (card.status === 'failed') return `<div style="padding:12px;color:var(--red);font-size:12px;white-space:pre-wrap;">${card.error || 'Thất bại'}${card.upscaleFailed ? `<br><button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="Studio.retryUpscale('${card.id}')">Upscale lại</button>` : ''}</div>`;
       if (url) return `<video controls src="${url}" preload="metadata"></video>`;
       return '<span>Chưa có preview</span>';
@@ -667,16 +667,22 @@
 
     const MAX_RETRY = 3;
     let attempt = 0;
+    let lastError = '';
 
     while (attempt <= MAX_RETRY) {
       if (attempt > 0) {
         toast(`Thử lại lần ${attempt}/${MAX_RETRY}...`, 'info');
+        card.error = lastError
+          ? `Google lỗi: ${lastError}\nĐang thử lại ${attempt}/${MAX_RETRY}...`
+          : `Đang thử lại ${attempt}/${MAX_RETRY}...`;
+        renderCard(card, false);
+        updateStats();
         await new Promise(r => setTimeout(r, 2000));
       }
 
       card.busyImage = true;
       card.status = 'running';
-      card.error = '';
+      if (attempt === 0) card.error = '';
       renderCard(card, false);
       updateStats();
 
@@ -735,9 +741,21 @@
     fd.append('model', cfg.model);
     fd.append('character_ids_json', JSON.stringify(card.chars.map(ch => ch.id)));
     if (accountIndex !== null) fd.append('account_index', String(accountIndex));
+    const syncedCharacterRefs = [];
+    [...(card.chars || []), ...(card.refs || [])].forEach(item => {
+      const syncs = Array.isArray(item.syncs) ? item.syncs : [];
+      if (!syncs.length) return;
+      syncedCharacterRefs.push({
+        code: item.character_code || item.name || item.label || '',
+        flow_handle: item.flow_handle || '',
+        syncs,
+      });
+    });
+    if (syncedCharacterRefs.length) fd.append('character_refs_json', JSON.stringify(syncedCharacterRefs));
     // Upload ảnh nhân vật (chars) trước — ưu tiên cao nhất
     for (let i = 0; i < card.chars.length; i++) {
       const ch = card.chars[i];
+      if (Array.isArray(ch.syncs) && ch.syncs.length) continue;
       let file = ch.file || null;
       if (!file && ch.url) file = await urlToFile(ch.url, `${card.id}_char_${i + 1}.png`);
       if (file) fd.append('reference_images', file, file.name || `${card.id}_char_${i + 1}.png`);
@@ -747,6 +765,7 @@
     const refMediaIds = [];
     for (let i = 0; i < card.refs.length; i++) {
       const ref = card.refs[i];
+      if (Array.isArray(ref.syncs) && ref.syncs.length) continue;
       if (ref.media_id) refMediaIds.push(ref.media_id);
       // Luôn gửi binary — BE sẽ upload fresh và bỏ qua media_id cũ nếu có binary
       let file = ref.file || null;
@@ -782,9 +801,15 @@
 
     const MAX_RETRY = 3;
     let attempt = 0;
+    let lastError = '';
 
     while (attempt <= MAX_RETRY) {
       if (stopAll) break;
+      if (attempt > 0 && lastError) {
+        card.error = `Google lỗi: ${lastError}\nĐang thử lại ${attempt}/${MAX_RETRY}...`;
+        renderCard(card, false);
+        updateStats();
+      }
       if (attempt > 0) {
         toast(`Thử lại lần ${attempt}/${MAX_RETRY}...`, 'info');
         await new Promise(r => setTimeout(r, 2000));
@@ -792,7 +817,7 @@
 
       card.status = 'running';
       card.busyVideo = true;
-      card.error = '';
+      if (attempt === 0) card.error = '';
       renderCard(card, false);
       updateStats();
 
@@ -831,6 +856,7 @@
             card.status = (addedCount > 0 || card.outputs.length) ? 'completed' : 'failed';
             card.busyVideo = false;
             card.error = (addedCount > 0 || card.outputs.length) ? '' : 'Không có video trả về';
+            if (card.error) lastError = card.error;
             renderCard(card, false);
             updateStats();
             if (addedCount > 0) {
@@ -855,13 +881,26 @@
             }
           } else if (job.status === 'failed') {
             shouldRetry = true;
+            lastError = job.error || job.detail || job.message || 'Tạo video thất bại';
+            card.error = attempt < MAX_RETRY
+              ? `Google lỗi: ${lastError}\nĐang thử lại ${attempt + 1}/${MAX_RETRY}...`
+              : lastError;
             card.status = 'running'; // giữ running để UI không hiện lỗi sớm
             card.busyVideo = true;
+            renderCard(card, false);
+            updateStats();
           }
         });
       } catch (err) {
         shouldRetry = true;
-        card.error = err.message;
+        lastError = err.message || String(err);
+        card.error = attempt < MAX_RETRY
+          ? `Google lỗi: ${lastError}\nĐang thử lại ${attempt + 1}/${MAX_RETRY}...`
+          : lastError;
+        card.status = 'running';
+        card.busyVideo = true;
+        renderCard(card, false);
+        updateStats();
       }
 
       if (succeeded) return; // xong, thoát
@@ -876,7 +915,9 @@
       card.error = '';
     } else {
       card.status = 'failed';
-      if (!card.error) card.error = `Thất bại sau ${MAX_RETRY} lần thử`;
+      card.error = lastError
+        ? `Thất bại sau ${MAX_RETRY} lần thử: ${lastError}`
+        : `Thất bại sau ${MAX_RETRY} lần thử`;
     }
     card.busyVideo = false;
     renderCard(card, false);
@@ -986,24 +1027,64 @@
     if (failed > 0) toast(`${failed} video thất bại`, 'error');
   }
 
-  async function upscaleCard(cardId, outputIndex) {
+  async function saveAllVideos4k() {
+    const manualHandle = await pickManualDownloadFolder();
+    if (window.showDirectoryPicker && !manualHandle) return toast('Bạn chưa chọn folder', 'info');
+    const cardsWithOutput = cards.filter(c => c.outputs && c.outputs.length && c.status === 'completed');
+    if (!cardsWithOutput.length) return toast('Chưa có video nào hoàn tất', 'info');
+    toast(`Đang upscale 4K ${cardsWithOutput.length} cụm...`, 'info');
+    let saved = 0, failed = 0;
+    for (const card of cardsWithOutput) {
+      for (let i = 0; i < card.outputs.length; i++) {
+        const out = card.outputs[i];
+        const cardIdx = String(cards.indexOf(card) + 1).padStart(3, '0');
+        const filename = `studio_${cardIdx}_${i + 1}_4k.mp4`;
+        card.upscaling = true;
+        card.upscaleResolution = '4k';
+        renderCard(card, false);
+        try {
+          const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: i, account_index: card.videoAccountIndex || null, resolution: '4k' });
+          if (res.ok && Array.isArray(res.outputs) && res.outputs.length) {
+            const url4k = res.outputs[0].video_url || res.outputs[0].videoUri || res.outputs[0].fifeUrl;
+            if (url4k) { await saveVideo(url4k, filename, manualHandle); saved++; }
+            else failed++;
+          } else {
+            toast(`Cụm ${cardIdx}: upscale 4K thất bại`, 'error');
+            failed++;
+          }
+        } catch (err) {
+          toast(`Cụm ${cardIdx}: lỗi 4K - ${err.message}`, 'error');
+          failed++;
+        } finally {
+          card.upscaling = false;
+          card.upscaleResolution = undefined;
+          renderCard(card, false);
+        }
+      }
+    }
+    if (saved > 0) toast(`Đã lưu ${saved} video 4K`, 'success');
+    if (failed > 0) toast(`${failed} video thất bại`, 'error');
+  }
+
+  async function upscaleCard(cardId, outputIndex, resolution = '1080p') {
     const card = cards.find(c => c.id === cardId);
     if (!card || card.upscaling) return false;
     const out = card.outputs[outputIndex];
     if (!out) return false;
     card.status = 'processing';
     card.upscaling = true;
+    card.upscaleResolution = resolution;
     card.upscaleFailed = false;
     renderCard(card, false);
     updateStats();
     try {
-      const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: outputIndex, account_index: card.videoAccountIndex || null });
+      const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: outputIndex, account_index: card.videoAccountIndex || null, resolution });
       if (res.ok && Array.isArray(res.outputs) && res.outputs.length) {
         if (res.account_index) card.videoAccountIndex = res.account_index;
         card.outputs[outputIndex] = { ...card.outputs[outputIndex], ...res.outputs[0], _upscaled: true };
         card.upscaleFailed = false;
         card.status = 'completed';
-        toast('Upscale 1080p thành công', 'success');
+        toast(`Upscale ${resolution === '4k' ? '4K' : '1080p'} thành công`, 'success');
         return true;
       } else if (res.ok && (res.pending || res.started)) {
         if (res.account_index) card.videoAccountIndex = res.account_index;
@@ -1102,7 +1183,9 @@
 
   async function saveToLib() {
     if (!popup) return;
-    const cats = libraryCategories.length ? libraryCategories : (await API.get('/api/image/library/categories').then(r => r.items || []).catch(() => []));
+    const freshCats = await API.get('/api/image/library/categories').then(r => (r.items || []).filter(c => !isDefaultCategory(c))).catch(() => []);
+    if (freshCats.length) libraryCategories = freshCats;
+    const cats = libraryCategories;
     const opts = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
     const modalId = 'studio-save-lib-modal';
     let modal = $(modalId);
@@ -1564,6 +1647,21 @@
     toast('Đã xóa tất cả cụm trong Studio', 'success');
   }
 
+  function openClearAllConfirm() {
+    const modal = $('studio-clear-all-confirm');
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function closeClearAllConfirm() {
+    const modal = $('studio-clear-all-confirm');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function confirmClearAll() {
+    closeClearAllConfirm();
+    clearAll();
+  }
+
   function cloneCard(cardId) {
     const src = cards.find(c => c.id === cardId);
     if (!src) return;
@@ -1688,7 +1786,11 @@
     $('studio-gen-all-images').addEventListener('click', genAllImages);
     $('studio-gen-all-videos').addEventListener('click', genAllVideos);
     $('studio-stop-all').addEventListener('click', () => { stopAll = true; $('studio-stop-all').textContent = 'Đang dừng...'; });
-    $('studio-clear-all').addEventListener('click', clearAll);
+    $('studio-clear-all').addEventListener('click', openClearAllConfirm);
+    $('studio-clear-all-confirm-delete')?.addEventListener('click', confirmClearAll);
+    $('studio-clear-all-cancel')?.addEventListener('click', closeClearAllConfirm);
+    $('studio-clear-all-confirm-close')?.addEventListener('click', closeClearAllConfirm);
+    $('studio-clear-all-confirm')?.addEventListener('click', e => { if (e.target === $('studio-clear-all-confirm')) closeClearAllConfirm(); });
 
     // Filter dropdown
     const _filterToggle = $('studio-filter-toggle');
@@ -1716,7 +1818,7 @@
       }
     });
     // Save quality dropdown logic
-    let _saveQuality = '1080'; // '1080' | '720'
+    let _saveQuality = '1080'; // '1080' | '4k' | '720'
     const _qualityMenu = $('studio-save-quality-menu');
     const _qualityToggle = $('studio-save-quality-toggle');
     const _toolbarToggleBtn = $('studio-toggle-toolbar');
@@ -1730,9 +1832,9 @@
     }
 
     function _updateQualityLabel() {
-      if (_qualityToggle) _qualityToggle.textContent = _saveQuality === '1080' ? '1080p ▾' : '720p ▾';
-      // Update checkmark icons
-      document.querySelectorAll('.studio-quality-opt').forEach(opt => {
+      const labels = { '1080': '1080p ▾', '4k': '4K ▾', '720': '720p ▾' };
+      if (_qualityToggle) _qualityToggle.textContent = labels[_saveQuality] || '1080p ▾';
+      document.querySelectorAll('#studio-save-quality-menu .studio-quality-opt').forEach(opt => {
         const check = opt.querySelector('svg');
         if (check) check.style.opacity = opt.dataset.q === _saveQuality ? '1' : '0';
       });
@@ -1754,7 +1856,8 @@
       const icon = (svg, tone) => ({ tone, svg });
       if (selectId === 'studio-model') {
         if (value === 'auto') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 3v4"/><path d="M12 17v4"/><path d="M4.9 4.9l2.8 2.8"/><path d="M16.3 16.3l2.8 2.8"/><path d="M3 12h4"/><path d="M17 12h4"/><path d="M4.9 19.1l2.8-2.8"/><path d="M16.3 7.7l2.8-2.8"/></svg>', 'violet');
-        if (value === 'flow_fast_relaxed') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 10-14h-7l0-6z"/></svg>', 'orange');
+        if (value === 'flow_lite_low_priority') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 13h9"/><path d="M4 18h6"/><path d="M14 6l2 2 4-4"/><path d="M14 13h6"/><path d="M14 18h3"/></svg>', 'teal');
+        if (value === 'flow_lite') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 10-14h-7l0-6z"/></svg>', 'orange');
         if (value === 'flow_fast_no_ultra') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>', 'blue');
         return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8v8H8z"/></svg>', 'green');
       }
@@ -1808,10 +1911,14 @@
       function render() {
         const selectedOpt = selectEl.options[selectEl.selectedIndex];
         const selectedText = _studioFancyLabel(selectId, selectEl.value, selectedOpt?.textContent?.trim() || '');
+        const selectedCredit = selectId === 'studio-model' ? (selectedOpt?.dataset?.credit || '') : '';
         trigger.innerHTML = `
           <span class="studio-dd-trigger-main">
             ${_studioFancyIconHtml(selectId, selectEl.value)}
-            <span class="studio-dd-trigger-text">${selectedText}</span>
+            <span class="studio-dd-copy">
+              <span class="studio-dd-trigger-text">${selectedText}</span>
+              ${selectedCredit ? `<span class="studio-dd-credit">${selectedCredit}</span>` : ''}
+            </span>
           </span>
           <span class="studio-dd-caret">⌄</span>`;
 
@@ -1819,13 +1926,17 @@
         Array.from(selectEl.options).forEach(opt => {
           const val = opt.value;
           const label = _studioFancyLabel(selectId, val, opt.textContent.trim());
+          const credit = selectId === 'studio-model' ? (opt.dataset.credit || '') : '';
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'studio-dd-option' + (val === selectEl.value ? ' active' : '');
           btn.innerHTML = `
             <span class="studio-dd-option-main">
               ${_studioFancyIconHtml(selectId, val)}
-              <span class="studio-dd-option-text">${label}</span>
+              <span class="studio-dd-copy">
+                <span class="studio-dd-option-text">${label}</span>
+                ${credit ? `<span class="studio-dd-credit">${credit}</span>` : ''}
+              </span>
             </span>
             <span class="studio-dd-option-check">✓</span>`;
           btn.addEventListener('click', () => {
@@ -1860,7 +1971,7 @@
       }
     });
 
-    document.querySelectorAll('.studio-quality-opt').forEach(opt => {
+    document.querySelectorAll('#studio-save-quality-menu .studio-quality-opt').forEach(opt => {
       opt.addEventListener('click', () => {
         _saveQuality = opt.dataset.q;
         _updateQualityLabel();
@@ -1872,6 +1983,10 @@
 
     document.addEventListener('click', e => {
       if (!e.target.closest('.studio-save-split') && _qualityMenu) _qualityMenu.style.display = 'none';
+      if (!e.target.closest('#popup-save-quality-toggle') && !e.target.closest('#popup-save-quality-menu')) {
+        const pm = document.getElementById('popup-save-quality-menu');
+        if (pm) pm.style.display = 'none';
+      }
     });
 
     _toolbarToggleBtn?.addEventListener('click', () => {
@@ -1888,6 +2003,7 @@
 
     $('studio-save-all').addEventListener('click', () => {
       if (_saveQuality === '720') saveAllVideos720();
+      else if (_saveQuality === '4k') saveAllVideos4k();
       else saveAllVideos1080();
     });
     $('studio-save-images-btn')?.addEventListener('click', openSaveImagesPopup);
@@ -1924,6 +2040,7 @@
     _syncAutoDownloadUI();
     loadLibrarySources().catch(() => { });
     initVaultListeners();
+    _initPopupQualityDropdown();
     updateStats();
 
     // ── Drag & Drop ─────────────────────────────────────────────────────────
@@ -2217,8 +2334,9 @@
     $('studio-save-images-to-lib').onclick = async () => {
       const selected = allImages.filter(i => _saveImgSelected.has(i.key));
       if (!selected.length) return toast('Chưa chọn ảnh nào', 'error');
-      const cats = libraryCategories.length ? libraryCategories : (await API.get('/api/image/library/categories').then(r => r.items || []).catch(() => []));
-      const opts = cats.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      const freshCats2 = await API.get('/api/image/library/categories').then(r => (r.items || []).filter(c => !isDefaultCategory(c))).catch(() => []);
+      if (freshCats2.length) libraryCategories = freshCats2;
+      const opts = libraryCategories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
       const dlgId = 'studio-save-images-cat-dlg';
       let dlg = $(dlgId);
       if (!dlg) { dlg = document.createElement('div'); dlg.id = dlgId; dlg.className = 'studio-popup-overlay'; document.body.appendChild(dlg); }
@@ -2307,13 +2425,78 @@
     _videoPopup = null;
   }
 
+  let _popupSaveQuality = '1080'; // '1080' | '4k' | '720'
+
+  function _initPopupQualityDropdown() {
+    const toggle = document.getElementById('popup-save-quality-toggle');
+    const menu = document.getElementById('popup-save-quality-menu');
+    if (!toggle || !menu) return;
+    toggle.addEventListener('click', e => {
+      e.stopPropagation();
+      menu.style.display = (menu.style.display === 'none' || !menu.style.display) ? 'block' : 'none';
+    });
+    menu.querySelectorAll('.studio-quality-opt[data-pq]').forEach(opt => {
+      opt.addEventListener('click', () => {
+        _popupSaveQuality = opt.dataset.pq;
+        const labels = { '1080': '1080p ▾', '4k': '4K ▾', '720': '720p ▾' };
+        toggle.textContent = labels[_popupSaveQuality] || '1080p ▾';
+        menu.querySelectorAll('.studio-quality-opt[data-pq]').forEach(o => {
+          const svg = o.querySelector('svg');
+          if (svg) svg.style.opacity = o.dataset.pq === _popupSaveQuality ? '1' : '0';
+        });
+        menu.style.display = 'none';
+      });
+      opt.addEventListener('mouseover', () => { opt.style.background = 'var(--bg3,#f5f5f5)'; });
+      opt.addEventListener('mouseout', () => { opt.style.background = ''; });
+    });
+  }
+
   async function downloadVideoPopup() {
     if (!_videoPopup) return;
-    const manualHandle = await pickManualDownloadFolder();
-    if (window.showDirectoryPicker && !manualHandle) return toast('Bạn chưa chọn folder', 'info');
     const card = cards.find(c => c.id === _videoPopup.cardId);
     const cardIdx = card ? String(cards.indexOf(card) + 1).padStart(3, '0') : '000';
-    await saveVideo(_videoPopup.url, `studio_${cardIdx}_video_${_videoPopup.idx + 1}.mp4`, manualHandle);
+    const idx = _videoPopup.idx;
+
+    if (_popupSaveQuality === '720') {
+      const manualHandle = await pickManualDownloadFolder();
+      if (window.showDirectoryPicker && !manualHandle) return toast('Bạn chưa chọn folder', 'info');
+      await saveVideo(_videoPopup.url, `studio_${cardIdx}_video_${idx + 1}_720p.mp4`, manualHandle);
+      return;
+    }
+
+    // 1080p hoặc 4k — chọn folder trước, rồi mới upscale
+    if (!card) return toast('Không tìm thấy card', 'error');
+    const out = card.outputs[idx];
+    if (!out) return toast('Không tìm thấy output', 'error');
+    const manualHandle = await pickManualDownloadFolder();
+    if (window.showDirectoryPicker && !manualHandle) return toast('Bạn chưa chọn folder', 'info');
+    const resolution = _popupSaveQuality === '4k' ? '4k' : '1080p';
+    const label = resolution === '4k' ? '4K' : '1080p';
+    card.upscaling = true;
+    card.upscaleResolution = resolution;
+    renderCard(card, false);
+    try {
+      const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: idx, account_index: card.videoAccountIndex || null, resolution });
+      if (res.ok && Array.isArray(res.outputs) && res.outputs.length) {
+        const url = res.outputs[0].video_url || res.outputs[0].videoUri || res.outputs[0].fifeUrl;
+        if (url) {
+          await saveVideo(url, `studio_${cardIdx}_video_${idx + 1}_${label.toLowerCase()}.mp4`, manualHandle);
+          if (res.account_index) card.videoAccountIndex = res.account_index;
+          card.outputs[idx] = { ...card.outputs[idx], ...res.outputs[0], _upscaled: true };
+          toast(`Upscale ${label} và lưu thành công`, 'success');
+        } else {
+          toast(`Upscale ${label} xong nhưng không lấy được URL`, 'error');
+        }
+      } else {
+        toast(res.body || res.message || `Upscale ${label} thất bại`, 'error');
+      }
+    } catch (err) {
+      toast(`Lỗi upscale ${label}: ${err.message}`, 'error');
+    } finally {
+      card.upscaling = false;
+      card.upscaleResolution = undefined;
+      renderCard(card, false);
+    }
   }
 
   function deleteVideoPopup() {
@@ -2380,18 +2563,18 @@
     _vaultCategories = (catsRes.items || []).filter(c => !isDefaultCategory(c));
     _vaultAssets = assetsRes.items || [];
     _vaultSelectedIds = new Set();
-    _vaultTypeFilter = 'all';
+    _vaultTypeFilter = 'nhanvat';
     _vaultGroupFilter = 'all';
 
     // Populate group dropdown
     const groupSel = $('vault-group-filter');
     if (groupSel) {
-      groupSel.innerHTML = '<option value="all">Tất cả nhóm</option>' +
-        _vaultCategories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
-      groupSel.value = 'all';
+      groupSel.innerHTML = _vaultCategories.map(c => `<option value="${c.id}">${c.name}</option>`).join('');
+      if (_vaultCategories[0]) groupSel.value = _vaultCategories[0].id;
+      _vaultGroupFilter = _vaultCategories[0]?.id || 'all';
     }
     const typeSel = $('vault-type-filter');
-    if (typeSel) typeSel.value = 'all';
+    if (typeSel) typeSel.value = 'nhanvat';
 
     renderVaultGrid();
     popup.style.display = 'flex';
@@ -2439,6 +2622,7 @@
                ${_vaultSelectedIds.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation()">
         <img src="${item.url}" alt="${item.name}" loading="lazy">
         <span class="studio-vault-card-badge">${typeLabel[item.asset_type] || 'Kho'}</span>
+        ${item.asset_type === 'nhanvat' ? `<span class="studio-vault-sync-badge ${item.sync_count && item.sync_count >= (item.sync_required_count || 0) && item.sync_required_count ? 'synced' : item.sync_count ? 'partial' : 'missing'}">${item.sync_status_label || 'Chưa Sync'}</span>` : ''}
         <div class="studio-vault-card-label">${item.name || 'Chưa đặt tên'}</div>
       </div>
     `).join('');
@@ -2543,7 +2727,16 @@
         const blob = await resp.blob();
         file = new File([blob], `vault_ref_${Date.now()}.png`, { type: blob.type || 'image/png' });
       } catch (_) { }
-      card.refs.unshift({ url: item.url, file, label: item.name || 'Ảnh kho', media_id: item.media_id || '' });
+      card.refs.unshift({
+        url: item.url,
+        file,
+        label: item.name || 'Ảnh kho',
+        name: item.name || '',
+        character_code: item.name || '',
+        media_id: item.media_id || '',
+        syncs: item.syncs || [],
+        flow_handle: (item.syncs || []).find(s => s.flow_handle)?.flow_handle || '',
+      });
       card.refIndex = 0;
       renderCard(card, false);
       added++;
@@ -2567,13 +2760,103 @@
           const blob = await resp.blob();
           file = new File([blob], `vault_ref_${Date.now()}.png`, { type: blob.type || 'image/png' });
         } catch (_) { }
-        card.refs.unshift({ url: item.url, file, label: item.name || 'Ảnh kho', media_id: item.media_id || '' });
+        card.refs.unshift({
+          url: item.url,
+          file,
+          label: item.name || 'Ảnh kho',
+          name: item.name || '',
+          character_code: item.name || '',
+          media_id: item.media_id || '',
+          syncs: item.syncs || [],
+          flow_handle: (item.syncs || []).find(s => s.flow_handle)?.flow_handle || '',
+        });
         card.refIndex = 0;
         totalAdded++;
       }
     }
     rerender();
     toast(totalAdded ? `Load nhanh: thêm ${totalAdded} ảnh vào các cụm` : 'Không khớp tên nào trong prompt', totalAdded ? 'success' : 'info');
+  }
+
+  function showSyncProgress(job) {
+    let box = document.getElementById('sync-progress-card');
+    if (!box) {
+      box = document.createElement('div');
+      box.id = 'sync-progress-card';
+      box.className = 'sync-progress-card';
+      box.style.position = 'fixed';
+      box.style.left = '50%';
+      box.style.bottom = '28px';
+      box.style.transform = 'translateX(-50%)';
+      box.style.zIndex = '12000';
+      box.innerHTML = `
+        <div class="sync-progress-head">
+          <span>Đồng bộ nhân vật</span>
+          <span class="sync-progress-percent">0%</span>
+        </div>
+        <div class="sync-progress-track"><div class="sync-progress-fill"></div></div>
+        <div class="sync-progress-message">Đang chuẩn bị...</div>
+      `;
+      document.body.appendChild(box);
+    }
+    const pct = Math.max(0, Math.min(100, Number(job?.progress || 0)));
+    box.querySelector('.sync-progress-fill').style.width = pct + '%';
+    box.querySelector('.sync-progress-percent').textContent = pct + '%';
+    box.querySelector('.sync-progress-message').textContent =
+      job?.message || `Đang đồng bộ ${job?.done || 0}/${job?.total || 0}`;
+    if (job && ['completed', 'failed'].includes(job.status)) {
+      setTimeout(() => box.remove(), 1800);
+    }
+  }
+
+  async function runCharacterSync(assetIds, btn) {
+    const start = await API.post('/api/image/library/assets/sync-characters/start', { asset_ids: assetIds });
+    if (!start.ok || !start.job_id) throw new Error(start.detail || start.message || 'Không tạo được job đồng bộ');
+    showSyncProgress(start);
+    let job = start;
+    while (job && !['completed', 'failed'].includes(job.status)) {
+      await new Promise(r => setTimeout(r, 900));
+      job = await API.get(`/api/image/library/assets/sync-characters/${start.job_id}`);
+      showSyncProgress(job);
+      if (btn) {
+        btn.innerHTML = `<span class="spinner" style="width:13px;height:13px;border-width:2px;"></span> ${job.progress || 0}%`;
+      }
+    }
+    return job;
+  }
+
+  async function vaultSyncSelectedCharacters() {
+    if (!_vaultSelectedIds.size) return toast('Chưa chọn ảnh nhân vật nào', 'error');
+    const selected = _vaultAssets.filter(a => _vaultSelectedIds.has(a.id));
+    const invalid = selected.filter(a => a.asset_type !== 'nhanvat');
+    const targets = selected.filter(a => a.asset_type === 'nhanvat');
+    if (!targets.length) return toast('Chỉ đồng bộ được ảnh loại Nhân Vật', 'error');
+    if (invalid.length) toast(`Bỏ qua ${invalid.length} ảnh không phải Nhân Vật`, 'info');
+
+    const btn = $('vault-sync-selected-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.oldText = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner" style="width:13px;height:13px;border-width:2px;"></span> Đang đồng bộ...';
+    }
+    try {
+      const res = await runCharacterSync(targets.map(a => a.id), btn);
+      if (!res || !res.ok || res.status === 'failed') {
+        toast(res?.detail || res?.message || 'Đồng bộ nhân vật thất bại', 'error');
+        return;
+        toast(res.detail || res.message || 'Đồng bộ nhân vật thất bại', 'error');
+        return;
+      }
+      toast(`Đồng bộ xong: ${res.synced || 0} lượt sync` + ((res.failed || 0) ? `, lỗi ${res.failed}` : ''), (res.failed || 0) ? 'info' : 'success');
+      await openVault();
+    } catch (err) {
+      toast('Lỗi đồng bộ nhân vật: ' + (err.message || err), 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        if (btn.dataset.oldText) btn.innerHTML = btn.dataset.oldText;
+      }
+    }
   }
 
   function initVaultListeners() {
@@ -2594,6 +2877,7 @@
       renderVaultGrid();
     });
     $('vault-load-quick-btn')?.addEventListener('click', vaultLoadQuick);
+    $('vault-sync-selected-btn')?.addEventListener('click', vaultSyncSelectedCharacters);
     $('vault-add-to-card-btn')?.addEventListener('click', () => {
       if (!_vaultSelectedIds.size) return toast('Chưa chọn ảnh nào', 'error');
       const btn = $('vault-add-to-card-btn');

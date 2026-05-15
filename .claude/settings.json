@@ -30,7 +30,10 @@
       "Bash(py -3.10 -m nuitka --list-plugins)",
       "Bash(py -3.10 -c \"import webview; print\\(webview.__version__\\)\")",
       "Bash(py -3.10 -c \"import webview.platforms.winforms\")",
-      "Bash(py -3.10 -c \"import pkg_resources; print\\(pkg_resources.get_distribution\\('pywebview'\\).version\\)\")"
+      "Bash(py -3.10 -c \"import pkg_resources; print\\(pkg_resources.get_distribution\\('pywebview'\\).version\\)\")",
+      "WebFetch(domain:api.github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "WebFetch(domain:cloakbrowser.com)"
     ],
     "additionalDirectories": [
       "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1",

@@ -45,6 +45,23 @@ async def init_library_tables() -> None:
             )
             """
         )
+        await db.execute(
+            """
+            CREATE TABLE IF NOT EXISTS library_asset_syncs (
+                id TEXT PRIMARY KEY,
+                asset_id TEXT NOT NULL,
+                account_index INTEGER NOT NULL,
+                project_id TEXT NOT NULL DEFAULT '',
+                media_id TEXT NOT NULL DEFAULT '',
+                flow_handle TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'synced',
+                error TEXT NOT NULL DEFAULT '',
+                synced_at TEXT NOT NULL,
+                UNIQUE(asset_id, account_index, project_id),
+                FOREIGN KEY(asset_id) REFERENCES library_assets(id) ON DELETE CASCADE
+            )
+            """
+        )
         # Migration: add columns if not exists
         for migration in [
             "ALTER TABLE library_assets ADD COLUMN asset_type TEXT NOT NULL DEFAULT 'nhanvat'",
@@ -174,6 +191,7 @@ async def delete_asset(asset_id: str) -> bool:
         if not row:
             return False
         filename = row[0]
+        await db.execute("DELETE FROM library_asset_syncs WHERE asset_id = ?", (asset_id,))
         await db.execute("DELETE FROM library_assets WHERE id = ?", (asset_id,))
         await db.commit()
     file_path = LIBRARY_DIR / filename
@@ -195,7 +213,7 @@ async def list_assets() -> list[dict[str, Any]]:
             """
         ) as cur:
             rows = await cur.fetchall()
-    return [
+    assets = [
         {
             "id": r[0],
             "name": r[1],
@@ -212,6 +230,165 @@ async def list_assets() -> list[dict[str, Any]]:
         }
         for r in rows
     ]
+    if not assets:
+        return assets
+
+    ids = [a["id"] for a in assets]
+    placeholders = ",".join("?" * len(ids))
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        async with db.execute(
+            f"""
+            SELECT asset_id, account_index, project_id, media_id, flow_handle, status, error, synced_at
+            FROM library_asset_syncs
+            WHERE asset_id IN ({placeholders})
+            ORDER BY account_index ASC
+            """,
+            ids,
+        ) as cur:
+            sync_rows = await cur.fetchall()
+    by_asset: dict[str, list[dict[str, Any]]] = {a["id"]: [] for a in assets}
+    for r in sync_rows:
+        by_asset.setdefault(r[0], []).append(
+            {
+                "account_index": int(r[1] or 0),
+                "project_id": r[2] or "",
+                "media_id": r[3] or "",
+                "flow_handle": r[4] or "",
+                "status": r[5] or "",
+                "error": r[6] or "",
+                "synced_at": r[7] or "",
+            }
+        )
+    for asset in assets:
+        asset["syncs"] = by_asset.get(asset["id"], [])
+        asset["sync_count"] = len([s for s in asset["syncs"] if s.get("status") == "synced" and s.get("media_id")])
+    return assets
+
+
+async def get_asset(asset_id: str) -> dict[str, Any] | None:
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        async with db.execute(
+            """
+            SELECT id, name, category_id, filename, prompt, source_type, origin_url, asset_type,
+                   COALESCE(media_id, ''), created_at
+            FROM library_assets
+            WHERE id = ?
+            """,
+            (asset_id,),
+        ) as cur:
+            row = await cur.fetchone()
+    if not row:
+        return None
+    return {
+        "id": row[0],
+        "name": row[1],
+        "category_id": row[2],
+        "filename": row[3],
+        "prompt": row[4],
+        "source_type": row[5],
+        "origin_url": row[6],
+        "asset_type": row[7] or "nhanvat",
+        "media_id": row[8] or "",
+        "created_at": row[9],
+        "url": f"/library-images/{row[3]}",
+        "path": LIBRARY_DIR / row[3],
+    }
+
+
+async def list_asset_syncs(asset_id: str) -> list[dict[str, Any]]:
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        async with db.execute(
+            """
+            SELECT asset_id, account_index, project_id, media_id, flow_handle, status, error, synced_at
+            FROM library_asset_syncs
+            WHERE asset_id = ?
+            ORDER BY account_index ASC
+            """,
+            (asset_id,),
+        ) as cur:
+            rows = await cur.fetchall()
+    return [
+        {
+            "asset_id": r[0],
+            "account_index": int(r[1] or 0),
+            "project_id": r[2] or "",
+            "media_id": r[3] or "",
+            "flow_handle": r[4] or "",
+            "status": r[5] or "",
+            "error": r[6] or "",
+            "synced_at": r[7] or "",
+        }
+        for r in rows
+    ]
+
+
+async def delete_invalid_asset_syncs() -> int:
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        result = await db.execute(
+            """
+            DELETE FROM library_asset_syncs
+            WHERE TRIM(media_id) LIKE '{%'
+               OR TRIM(media_id) LIKE '[%'
+               OR media_id LIKE '%mediaGenerationId%'
+               OR LENGTH(TRIM(media_id)) != 36
+               OR SUBSTR(TRIM(media_id), 9, 1) != '-'
+               OR SUBSTR(TRIM(media_id), 14, 1) != '-'
+               OR SUBSTR(TRIM(media_id), 19, 1) != '-'
+               OR SUBSTR(TRIM(media_id), 24, 1) != '-'
+            """
+        )
+        await db.commit()
+    return int(result.rowcount or 0)
+
+
+async def upsert_asset_sync(
+    *,
+    asset_id: str,
+    account_index: int,
+    project_id: str,
+    media_id: str,
+    flow_handle: str,
+    status: str = "synced",
+    error: str = "",
+) -> dict[str, Any]:
+    now = _now_iso()
+    sync_id = uuid.uuid4().hex[:12]
+    async with aiosqlite.connect(str(DB_PATH)) as db:
+        await db.execute(
+            """
+            INSERT INTO library_asset_syncs
+                (id, asset_id, account_index, project_id, media_id, flow_handle, status, error, synced_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(asset_id, account_index, project_id) DO UPDATE SET
+                media_id = excluded.media_id,
+                flow_handle = excluded.flow_handle,
+                status = excluded.status,
+                error = excluded.error,
+                synced_at = excluded.synced_at
+            """,
+            (
+                sync_id,
+                asset_id,
+                int(account_index or 0),
+                str(project_id or ""),
+                str(media_id or ""),
+                str(flow_handle or ""),
+                str(status or ""),
+                str(error or ""),
+                now,
+            ),
+        )
+        await db.commit()
+    return {
+        "asset_id": asset_id,
+        "account_index": int(account_index or 0),
+        "project_id": str(project_id or ""),
+        "media_id": str(media_id or ""),
+        "flow_handle": str(flow_handle or ""),
+        "status": str(status or ""),
+        "error": str(error or ""),
+        "synced_at": now,
+    }
 
 
 async def rename_asset(asset_id: str, new_name: str) -> bool:
@@ -248,4 +425,3 @@ async def rename_category(category_id: str, new_name: str) -> bool:
         result = await db.execute("UPDATE library_categories SET name = ? WHERE id = ?", (safe, category_id))
         await db.commit()
     return result.rowcount > 0
-

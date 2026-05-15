@@ -59,13 +59,23 @@ function downloadUrl(url, filename) {
 }
 
 async function pollJob(jobId, apiPath, onUpdate, intervalMs = 3000) {
+  let pollErrors = 0;
   while (true) {
+    let job;
     try {
       const res = await API.get(`${apiPath}/${jobId}`);
-      const job = res.job || res;
-      onUpdate(job);
-      if (['completed', 'done', 'failed'].includes(job.status)) break;
-    } catch (e) {}
+      job = res.job || res;
+      pollErrors = 0;
+    } catch (e) {
+      pollErrors++;
+      if (pollErrors >= 3) {
+        throw new Error(`Poll job failed after ${pollErrors} attempts: ${e.message || e}`);
+      }
+      await new Promise(r => setTimeout(r, intervalMs));
+      continue;
+    }
+    await onUpdate(job);
+    if (['completed', 'done', 'failed'].includes(job.status)) break;
     await new Promise(r => setTimeout(r, intervalMs));
   }
 }

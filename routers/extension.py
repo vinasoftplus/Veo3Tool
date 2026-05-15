@@ -170,6 +170,7 @@ async def request_browser_upload_post(
     uploads: list[dict],
     access_token: str,
     account_index: int = 1,
+    timeout_seconds: float = 300.0,
 ) -> dict:
     """Queue a browser job that uploads image(s) then POSTs the generation request.
     uploads: list of {base64, mimeType, payloadPath} dicts.
@@ -198,7 +199,7 @@ async def request_browser_upload_post(
         job_id[:8], job_type, len(uploads), normalized_account_index,
     )
     try:
-        result = await asyncio.wait_for(asyncio.shield(fut), timeout=300.0)
+        result = await asyncio.wait_for(asyncio.shield(fut), timeout=float(timeout_seconds or 300.0))
         return result or {"ok": False, "status": 0, "body": "No browser result"}
     except asyncio.TimeoutError:
         logger.warning("⚠️ Timeout khi chờ browser-upload-post cho job_%s", job_id[:8])
@@ -222,6 +223,7 @@ async def request_browser_submit(
     payload: dict,
     access_token: str,
     account_index: int = 1,
+    timeout_seconds: float = 300.0,
 ) -> dict:
     loop = asyncio.get_event_loop()
     fut: asyncio.Future = loop.create_future()
@@ -246,7 +248,7 @@ async def request_browser_submit(
         normalized_account_index,
     )
     try:
-        result = await asyncio.wait_for(asyncio.shield(fut), timeout=300.0)
+        result = await asyncio.wait_for(asyncio.shield(fut), timeout=float(timeout_seconds or 300.0))
         return result or {"ok": False, "status": 0, "body": "No browser result"}
     except asyncio.TimeoutError:
         logger.warning("⚠️ Timeout khi chờ browser-submit cho job_%s", job_id[:8])

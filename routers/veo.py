@@ -6,6 +6,7 @@ import base64
 import json
 import logging
 import random
+import re
 import uuid
 
 from fastapi import APIRouter, File, Form, HTTPException, UploadFile
@@ -62,6 +63,74 @@ def _token_option() -> str:
     return str(cfg.get("TOKEN_OPTION", "Option 1") or "Option 1").strip()
 
 
+def _valid_synced_media_id(media_id: str) -> bool:
+    text = str(media_id or "").strip()
+    if not text or text.startswith("{") or text.startswith("["):
+        return False
+    if "mediaGenerationId" in text or "mediaId" in text:
+        return False
+    try:
+        uuid.UUID(text)
+        return True
+    except Exception:
+        return False
+
+
+def _build_reference_prompt_parts(prompt: str, synced_refs: list[dict]) -> list[dict] | None:
+    """Convert exact character codes in prompt into Flow structured reference parts."""
+    text = str(prompt or "")
+    refs = []
+    seen_codes = set()
+    for item in synced_refs or []:
+        code = str(item.get("code") or item.get("character_code") or "").strip()
+        media_id = str(item.get("media_id") or "").strip()
+        handle = str(item.get("handle") or item.get("flow_handle") or "").strip()
+        if not code or not _valid_synced_media_id(media_id) or not handle or code in seen_codes:
+            continue
+        seen_codes.add(code)
+        refs.append({"code": code, "media_id": media_id, "handle": handle})
+    if not text or not refs:
+        return None
+
+    # Longest code first prevents shorter names from stealing part of a longer code.
+    refs.sort(key=lambda x: len(x["code"]), reverse=True)
+    matches: list[tuple[int, int, dict]] = []
+    occupied: list[tuple[int, int]] = []
+    for ref in refs:
+        pattern = re.compile(
+            rf"(?<![A-Za-z0-9_]){re.escape(ref['code'])}(?![A-Za-z0-9_])"
+        )
+        for match in pattern.finditer(text):
+            start, end = match.span()
+            if any(not (end <= a or start >= b) for a, b in occupied):
+                continue
+            occupied.append((start, end))
+            matches.append((start, end, ref))
+    if not matches:
+        return None
+
+    matches.sort(key=lambda x: x[0])
+    parts: list[dict] = []
+    cursor = 0
+    for start, end, ref in matches:
+        if start > cursor:
+            parts.append({"text": text[cursor:start]})
+        parts.append(
+            {
+                "reference": {
+                    "media": {
+                        "handle": ref["handle"],
+                        "mediaId": ref["media_id"],
+                    }
+                }
+            }
+        )
+        cursor = end
+    if cursor < len(text):
+        parts.append({"text": text[cursor:]})
+    return parts
+
+
 async def _get_recaptcha_token(job_type: str = "video", account_index: int = 1) -> str:
     """Request reCAPTCHA token from Chrome extension. Raises if unavailable."""
     from routers.extension import request_captcha_token
@@ -96,6 +165,7 @@ async def _poll_video_job(job_id: str, token: str, operations: list, account_ind
 
     adapter = GoogleLabsAdapter()
     max_polls = 120
+    consecutive_400_errors = 0
     logger.info("⏳ Bắt đầu poll job %s | operations=%s", job_id[:8], len(operations))
     for attempt in range(1, max_polls + 1):
         await asyncio.sleep(5)
@@ -107,6 +177,7 @@ async def _poll_video_job(job_id: str, token: str, operations: list, account_ind
                 live_token = acc.get("ACCESS_TOKEN", "") or token
             result = await adapter.check_video_status(operations, live_token)
             if result.get("ok"):
+                consecutive_400_errors = 0
                 videos = adapter.parse_video_results(result.get("body", ""))
                 if videos:
                     outputs = []
@@ -136,6 +207,24 @@ async def _poll_video_job(job_id: str, token: str, operations: list, account_ind
             else:
                 status = result.get("status")
                 body = str(result.get("body", ""))
+                if int(status or 0) == 400:
+                    consecutive_400_errors += 1
+                    body_preview = body[:500].replace("\n", " ")
+                    logger.warning(
+                        "Job %s poll HTTP 400 consecutive %s/3 | %s",
+                        job_id[:8],
+                        consecutive_400_errors,
+                        body_preview,
+                    )
+                    if consecutive_400_errors >= 3:
+                        await job_store.update_job(
+                            job_id,
+                            "failed",
+                            error=f"Poll status HTTP 400 after 3 consecutive attempts: {body_preview}",
+                        )
+                        return
+                    continue
+                consecutive_400_errors = 0
                 if status in (401, 403) and account_index:
                     body_lower = body.lower()
                     if status == 403 and (
@@ -586,6 +675,7 @@ async def studio_video(
     seed: int | None = Form(None),
     character_ids_json: str = Form("[]"),
     ref_media_ids_json: str = Form("[]"),
+    character_refs_json: str = Form("[]"),
     reference_images: list[UploadFile] = File([]),
     account_index: int = Form(0),
 ):
@@ -614,6 +704,13 @@ async def studio_video(
         ref_media_ids = [str(x) for x in ref_media_ids if x]
     except Exception:
         ref_media_ids = []
+
+    try:
+        character_refs = json.loads(character_refs_json or "[]")
+        if not isinstance(character_refs, list):
+            character_refs = []
+    except Exception:
+        character_refs = []
 
     logger.info("[StudioVideo] ref_media_ids=%s character_ids=%s", ref_media_ids, character_ids)
 
@@ -651,8 +748,58 @@ async def studio_video(
     logger.info("[StudioVideo] final media_ids=%s uploaded_refs=%d", media_ids, len(uploaded_refs))
 
     async def _submit_for_account(account_obj: dict, account_idx: int) -> dict:
-        if token_option == "Option 2" and (media_ids or uploaded_refs):
+        project_id = str(account_obj.get("PROJECT_ID") or "")
+        synced_refs_for_account = []
+        for item in character_refs:
+            if not isinstance(item, dict):
+                continue
+            for sync in item.get("syncs") or []:
+                if not isinstance(sync, dict):
+                    continue
+                if int(sync.get("account_index") or 0) != int(account_idx or 0):
+                    continue
+                if str(sync.get("project_id") or "") != project_id:
+                    continue
+                if sync.get("status") != "synced" or not _valid_synced_media_id(sync.get("media_id", "")):
+                    continue
+                synced_refs_for_account.append(
+                    {
+                        "code": item.get("code") or item.get("character_code") or item.get("name") or "",
+                        "handle": sync.get("flow_handle") or item.get("flow_handle") or "",
+                        "media_id": sync.get("media_id") or "",
+                    }
+                )
+                break
+        synced_prompt_parts = _build_reference_prompt_parts(prompt, synced_refs_for_account)
+        matched_synced_ids: set[str] = set()
+        for part in synced_prompt_parts or []:
+            media = ((part.get("reference") or {}).get("media") or {}) if isinstance(part, dict) else {}
+            media_id = str(media.get("mediaId") or "")
+            if media_id:
+                matched_synced_ids.add(media_id)
+        matched_synced_refs = [
+            ref for ref in synced_refs_for_account
+            if str(ref.get("media_id") or "") in matched_synced_ids
+        ]
+        logger.info(
+            "[StudioVideo] account #%s synced_refs=%d matched_refs=%d",
+            account_idx,
+            len(synced_refs_for_account),
+            len(matched_synced_refs),
+        )
+
+        structured_prompt_parts = None
+        if token_option == "Option 2" and (media_ids or uploaded_refs or matched_synced_refs):
             clean_media_ids = [m for m in media_ids if m and "__PLACEHOLDER" not in m]
+            for ref in matched_synced_refs:
+                mid = ref.get("media_id")
+                if mid and mid not in clean_media_ids:
+                    clean_media_ids.append(mid)
+            allowed_synced_ids = set(clean_media_ids[:3])
+            structured_prompt_parts = _build_reference_prompt_parts(
+                prompt,
+                [ref for ref in matched_synced_refs if ref.get("media_id") in allowed_synced_ids],
+            )
             existing_count = min(len(clean_media_ids), 3)
             remaining_slots = max(0, 3 - existing_count)
             uploads = []
@@ -673,6 +820,7 @@ async def studio_video(
                 model=model,
                 seed=seed,
                 recaptcha_token="",
+                structured_prompt_parts=structured_prompt_parts,
             )
             if uploads:
                 return await request_browser_upload_post(
@@ -683,6 +831,7 @@ async def studio_video(
                     uploads=uploads,
                     access_token=account_obj.get("ACCESS_TOKEN", ""),
                     account_index=account_idx,
+                    timeout_seconds=200.0,
                 )
             # Chỉ có media_ids sẵn (char), không cần upload → dùng browser_submit
             return await request_browser_submit(
@@ -692,6 +841,7 @@ async def studio_video(
                 payload=payload,
                 access_token=account_obj.get("ACCESS_TOKEN", ""),
                 account_index=account_idx,
+                timeout_seconds=200.0,
             )
         if token_option == "Option 2" and uploaded_refs:
             first_b64, first_mime, _ = uploaded_refs[0]
@@ -712,6 +862,7 @@ async def studio_video(
                 uploads=[{"base64": first_b64, "mimeType": first_mime, "payloadPath": "requests[0].startImage.mediaId"}],
                 access_token=account_obj.get("ACCESS_TOKEN", ""),
                 account_index=account_idx,
+                timeout_seconds=200.0,
             )
         if token_option == "Option 2":
             payload = adapter.build_text_to_video_payload(
@@ -730,9 +881,14 @@ async def studio_video(
                 payload=payload,
                 access_token=account_obj.get("ACCESS_TOKEN", ""),
                 account_index=account_idx,
+                timeout_seconds=200.0,
             )
 
         media_ids_local = list(media_ids)
+        for ref in matched_synced_refs:
+            mid = ref.get("media_id")
+            if mid and mid not in media_ids_local:
+                media_ids_local.append(mid)
         for b64, mime, _name in uploaded_refs:
             upload_result = await adapter.upload_image(b64, mime, account_obj)
             if upload_result.get("ok"):
@@ -740,6 +896,10 @@ async def studio_video(
                 if mid:
                     media_ids_local.append(mid)
         media_ids_local = [mid for mid in media_ids_local if mid][:3]
+        structured_prompt_parts = _build_reference_prompt_parts(
+            prompt,
+            [ref for ref in matched_synced_refs if ref.get("media_id") in set(media_ids_local)],
+        )
         if media_ids_local:
             return await adapter.reference_video(
                 reference_media_ids=media_ids_local,
@@ -750,6 +910,7 @@ async def studio_video(
                 model=model,
                 seed=seed,
                 recaptcha_token=recaptcha_token,
+                structured_prompt_parts=structured_prompt_parts,
             )
         if uploaded_refs:
             first_b64, first_mime, _ = uploaded_refs[0]
@@ -779,9 +940,14 @@ async def studio_video(
     result = await _submit_for_account(account, account_index)
 
     if not result.get("ok"):
-        raise HTTPException(400, f"API error: {result.get('body', '')}")
+        status = int(result.get("status") or 0)
+        body = str(result.get("body") or result.get("reason") or "API error")
+        detail = f"Submit video failed"
+        if status:
+            detail += f" HTTP {status}"
+        detail += f": {body}"
+        raise HTTPException(400, detail)
 
-    logger.info("[StudioVideo] browser result body: %s", str(result.get("body", ""))[:800])
     operations = adapter.parse_operations(result.get("body", ""))
     job_id = await job_store.create_job(
         "studio_video",
@@ -920,7 +1086,8 @@ async def upscale_job(job_id: str, body: dict):
     used_account = account
     for acc in accounts_to_try:
         used_index = int(acc.get("_index") or 1)
-        upscale_payload = adapter.build_upscale_payload(resolved_media_id, account=acc, recaptcha_token="")
+        upscale_resolution = body.get("resolution", "1080p")
+        upscale_payload = adapter.build_upscale_payload(resolved_media_id, account=acc, recaptcha_token="", resolution=upscale_resolution)
         if upscale_payload.get("requests"):
             upscale_payload["requests"][0]["aspectRatio"] = job_aspect
 

@@ -17,6 +17,9 @@ from services.config_service import get_active_accounts, BASE_DIR, load_config
 router = APIRouter(tags=["image"])
 logger = logging.getLogger("veo.image")
 
+_CHAR_SYNC_JOBS: dict[str, dict] = {}
+_CHAR_SYNC_MAX_CONCURRENT = 4
+
 
 def _get_account_or_raise(account_index: int = 0):
     accounts = get_active_accounts()
@@ -32,6 +35,31 @@ def _get_account_or_raise(account_index: int = 0):
 def _token_option() -> str:
     cfg = load_config()
     return str(cfg.get("TOKEN_OPTION", "Option 1") or "Option 1").strip()
+
+
+def _safe_flow_handle(name: str, suffix: str = ".jpg") -> str:
+    import re
+
+    stem = str(name or "").strip() or "character"
+    stem = re.sub(r"[\\/:*?\"<>|]+", "_", stem)
+    stem = re.sub(r"\s+", "_", stem).strip("._ ")
+    if not stem:
+        stem = "character"
+    ext = suffix if str(suffix or "").startswith(".") else f".{suffix or 'jpg'}"
+    return f"{stem}{ext.lower()}"
+
+
+def _valid_sync_media_id(media_id: str) -> bool:
+    text = str(media_id or "").strip()
+    if not text or text.startswith("{") or text.startswith("["):
+        return False
+    if "mediaGenerationId" in text or "mediaId" in text:
+        return False
+    try:
+        uuid.UUID(text)
+        return True
+    except Exception:
+        return False
 
 
 async def _refresh_if_needed(result: dict, account_index: int) -> bool:
@@ -479,7 +507,37 @@ async def library_delete_category(category_id: str):
 async def library_assets():
     from services.library_service import list_assets
 
-    return {"ok": True, "items": await list_assets()}
+    items = await list_assets()
+    active_accounts = [
+        a for a in get_active_accounts()
+        if str(a.get("PROJECT_ID", "")).strip()
+    ]
+    required = len(active_accounts)
+    active_keys = {
+        (int(a.get("_index") or 0), str(a.get("PROJECT_ID", "") or ""))
+        for a in active_accounts
+    }
+    for item in items:
+        syncs = item.get("syncs") or []
+        ok_syncs = [
+            s for s in syncs
+            if (int(s.get("account_index") or 0), str(s.get("project_id") or "")) in active_keys
+            and s.get("status") == "synced"
+            and _valid_sync_media_id(s.get("media_id", ""))
+        ]
+        item["sync_required_count"] = required
+        item["sync_count"] = len(ok_syncs)
+        if item.get("asset_type") != "nhanvat":
+            item["sync_status_label"] = ""
+        elif required <= 0:
+            item["sync_status_label"] = "Chưa có account"
+        elif len(ok_syncs) >= required:
+            item["sync_status_label"] = f"Đã Sync {len(ok_syncs)}/{required}"
+        elif len(ok_syncs) > 0:
+            item["sync_status_label"] = f"Thiếu Sync {len(ok_syncs)}/{required}"
+        else:
+            item["sync_status_label"] = "Chưa Sync"
+    return {"ok": True, "items": items}
 
 
 @router.post("/library/upload")
@@ -507,6 +565,318 @@ async def library_upload_asset(
         asset_type=asset_type or "nhanvat",
     )
     return {"ok": True, "item": asset}
+
+
+class SyncLibraryAssetsRequest(BaseModel):
+    asset_ids: list[str]
+
+
+@router.post("/library/assets/sync-characters")
+async def library_sync_characters(req: SyncLibraryAssetsRequest):
+    """Upload selected character assets to every active Labs account and store mediaId per account/project."""
+    from adapters.google_labs import GoogleLabsAdapter
+    from services.library_service import get_asset, upsert_asset_sync
+
+    asset_ids = [str(x or "").strip() for x in (req.asset_ids or []) if str(x or "").strip()]
+    if not asset_ids:
+        raise HTTPException(400, "Chưa chọn ảnh nhân vật nào")
+
+    accounts = [
+        a for a in get_active_accounts()
+        if str(a.get("PROJECT_ID", "")).strip() and str(a.get("ACCESS_TOKEN", "")).strip()
+    ]
+    if not accounts:
+        raise HTTPException(400, "Chưa có account nào có token và Project ID")
+
+    adapter = GoogleLabsAdapter()
+    results: list[dict] = []
+    total_ok = 0
+    total_failed = 0
+
+    for asset_id in asset_ids:
+        asset = await get_asset(asset_id)
+        if not asset:
+            total_failed += 1
+            results.append({"asset_id": asset_id, "ok": False, "error": "Asset không tồn tại"})
+            continue
+        if asset.get("asset_type") != "nhanvat":
+            total_failed += 1
+            results.append({"asset_id": asset_id, "ok": False, "error": "Chỉ đồng bộ ảnh loại Nhân Vật"})
+            continue
+        path = asset.get("path")
+        if not path or not Path(path).exists():
+            total_failed += 1
+            results.append({"asset_id": asset_id, "ok": False, "error": "Không tìm thấy file ảnh"})
+            continue
+
+        raw = Path(path).read_bytes()
+        if not raw:
+            total_failed += 1
+            results.append({"asset_id": asset_id, "ok": False, "error": "File ảnh rỗng"})
+            continue
+
+        suffix = Path(str(asset.get("filename") or "")).suffix or ".jpg"
+        character_code = str(asset.get("name") or "").strip()
+        flow_handle = _safe_flow_handle(character_code, suffix)
+        mime = "image/png" if suffix.lower() == ".png" else "image/jpeg"
+        b64 = base64.b64encode(raw).decode()
+        per_account = []
+
+        for account in accounts:
+            account_index = int(account.get("_index") or 0)
+            project_id = str(account.get("PROJECT_ID") or "")
+            try:
+                upload = await adapter.upload_flow_image(b64, mime, account, file_name=flow_handle)
+                if not upload.get("ok"):
+                    err = str(upload.get("body") or upload.get("reason") or f"HTTP {upload.get('status')}")
+                    total_failed += 1
+                    sync = await upsert_asset_sync(
+                        asset_id=asset_id,
+                        account_index=account_index,
+                        project_id=project_id,
+                        media_id="",
+                        flow_handle=flow_handle,
+                        status="failed",
+                        error=err[:500],
+                    )
+                    per_account.append(sync)
+                    continue
+                media_id = adapter.parse_upload_media_id(upload.get("body", "")) or ""
+                if not _valid_sync_media_id(media_id):
+                    total_failed += 1
+                    sync = await upsert_asset_sync(
+                        asset_id=asset_id,
+                        account_index=account_index,
+                        project_id=project_id,
+                        media_id="",
+                        flow_handle=flow_handle,
+                        status="failed",
+                        error="Upload xong nhưng không lấy được mediaId",
+                    )
+                    per_account.append(sync)
+                    continue
+                total_ok += 1
+                sync = await upsert_asset_sync(
+                    asset_id=asset_id,
+                    account_index=account_index,
+                    project_id=project_id,
+                    media_id=media_id,
+                    flow_handle=flow_handle,
+                    status="synced",
+                    error="",
+                )
+                per_account.append(sync)
+            except Exception as exc:
+                total_failed += 1
+                sync = await upsert_asset_sync(
+                    asset_id=asset_id,
+                    account_index=account_index,
+                    project_id=project_id,
+                    media_id="",
+                    flow_handle=flow_handle,
+                    status="failed",
+                    error=str(exc)[:500],
+                )
+                per_account.append(sync)
+
+        results.append(
+            {
+                "asset_id": asset_id,
+                "character_code": character_code,
+                "flow_handle": flow_handle,
+                "ok": any(s.get("status") == "synced" and s.get("media_id") for s in per_account),
+                "syncs": per_account,
+            }
+        )
+
+    return {"ok": total_ok > 0, "synced": total_ok, "failed": total_failed, "items": results}
+
+
+@router.post("/library/assets/sync-characters/start")
+async def library_sync_characters_start(req: SyncLibraryAssetsRequest):
+    asset_ids = [str(x or "").strip() for x in (req.asset_ids or []) if str(x or "").strip()]
+    if not asset_ids:
+        raise HTTPException(400, "Chưa chọn ảnh nhân vật nào")
+
+    job_id = uuid.uuid4().hex[:12]
+    _CHAR_SYNC_JOBS[job_id] = {
+        "ok": True,
+        "job_id": job_id,
+        "status": "running",
+        "progress": 0,
+        "done": 0,
+        "total": 0,
+        "synced": 0,
+        "skipped": 0,
+        "failed": 0,
+        "message": "Đang chuẩn bị đồng bộ...",
+        "items": [],
+    }
+    asyncio.create_task(_run_character_sync_job(job_id, asset_ids))
+    return _CHAR_SYNC_JOBS[job_id]
+
+
+@router.get("/library/assets/sync-characters/{job_id}")
+async def library_sync_character_status(job_id: str):
+    job = _CHAR_SYNC_JOBS.get(str(job_id or ""))
+    if not job:
+        raise HTTPException(404, "Không tìm thấy job đồng bộ")
+    return job
+
+
+async def _run_character_sync_job(job_id: str, asset_ids: list[str]) -> None:
+    from adapters.google_labs import GoogleLabsAdapter
+    from services.library_service import delete_invalid_asset_syncs, get_asset, list_asset_syncs, upsert_asset_sync
+
+    job = _CHAR_SYNC_JOBS[job_id]
+    accounts = [
+        a for a in get_active_accounts()
+        if str(a.get("PROJECT_ID", "")).strip() and str(a.get("ACCESS_TOKEN", "")).strip()
+    ]
+    if not accounts:
+        job.update({"status": "failed", "message": "Chưa có account nào có token và Project ID"})
+        return
+
+    adapter = GoogleLabsAdapter()
+    removed_invalid = await delete_invalid_asset_syncs()
+    if removed_invalid:
+        logger.info("[LibrarySync] removed %s invalid sync rows before sync", removed_invalid)
+
+    pairs: list[tuple[dict, dict, str, str, str, str]] = []
+    results_by_asset: dict[str, dict] = {}
+
+    for asset_id in asset_ids:
+        asset = await get_asset(asset_id)
+        if not asset:
+            job["failed"] += 1
+            job["items"].append({"asset_id": asset_id, "ok": False, "error": "Asset không tồn tại"})
+            continue
+        if asset.get("asset_type") != "nhanvat":
+            job["failed"] += 1
+            job["items"].append({"asset_id": asset_id, "ok": False, "error": "Chỉ đồng bộ ảnh loại Nhân Vật"})
+            continue
+        path = asset.get("path")
+        if not path or not Path(path).exists():
+            job["failed"] += 1
+            job["items"].append({"asset_id": asset_id, "ok": False, "error": "Không tìm thấy file ảnh"})
+            continue
+        raw = Path(path).read_bytes()
+        if not raw:
+            job["failed"] += 1
+            job["items"].append({"asset_id": asset_id, "ok": False, "error": "File ảnh rỗng"})
+            continue
+
+        suffix = Path(str(asset.get("filename") or "")).suffix or ".jpg"
+        character_code = str(asset.get("name") or "").strip()
+        flow_handle = _safe_flow_handle(character_code, suffix)
+        mime = "image/png" if suffix.lower() == ".png" else "image/jpeg"
+        b64 = base64.b64encode(raw).decode()
+        results_by_asset[asset_id] = {
+            "asset_id": asset_id,
+            "character_code": character_code,
+            "flow_handle": flow_handle,
+            "ok": False,
+            "syncs": [],
+        }
+        existing = {
+            (int(s.get("account_index") or 0), str(s.get("project_id") or "")): s
+            for s in await list_asset_syncs(asset_id)
+        }
+        for account in accounts:
+            account_index = int(account.get("_index") or 0)
+            project_id = str(account.get("PROJECT_ID") or "")
+            old = existing.get((account_index, project_id))
+            if old and old.get("status") == "synced" and _valid_sync_media_id(old.get("media_id", "")):
+                job["skipped"] += 1
+                results_by_asset[asset_id]["ok"] = True
+                results_by_asset[asset_id]["syncs"].append(old)
+            else:
+                pairs.append((asset, account, b64, mime, flow_handle, project_id))
+
+    job["total"] = len(pairs) + int(job.get("skipped", 0)) + int(job.get("failed", 0))
+    if job["total"] <= 0:
+        job.update({
+            "status": "completed",
+            "progress": 100,
+            "message": "Tất cả ảnh đã được đồng bộ sẵn",
+            "items": list(results_by_asset.values()) or job["items"],
+        })
+        return
+
+    sem = asyncio.Semaphore(_CHAR_SYNC_MAX_CONCURRENT)
+
+    def tick(message: str = "") -> None:
+        job["done"] = int(job.get("synced", 0)) + int(job.get("skipped", 0)) + int(job.get("failed", 0))
+        job["progress"] = min(100, int(job["done"] * 100 / max(1, int(job.get("total") or 1))))
+        if message:
+            job["message"] = message
+
+    async def sync_one(asset: dict, account: dict, b64: str, mime: str, flow_handle: str, project_id: str) -> None:
+        async with sem:
+            asset_id = str(asset.get("id") or "")
+            account_index = int(account.get("_index") or 0)
+            code = str(asset.get("name") or asset_id)
+            try:
+                tick(f"Đang sync {code} -> account #{account_index}")
+                upload = await adapter.upload_flow_image(b64, mime, account, file_name=flow_handle)
+                if not upload.get("ok"):
+                    err = str(upload.get("body") or upload.get("reason") or f"HTTP {upload.get('status')}")
+                    job["failed"] += 1
+                    sync = await upsert_asset_sync(
+                        asset_id=asset_id,
+                        account_index=account_index,
+                        project_id=project_id,
+                        media_id="",
+                        flow_handle=flow_handle,
+                        status="failed",
+                        error=err[:500],
+                    )
+                else:
+                    media_id = adapter.parse_upload_media_id(upload.get("body", "")) or ""
+                    if not _valid_sync_media_id(media_id):
+                        job["failed"] += 1
+                        sync = await upsert_asset_sync(
+                            asset_id=asset_id,
+                            account_index=account_index,
+                            project_id=project_id,
+                            media_id="",
+                            flow_handle=flow_handle,
+                            status="failed",
+                            error="Upload xong nhưng mediaId không hợp lệ",
+                        )
+                    else:
+                        job["synced"] += 1
+                        sync = await upsert_asset_sync(
+                            asset_id=asset_id,
+                            account_index=account_index,
+                            project_id=project_id,
+                            media_id=media_id,
+                            flow_handle=flow_handle,
+                            status="synced",
+                            error="",
+                        )
+                        results_by_asset[asset_id]["ok"] = True
+                results_by_asset[asset_id]["syncs"].append(sync)
+            except Exception as exc:
+                job["failed"] += 1
+                sync = await upsert_asset_sync(
+                    asset_id=asset_id,
+                    account_index=account_index,
+                    project_id=project_id,
+                    media_id="",
+                    flow_handle=flow_handle,
+                    status="failed",
+                    error=str(exc)[:500],
+                )
+                results_by_asset[asset_id]["syncs"].append(sync)
+            finally:
+                tick()
+
+    await asyncio.gather(*[sync_one(*pair) for pair in pairs])
+    job["items"] = list(results_by_asset.values()) or job["items"]
+    job["status"] = "completed" if int(job.get("synced", 0)) or int(job.get("skipped", 0)) else "failed"
+    job["progress"] = 100
+    job["message"] = f"Đồng bộ xong: mới {job.get('synced', 0)}, đã có {job.get('skipped', 0)}, lỗi {job.get('failed', 0)}"
 
 
 @router.delete("/library/assets/{asset_id}")

@@ -32,6 +32,59 @@
     return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
+  function syncBadgeClass(item) {
+    const missing = Number(item.sync_required_count || 0);
+    if (!item.sync_status_label || item.sync_status_label === 'Chưa Sync') return 'missing';
+    return missing > 0 ? 'partial' : 'synced';
+  }
+
+  function showSyncProgress(job) {
+    if (!job) return;
+    let card = document.getElementById('sync-progress-card');
+    if (!card) {
+      card = document.createElement('div');
+      card.id = 'sync-progress-card';
+      card.className = 'sync-progress-card';
+      card.style.position = 'fixed';
+      card.style.left = '50%';
+      card.style.bottom = '28px';
+      card.style.transform = 'translateX(-50%)';
+      card.style.zIndex = '99999';
+      card.innerHTML = `
+        <div class="sync-progress-head">
+          <span>Đang đồng bộ nhân vật</span>
+          <strong class="sync-progress-percent">0%</strong>
+        </div>
+        <div class="sync-progress-track"><div class="sync-progress-fill"></div></div>
+        <div class="sync-progress-message"></div>
+      `;
+      document.body.appendChild(card);
+    }
+    const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
+    card.querySelector('.sync-progress-percent').textContent = `${progress}%`;
+    card.querySelector('.sync-progress-fill').style.width = `${progress}%`;
+    card.querySelector('.sync-progress-message').textContent = job.message || `Đã xử lý ${job.done || 0}/${job.total || 0}`;
+    if (job.status === 'completed' || job.status === 'failed') {
+      setTimeout(() => card.remove(), 1800);
+    }
+  }
+
+  async function runCharacterSync(assetIds, btn) {
+    const start = await API.post('/api/image/library/assets/sync-characters/start', { asset_ids: assetIds });
+    if (!start.ok || !start.job_id) throw new Error(start.detail || start.message || 'Không tạo được job đồng bộ');
+    showSyncProgress(start);
+    let job = start;
+    while (job && !['completed', 'failed'].includes(job.status)) {
+      await new Promise(resolve => setTimeout(resolve, 900));
+      job = await API.get(`/api/image/library/assets/sync-characters/${start.job_id}`);
+      showSyncProgress(job);
+      if (btn) {
+        btn.innerHTML = `<span class="spinner" style="width:13px;height:13px;border-width:2px;"></span> ${job.progress || 0}%`;
+      }
+    }
+    return job;
+  }
+
   // ── Derived ────────────────────────────────────────────────────
   function filteredItems() {
     return libraryAssets.filter(a => {
@@ -110,6 +163,7 @@
                ${selectedIds.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation()">
         <img src="${escHtml(item.url)}" alt="${escHtml(item.name)}" loading="lazy">
         <span class="lib-card-badge">${escHtml(typeLabel[item.asset_type] || 'Kho')}</span>
+        ${item.asset_type === 'nhanvat' ? `<span class="studio-vault-sync-badge ${syncBadgeClass(item)}">${escHtml(item.sync_status_label || 'Chưa Sync')}</span>` : ''}
         <div class="lib-card-label lib-card-label--editable" data-id="${escHtml(item.id)}"
              title="Double-click để đổi tên">${escHtml(item.name) || 'Chưa đặt tên'}</div>
       </div>
@@ -172,10 +226,14 @@
 
   function updateInfoBar() {
     const delBtn = $('lib-delete-selected-btn');
+    const syncBtn = $('lib-sync-selected-btn');
     const countEl = $('lib-selected-count');
     const selAll = $('lib-select-all');
     const items = filteredItems();
+    const selectedItems = libraryAssets.filter(i => selectedIds.has(i.id));
+    const selectedChars = selectedItems.filter(i => i.asset_type === 'nhanvat');
     if (delBtn) delBtn.style.display = selectedIds.size > 0 ? 'inline-flex' : 'none';
+    if (syncBtn) syncBtn.style.display = selectedChars.length > 0 ? 'inline-flex' : 'none';
     if (countEl) countEl.textContent = selectedIds.size;
     if (selAll) {
       selAll.checked = items.length > 0 && items.every(i => selectedIds.has(i.id));
@@ -228,6 +286,38 @@
     selectedIds.clear();
     toast('Đã xóa các mục đã chọn', 'success');
     await loadAll();
+  }
+
+  async function syncSelectedCharacters() {
+    if (!selectedIds.size) return toast('Chưa chọn ảnh nhân vật nào', 'error');
+    const selected = libraryAssets.filter(a => selectedIds.has(a.id));
+    const targets = selected.filter(a => a.asset_type === 'nhanvat');
+    const skipped = selected.length - targets.length;
+    if (!targets.length) return toast('Chỉ đồng bộ được ảnh loại Nhân Vật', 'error');
+    if (skipped > 0) toast(`Bỏ qua ${skipped} ảnh không phải Nhân Vật`, 'info');
+
+    const btn = $('lib-sync-selected-btn');
+    if (btn) {
+      btn.disabled = true;
+      btn.dataset.oldText = btn.innerHTML;
+      btn.innerHTML = '<span class="spinner" style="width:13px;height:13px;border-width:2px;"></span> 0%';
+    }
+    try {
+      const res = await runCharacterSync(targets.map(a => a.id), btn);
+      if (!res || !res.ok || res.status === 'failed') {
+        toast(res?.detail || res?.message || 'Đồng bộ nhân vật thất bại', 'error');
+        return;
+      }
+      toast(`Đồng bộ xong: mới ${res.synced || 0}, đã có ${res.skipped || 0}` + ((res.failed || 0) ? `, lỗi ${res.failed}` : ''), (res.failed || 0) ? 'info' : 'success');
+      await loadAll();
+    } catch (err) {
+      toast('Lỗi đồng bộ nhân vật: ' + (err.message || err), 'error');
+    } finally {
+      if (btn) {
+        btn.disabled = false;
+        if (btn.dataset.oldText) btn.innerHTML = btn.dataset.oldText;
+      }
+    }
   }
 
   async function moveSelectedToGroup(targetGroupId) {
@@ -503,6 +593,7 @@
       renderGrid();
     });
     $('lib-delete-selected-btn')?.addEventListener('click', deleteSelected);
+    $('lib-sync-selected-btn')?.addEventListener('click', syncSelectedCharacters);
     $('lib-download-sel-btn')?.addEventListener('click', () => {
       const items = filteredItems().filter(i => selectedIds.has(i.id));
       if (!items.length) return toast('Chưa chọn mục nào', 'info');

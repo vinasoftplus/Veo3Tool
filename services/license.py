@@ -68,7 +68,15 @@ _INVALID_UUIDS = {
     "03000200-0400-0500-0006-000700080009",
 }
 
-_INVALID_STRINGS = {"", "NONE", "DEFAULT STRING", "TO BE FILLED BY O.E.M.", "N/A", "NOT APPLICABLE"}
+_INVALID_STRINGS = {
+    "",
+    "NONE",
+    "DEFAULT STRING",
+    "TO BE FILLED BY O.E.M.",
+    "TO BE FILLED BY OEM",
+    "N/A",
+    "NOT APPLICABLE",
+}
 
 
 def _is_valid_val(val: str) -> bool:
@@ -85,6 +93,12 @@ def _is_valid_val(val: str) -> bool:
     return True
 
 
+def _normalize_hw_value(val: str) -> str:
+    """Trim/uppercase hardware identifiers and drop known OEM placeholder values."""
+    v = (val or "").strip().upper()
+    return v if _is_valid_val(v) else ""
+
+
 def _powershell(cmd: str) -> str:
     try:
         r = subprocess.run(
@@ -94,6 +108,67 @@ def _powershell(cmd: str) -> str:
         return r.stdout.strip()
     except Exception:
         return ""
+
+
+def _cmd(command: str) -> str:
+    try:
+        r = subprocess.run(
+            ["cmd", "/c", command],
+            capture_output=True, text=True, timeout=10, creationflags=0x08000000
+        )
+        return r.stdout.strip()
+    except Exception:
+        return ""
+
+
+def _parse_table_value(output: str, header: str) -> str:
+    """Parse simple WMIC table output and return the first non-header value."""
+    header_upper = header.strip().upper()
+    for line in (output or "").splitlines():
+        value = line.strip()
+        if not value or value.upper() == header_upper:
+            continue
+        return value
+    return ""
+
+
+def _get_machine_guid() -> str:
+    output = _cmd(r'reg query HKLM\SOFTWARE\Microsoft\Cryptography /v MachineGuid')
+    for line in output.splitlines():
+        if "MachineGuid" not in line:
+            continue
+        parts = line.split()
+        if parts:
+            return _normalize_hw_value(parts[-1])
+    return ""
+
+
+def _get_csproduct_uuid() -> str:
+    output = _cmd("wmic csproduct get uuid")
+    return _normalize_hw_value(_parse_table_value(output, "UUID"))
+
+
+def _get_baseboard_serial() -> str:
+    output = _cmd("wmic baseboard get serialnumber")
+    return _normalize_hw_value(_parse_table_value(output, "SerialNumber"))
+
+
+def _get_disk_serial() -> str:
+    val = _powershell(
+        "$partition = Get-CimAssociatedInstance "
+        "-InputObject (Get-CimInstance Win32_LogicalDisk -Filter \"DeviceID='C:'\") "
+        "-ResultClassName Win32_DiskPartition | Select-Object -First 1; "
+        "if ($partition) { "
+        "  $disk = Get-CimAssociatedInstance -InputObject $partition "
+        "  -ResultClassName Win32_DiskDrive | Select-Object -First 1; "
+        "  if ($disk) { $disk.SerialNumber } "
+        "}"
+    )
+    val = _normalize_hw_value(val)
+    if val:
+        return val
+    output = _cmd("wmic diskdrive where index=0 get serialnumber")
+    return _normalize_hw_value(_parse_table_value(output, "SerialNumber"))
 
 
 def _get_volume_serial() -> str:
@@ -123,21 +198,25 @@ _machine_id_cache: str = ""
 
 def get_machine_id() -> str:
     """
-    Machine ID = SHA256(VolumeSerial_C + MAC) → UUID format.
-    Unchanged from original — used for license binding AND ban detection.
+    Machine ID = SHA256(MachineGuid + BIOS UUID + baseboard serial + disk serial)
+    -> UUID format. Empty hardware fields are allowed after placeholder filtering.
     """
     global _machine_id_cache
     if _machine_id_cache:
         return _machine_id_cache
 
-    vol = _get_volume_serial()
-    mac = _get_mac()
+    machine_guid = _get_machine_guid()
+    bios_uuid = _get_csproduct_uuid()
+    board_serial = _get_baseboard_serial()
+    disk_serial = _get_disk_serial()
 
-    if not vol and not mac:
-        vol = "NOVOL"
-        mac = "NOMAC"
-
-    combined = f"NOVAFRAME|VOL:{vol}|MAC:{mac}"
+    combined = (
+        "DF_V2|"
+        f"MG:{machine_guid}|"
+        f"BIOS:{bios_uuid}|"
+        f"BOARD:{board_serial}|"
+        f"DISK:{disk_serial}"
+    )
     h = hashlib.sha256(combined.encode()).hexdigest()
     machine_id = f"{h[0:8]}-{h[8:12]}-{h[12:16]}-{h[16:20]}-{h[20:32]}".upper()
     _machine_id_cache = machine_id

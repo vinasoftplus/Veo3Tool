@@ -2110,6 +2110,136 @@ input[type=range]::-webkit-slider-thumb {
   flex: 1;
 }
 
+.studio-confirm-modal {
+  max-width: 440px;
+  text-align: center;
+}
+.studio-confirm-body {
+  padding: 24px 24px 22px;
+}
+.studio-confirm-icon {
+  width: 64px;
+  height: 64px;
+  margin: 0 auto 14px;
+  border-radius: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--red);
+  background: linear-gradient(135deg, rgba(248,113,113,.18), rgba(244,63,94,.10));
+  border: 1px solid rgba(239,68,68,.22);
+  box-shadow: 0 14px 34px rgba(220,38,38,.12);
+}
+.studio-confirm-title {
+  font-size: 18px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1.35;
+  margin-bottom: 8px;
+}
+.studio-confirm-text {
+  color: var(--text2);
+  font-size: 13px;
+  line-height: 1.55;
+  margin: 0 auto 20px;
+  max-width: 360px;
+}
+.studio-confirm-actions {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.studio-confirm-actions .btn {
+  min-width: 112px;
+}
+
+.studio-sync-btn {
+  border-color: rgba(20,184,166,.35);
+  color: #0f766e;
+  background: linear-gradient(135deg, rgba(240,253,250,.96), rgba(255,255,255,.96));
+}
+.studio-sync-btn:hover:not(:disabled) {
+  border-color: #14b8a6;
+  color: #0f766e;
+  background: #ccfbf1;
+}
+.studio-vault-sync-badge {
+  position: absolute;
+  left: 7px;
+  bottom: 30px;
+  max-width: calc(100% - 14px);
+  padding: 3px 7px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  backdrop-filter: blur(8px);
+  border: 1px solid rgba(255,255,255,.55);
+  box-shadow: 0 8px 18px rgba(15,23,42,.12);
+}
+.studio-vault-sync-badge.synced {
+  color: #047857;
+  background: rgba(209,250,229,.92);
+}
+.studio-vault-sync-badge.partial {
+  color: #92400e;
+  background: rgba(254,243,199,.94);
+}
+.studio-vault-sync-badge.missing {
+  color: #be123c;
+  background: rgba(255,228,230,.94);
+}
+
+.sync-progress-card {
+  width: min(460px, calc(100vw - 48px));
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(139,92,246,.28);
+  background: linear-gradient(135deg, rgba(17,24,39,.96), rgba(31,41,55,.96));
+  color: #f8fafc;
+  box-shadow: 0 18px 46px rgba(15,23,42,.34);
+}
+.sync-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+.sync-progress-percent {
+  color: #a7f3d0;
+  font-variant-numeric: tabular-nums;
+}
+.sync-progress-track {
+  height: 9px;
+  border-radius: 999px;
+  overflow: hidden;
+  background: rgba(148,163,184,.24);
+  border: 1px solid rgba(255,255,255,.08);
+}
+.sync-progress-fill {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, #14b8a6, #8b5cf6, #ec4899);
+  transition: width .22s ease;
+}
+.sync-progress-message {
+  margin-top: 7px;
+  color: #cbd5e1;
+  font-size: 11px;
+  line-height: 1.35;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Library grid inside modal */
 .studio-library-grid {
   display: grid;
@@ -4066,6 +4196,22 @@ html.dark select:disabled option {
 .studio-dd-option-text {
   font-size: 13px;
   font-weight: 700;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.studio-dd-copy {
+  min-width: 0;
+  display: grid;
+  gap: 2px;
+}
+
+.studio-dd-credit {
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.1;
+  color: #9fb4d8;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;

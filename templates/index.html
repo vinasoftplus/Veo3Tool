@@ -15,7 +15,7 @@
 </head>
 
 <body>
-<script>window.__APP_TOKEN__ = "{{ app_token }}"; window.__APP_VERSION__ = "{{ app_version }}";</script>
+  <script>window.__APP_TOKEN__ = "{{ app_token }}"; window.__APP_VERSION__ = "{{ app_version }}";</script>
 
   <!-- License Screen -->
   <div id="license-screen"
@@ -147,6 +147,12 @@
           </svg>
           <span class="nav-label">Lấy kịch bản YTB</span>
         </div>
+        <div class="nav-item" data-tab="ytb-comments">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+          </svg>
+          <span class="nav-label">Lấy CMT YouTube</span>
+        </div>
       </div>
 
     </nav>
@@ -240,8 +246,7 @@
       <div id="update-banner" style="display:none;background:linear-gradient(90deg,#7c3aed,#db2777);
         color:#fff;padding:8px 16px;font-size:12px;display:none;align-items:center;gap:10px;flex-shrink:0;">
         <span id="update-banner-text"></span>
-        <a id="update-banner-link" href="#" target="_blank"
-          style="background:rgba(255,255,255,0.2);color:#fff;padding:3px 10px;border-radius:20px;
+        <a id="update-banner-link" href="#" target="_blank" style="background:rgba(255,255,255,0.2);color:#fff;padding:3px 10px;border-radius:20px;
           font-size:11px;font-weight:600;text-decoration:none;white-space:nowrap;">
           Tải xuống
         </a>
@@ -660,6 +665,15 @@
               <div class="lib-info-bar">
                 <span id="lib-count-label" style="font-size:12px;color:var(--text2);">0 mục</span>
                 <span style="flex:1;"></span>
+                <button id="lib-sync-selected-btn" class="btn btn-secondary btn-sm studio-sync-btn" style="display:none;">
+                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 12a9 9 0 0 1-15.5 6.3" />
+                    <path d="M3 12A9 9 0 0 1 18.5 5.7" />
+                    <path d="M18 2v4h-4" />
+                    <path d="M6 22v-4h4" />
+                  </svg>
+                  Đồng bộ nhân vật
+                </button>
                 <button id="lib-delete-selected-btn" class="btn btn-danger btn-sm" style="display:none;">
                   <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                     <polyline points="3 6 5 6 21 6" />
@@ -1174,6 +1188,77 @@
         </div>
 
         <!-- MASTER SCRIPT -->
+        <!-- ── Tab: Lấy CMT YouTube ───────────────────────────────────────── -->
+        <div id="tab-ytb-comments" class="tab-panel utility-page">
+          <div style="max-width:900px;margin:0 auto;">
+
+            <!-- Input card -->
+            <div class="card" style="margin-bottom:16px;">
+              <div class="card-title" style="display:flex;align-items:center;gap:10px;margin-bottom:18px;">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.2">
+                  <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                </svg>
+                Lấy Comment YouTube
+              </div>
+
+              <div class="form-group" style="margin-bottom:14px;">
+                <label class="form-label">Link hoặc Video ID</label>
+                <input type="text" id="ytc-url" placeholder="https://www.youtube.com/watch?v=... hoặc dán Video ID" style="width:100%;">
+              </div>
+
+              <div style="display:flex;gap:12px;align-items:flex-end;flex-wrap:wrap;">
+                <div class="form-group" style="flex:1;min-width:140px;margin-bottom:0;">
+                  <label class="form-label">Số comment tối đa</label>
+                  <select id="ytc-max" style="width:100%;">
+                    <option value="50">50 CMT</option>
+                    <option value="100" selected>100 CMT</option>
+                    <option value="200">200 CMT</option>
+                    <option value="500">500 CMT</option>
+                  </select>
+                </div>
+                <button id="ytc-fetch-btn" class="btn btn-primary" style="white-space:nowrap;height:38px;padding:0 22px;">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-right:6px;vertical-align:-2px;">
+                    <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+                  </svg>
+                  Lấy Comment
+                </button>
+              </div>
+            </div>
+
+            <!-- Status / progress -->
+            <div id="ytc-status" style="display:none;margin-bottom:14px;">
+              <div style="display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--bg2);border:1px solid var(--border);border-radius:12px;">
+                <div class="spinner" style="width:18px;height:18px;border-width:2px;flex-shrink:0;"></div>
+                <span id="ytc-status-text" style="font-size:13px;color:var(--text2);">Đang tải...</span>
+              </div>
+            </div>
+
+            <!-- Result toolbar -->
+            <div id="ytc-toolbar" style="display:none;margin-bottom:12px;">
+              <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px;">
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <span id="ytc-count-badge" style="font-size:13px;font-weight:600;color:var(--accent);background:color-mix(in srgb,var(--accent) 12%,transparent);padding:4px 12px;border-radius:20px;border:1px solid color-mix(in srgb,var(--accent) 30%,transparent);">0 comment</span>
+                  <input type="text" id="ytc-search" placeholder="Tìm trong kết quả..." style="width:200px;font-size:12px;padding:6px 10px;height:32px;">
+                </div>
+                <div style="display:flex;gap:8px;">
+                  <button id="ytc-copy-btn" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    Copy tất cả
+                  </button>
+                  <button id="ytc-export-btn" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="vertical-align:-2px;margin-right:4px;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                    Xuất CSV
+                  </button>
+                </div>
+              </div>
+            </div>
+
+            <!-- Results list -->
+            <div id="ytc-results"></div>
+
+          </div>
+        </div>
+
         <div id="tab-master-script" class="tab-panel utility-page">
           <div class="two-col" style="align-items:start;">
 
@@ -1438,6 +1523,13 @@
                           </svg>
                           1080p (Upscale)
                         </div>
+                        <div class="studio-quality-opt" data-q="4k">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#ec4899)"
+                            stroke-width="2.5" style="opacity:0;">
+                            <polyline points="20 6 9 17 4 12" />
+                          </svg>
+                          4K (Upscale tốn 50 credit)
+                        </div>
                         <div class="studio-quality-opt" data-q="720">
                           <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#ec4899)"
                             stroke-width="2.5" style="opacity:0;">
@@ -1500,9 +1592,9 @@
                 <div class="studio-model-field">
                   <div class="studio-model-label">MODEL VIDEO</div>
                   <select id="studio-model" class="studio-bar-select" title="Model video">
-                    <option value="auto">Veo: Auto</option>
-                    <option value="flow_fast_relaxed">Veo: Fast Relaxed</option>
-                    <option value="flow_fast" selected>Veo: Fast</option>
+                    <option value="flow_fast" selected data-credit="10 credit">Veo Fast</option>
+                    <option value="flow_lite_low_priority" data-credit="0 credit">Veo - Lite Lower Prioty</option>
+                    <option value="flow_lite" data-credit="5 credit">Veo - Lite</option>
                   </select>
                 </div>
                 <div class="studio-model-field">
@@ -1526,7 +1618,6 @@
                   <div class="studio-model-label">VIDEO / CỤM</div>
                   <select id="studio-video-count" class="studio-bar-select" title="Số video / cụm">
                     <option value="1">Vid×1</option>
-                    <option value="2">Vid×2</option>
                   </select>
                 </div>
               </div>
@@ -1649,19 +1740,17 @@
   <div id="toast-container"></div>
 
   <!-- Admin Notification Popup -->
-  <div id="notif-popup-overlay"
-    style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(10,10,20,.75);backdrop-filter:blur(8px);
+  <div id="notif-popup-overlay" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(10,10,20,.75);backdrop-filter:blur(8px);
            align-items:center;justify-content:center;">
-    <div id="notif-popup-box"
-      style="width:480px;max-width:94vw;max-height:90vh;overflow-y:auto;border-radius:20px;
+    <div id="notif-popup-box" style="width:480px;max-width:94vw;max-height:90vh;overflow-y:auto;border-radius:20px;
              box-shadow:0 32px 80px rgba(0,0,0,.6);padding:0;border:1px solid rgba(236,72,153,.25);
              position:relative;background:#fff;">
       <!-- Pink accent top bar -->
-      <div style="height:4px;background:linear-gradient(90deg,#ec4899,#f43f5e,#fb923c);border-radius:20px 20px 0 0;"></div>
+      <div style="height:4px;background:linear-gradient(90deg,#ec4899,#f43f5e,#fb923c);border-radius:20px 20px 0 0;">
+      </div>
       <div id="notif-popup-inner" style="padding:28px 28px 16px;text-align:center;"></div>
       <div style="padding:0 28px 24px;display:flex;justify-content:center;">
-        <button id="notif-popup-close"
-          style="background:linear-gradient(135deg,#ec4899,#f43f5e);color:#fff;border:none;
+        <button id="notif-popup-close" style="background:linear-gradient(135deg,#ec4899,#f43f5e);color:#fff;border:none;
                  border-radius:10px;padding:11px 36px;font-size:14px;font-weight:600;cursor:pointer;
                  letter-spacing:.3px;box-shadow:0 4px 14px rgba(236,72,153,.4);transition:opacity .15s;"
           onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
@@ -1762,14 +1851,44 @@
           style="font-size:12px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Video
           xem trước</span>
         <div style="display:flex;gap:6px;flex-shrink:0;">
-          <button class="btn btn-secondary btn-sm" onclick="Studio.downloadVideoPopup()" title="Tải video về máy">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
-              style="vertical-align:-2px;margin-right:4px;">
-              <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
-              <polyline points="7 10 12 15 17 10" />
-              <line x1="12" y1="15" x2="12" y2="3" />
-            </svg>Tải về
-          </button>
+          <div class="studio-save-split" style="position:relative;display:flex;">
+            <button class="btn btn-secondary btn-sm" onclick="Studio.downloadVideoPopup()" title="Tải video về máy"
+              style="border-radius:8px 0 0 8px;border-right:none;white-space:nowrap;">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+                style="vertical-align:-2px;margin-right:4px;">
+                <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                <polyline points="7 10 12 15 17 10" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+              </svg>Tải về
+            </button>
+            <button id="popup-save-quality-toggle" class="btn btn-secondary btn-sm"
+              style="border-radius:0 8px 8px 0;padding:0 7px;border-left:1px solid var(--border);"
+              title="Chọn chất lượng tải về">1080p ▾</button>
+            <div id="popup-save-quality-menu"
+              style="display:none;position:absolute;right:0;top:calc(100% + 4px);background:var(--bg2);border:1px solid var(--border);border-radius:10px;min-width:150px;z-index:999;box-shadow:0 8px 24px rgba(0,0,0,.2);overflow:hidden;">
+              <div class="studio-quality-opt" data-pq="1080">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#ec4899)"
+                  stroke-width="2.5">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                1080p (Upscale)
+              </div>
+              <div class="studio-quality-opt" data-pq="4k">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#ec4899)"
+                  stroke-width="2.5" style="opacity:0;">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                4K (Upscale tốn 50 credit)
+              </div>
+              <div class="studio-quality-opt" data-pq="720">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent,#ec4899)"
+                  stroke-width="2.5" style="opacity:0;">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                720p (Gốc)
+              </div>
+            </div>
+          </div>
           <button class="btn btn-danger btn-sm" onclick="Studio.deleteVideoPopup()" title="Xóa video này khỏi cụm">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
               style="vertical-align:-2px;margin-right:4px;">
@@ -1828,16 +1947,13 @@
         <div style="display:flex;gap:8px;align-items:center;">
           <!-- Filter: Thể loại -->
           <select id="vault-type-filter" class="t2v-select" style="min-width:130px;">
-            <option value="all">Tất cả thể loại</option>
             <option value="nhanvat">Nhân Vật</option>
             <option value="vatpham">Vật Phẩm</option>
             <option value="style">Style</option>
             <option value="background">Background</option>
           </select>
           <!-- Filter: Nhóm -->
-          <select id="vault-group-filter" class="t2v-select" style="min-width:130px;">
-            <option value="all">Tất cả nhóm</option>
-          </select>
+          <select id="vault-group-filter" class="t2v-select" style="min-width:130px;"></select>
           <button class="studio-modal-close" onclick="Studio.closeVault()">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
               <line x1="18" y1="6" x2="6" y2="18" />
@@ -1867,6 +1983,15 @@
               <path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z" />
             </svg>
             Load nhanh (theo prompt)
+          </button>
+          <button id="vault-sync-selected-btn" class="btn btn-secondary btn-sm studio-sync-btn">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M21 12a9 9 0 0 1-15.5 6.3" />
+              <path d="M3 12A9 9 0 0 1 18.5 5.7" />
+              <path d="M18 2v4h-4" />
+              <path d="M6 22v-4h4" />
+            </svg>
+            Đồng bộ nhân vật
           </button>
           <button id="vault-add-to-card-btn" class="btn btn-primary btn-sm">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -2116,6 +2241,39 @@
     </div>
   </div>
 
+  <!-- Clear All Studio Clusters Confirm -->
+  <div id="studio-clear-all-confirm" class="studio-popup-overlay" style="display:none;">
+    <div class="studio-modal studio-confirm-modal">
+      <div class="studio-modal-header">
+        <div>
+          <div class="studio-modal-title">Xác nhận xóa tất cả cụm</div>
+          <div class="studio-modal-subtitle">Hành động này chỉ xóa các cụm đang hiển thị trong Studio.</div>
+        </div>
+        <button class="studio-modal-close" id="studio-clear-all-confirm-close" aria-label="Đóng">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+            <line x1="18" y1="6" x2="6" y2="18" />
+            <line x1="6" y1="6" x2="18" y2="18" />
+          </svg>
+        </button>
+      </div>
+      <div class="studio-modal-body studio-confirm-body">
+        <div class="studio-confirm-icon" aria-hidden="true">
+          <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+            <path d="M12 9v4" />
+            <path d="M12 17h.01" />
+            <path d="M10.3 3.9 2.5 18a2 2 0 0 0 1.7 3h15.6a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z" />
+          </svg>
+        </div>
+        <div class="studio-confirm-title">Bạn có chắc chắn muốn xóa tất cả cụm hiện tại?</div>
+        <div class="studio-confirm-text">Các prompt, ảnh tham chiếu, ảnh đã tạo và video đang nằm trong các cụm hiện tại sẽ bị xóa khỏi màn hình Studio.</div>
+        <div class="studio-confirm-actions">
+          <button id="studio-clear-all-cancel" class="btn btn-secondary">Hủy</button>
+          <button id="studio-clear-all-confirm-delete" class="btn btn-danger">Xóa</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- SheetJS for Excel import -->
   <script src="https://cdn.sheetjs.com/xlsx-0.20.3/package/dist/xlsx.full.min.js"></script>
   <!-- Scripts -->
@@ -2124,11 +2282,11 @@
   <script src="/static/js/tabs/t2v.js?v=4"></script>
   <script src="/static/js/tabs/i2v.js?v=4"></script>
   <script src="/static/js/tabs/consistent_video.js?v=5"></script>
-  <script src="/static/js/tabs/character.js?v=4"></script>
+  <script src="/static/js/tabs/character.js?v=5"></script>
   <script src="/static/js/tabs/consistent_video_ui.js?v=2"></script>
   <script src="/static/js/tabs/settings.js?v=7"></script>
-  <script src="/static/js/tabs/other.js?v=7"></script>
-  <script src="/static/js/tabs/studio_unified.js?v=24"></script>
+  <script src="/static/js/tabs/other.js?v=8"></script>
+  <script src="/static/js/tabs/studio_unified.js?v=27"></script>
   <script src="/static/js/notifications.js?v=1"></script>
 </body>
 
