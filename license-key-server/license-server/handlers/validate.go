@@ -33,9 +33,9 @@ func Validate(c *fiber.Ctx) error {
 		return c.Status(400).JSON(fiber.Map{"error": "missing_fields"})
 	}
 
-	// 1. Timestamp freshness check (±5 min)
+	// 1. Timestamp freshness check (±10 min)
 	now := time.Now().Unix()
-	if math.Abs(float64(now-req.Timestamp)) > 300 {
+	if math.Abs(float64(now-req.Timestamp)) > 600 {
 		return c.Status(400).JSON(fiber.Map{"error": "stale_timestamp"})
 	}
 

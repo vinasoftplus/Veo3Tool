@@ -304,98 +304,10 @@
   // Timezone - giữ nguyên (cần thiết cho functionality)
   
   // ============================================
-  // 7. NETWORK CONNECTION INFO PROTECTION
+  // 7. NETWORK CONNECTION INFO PROTECTION (disabled)
   // ============================================
-  
-  // Generate consistent connection fingerprint
-  let connectionFingerprint = null;
-  function getConnectionFingerprint() {
-    if (!connectionFingerprint) {
-      // Fake connection properties hợp lý
-      connectionFingerprint = {
-        effectiveType: '4g', // 'slow-2g', '2g', '3g', '4g'
-        downlink: 5 + Math.random() * 45, // 5-50 Mbps (random nhưng consistent)
-        rtt: 50 + Math.random() * 150, // 50-200ms (random nhưng consistent)
-        saveData: false
-      };
-    }
-    return connectionFingerprint;
-  }
-  
-  // Function để rotate connection fingerprint (gọi từ extension)
-  function rotateConnectionFingerprint() {
-    const oldFingerprint = connectionFingerprint;
-    connectionFingerprint = {
-      effectiveType: '4g',
-      downlink: 5 + Math.random() * 45,
-      rtt: 50 + Math.random() * 150,
-      saveData: false
-    };
-    console.log(`[Fingerprint Protection] 🔄 Connection fingerprint rotated: effectiveType ${oldFingerprint?.effectiveType}→${connectionFingerprint.effectiveType}, downlink ${oldFingerprint?.downlink?.toFixed(2)}→${connectionFingerprint.downlink.toFixed(2)}Mbps`);
-    return connectionFingerprint;
-  }
-  
-  // Expose function để extension có thể gọi
-  window.__getConnectionFingerprint = getConnectionFingerprint;
-  window.__rotateConnectionFingerprint = rotateConnectionFingerprint;
-  
-  // Listen for rotate event từ extension
-  window.addEventListener('rotateConnectionFingerprint', function() {
-    rotateConnectionFingerprint();
-  });
-  
-  // Fake navigator.connection (Network Information API)
-  if (navigator.connection || navigator.mozConnection || navigator.webkitConnection) {
-    const connection = navigator.connection || navigator.mozConnection || navigator.webkitConnection;
-    
-    if (connection) {
-      const cf = getConnectionFingerprint();
-      
-      // Fake effectiveType
-      if (connection.effectiveType !== undefined) {
-        Object.defineProperty(connection, 'effectiveType', {
-          get: function() {
-            const conn = getConnectionFingerprint();
-            return conn.effectiveType;
-          },
-          configurable: true
-        });
-      }
-      
-      // Fake downlink (Mbps)
-      if (connection.downlink !== undefined) {
-        Object.defineProperty(connection, 'downlink', {
-          get: function() {
-            const conn = getConnectionFingerprint();
-            return conn.downlink;
-          },
-          configurable: true
-        });
-      }
-      
-      // Fake rtt (round-trip time in ms)
-      if (connection.rtt !== undefined) {
-        Object.defineProperty(connection, 'rtt', {
-          get: function() {
-            const conn = getConnectionFingerprint();
-            return conn.rtt;
-          },
-          configurable: true
-        });
-      }
-      
-      // Fake saveData
-      if (connection.saveData !== undefined) {
-        Object.defineProperty(connection, 'saveData', {
-          get: function() {
-            const conn = getConnectionFingerprint();
-            return conn.saveData;
-          },
-          configurable: true
-        });
-      }
-    }
-  }
+  // Removed: navigator.connection spoof (effectiveType, downlink, rtt, saveData)
+  // Reason: causes inconsistency with real network signals → triggers Google 403
   
   // ============================================
   // 8. PLUGINS FINGERPRINTING

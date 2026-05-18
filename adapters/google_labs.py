@@ -984,7 +984,13 @@ class GoogleLabsAdapter:
                         "operationName": obj.get("operationName") or obj.get("name", ""),
                     })
                 elif status and _is_failure(status):
-                    logger.warning("[VideoStatus] failed object status=%s keys=%s", status, list(obj.keys()))
+                    # Log full object (capped at 1000 chars) để debug nguyên nhân fail
+                    import json as _json
+                    try:
+                        obj_str = _json.dumps(obj, ensure_ascii=False)[:1000]
+                    except Exception:
+                        obj_str = str(obj)[:1000]
+                    logger.warning("[VideoStatus] FAILED status=%s | detail=%s", status, obj_str)
                 for v in obj.values():
                     _collect(v)
             elif isinstance(obj, list):

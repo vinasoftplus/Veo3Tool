@@ -36,7 +36,7 @@ def _setup_logging() -> None:
     root.setLevel(logging.INFO)
 
 
-CURRENT_VERSION = "1.4.6"
+CURRENT_VERSION = "1.5.0"
 
 _update_info: dict = {}  # cache kết quả check update
 
@@ -81,11 +81,12 @@ def create_app() -> FastAPI:
                      "/api/license/clear", "/api/license/shutdown", "/api/extension/poll-job",
                      "/api/extension/submit-job", "/api/extension/submit-browser",
                      "/api/extension/token", "/api/extension/token-for-account",
-                     "/api/extension/status"}
+                     "/api/extension/status", "/api/grok/browser-status", "/api/grok/ensure-browser"}
 
     # Paths that need license guard (all /api/* except public + extension)
     _LICENSED_PREFIXES = ("/api/veo", "/api/image", "/api/settings", "/api/workflow",
-                          "/api/subtitle", "/api/youtube", "/api/character", "/api/update")
+                          "/api/subtitle", "/api/youtube", "/api/character", "/api/update",
+                          "/api/video-editor")
 
     class SecurityMiddleware(BaseHTTPMiddleware):
         async def dispatch(self, request, call_next):
@@ -166,7 +167,7 @@ def create_app() -> FastAPI:
             pass
 
     # --- Routers ---
-    from routers import ui, settings, license_router, veo, image, subtitle, workflow, youtube, character, extension, update
+    from routers import ui, settings, license_router, veo, image, subtitle, workflow, youtube, character, extension, update, grok, video_editor
 
     app.include_router(ui.router)
     app.include_router(settings.router, prefix="/api/settings")
@@ -179,6 +180,8 @@ def create_app() -> FastAPI:
     app.include_router(character.router, prefix="/api/character")
     app.include_router(extension.router, prefix="/api/extension")
     app.include_router(update.router, prefix="/api/update")
+    app.include_router(grok.router, prefix="/api/grok")
+    app.include_router(video_editor.router, prefix="/api/video-editor")
 
     @app.get("/api/health")
     async def health():

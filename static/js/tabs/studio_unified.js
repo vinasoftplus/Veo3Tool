@@ -2425,6 +2425,15 @@
     _videoPopup = null;
   }
 
+  function navVideoPopup(dir) {
+    if (!_videoPopup) return;
+    const card = cards.find(c => c.id === _videoPopup.cardId);
+    if (!card) return;
+    const newIdx = _videoPopup.idx + dir;
+    if (newIdx < 0 || newIdx >= card.outputs.length) return;
+    openVideoPopup(_videoPopup.cardId, newIdx);
+  }
+
   let _popupSaveQuality = '1080'; // '1080' | '4k' | '720'
 
   function _initPopupQualityDropdown() {
@@ -2960,6 +2969,7 @@
     deleteVideo,
     openVideoPopup,
     closeVideoPopup,
+    navVideoPopup,
     downloadVideoPopup,
     deleteVideoPopup,
     deletePopupItem,

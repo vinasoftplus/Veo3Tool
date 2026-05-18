@@ -34,6 +34,7 @@ DATA_DIR = BASE_DIR / "data"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 CHROME_USER_DATA_ROOT = BASE_DIR / "chrome_user_data"
+CLOAK_USER_DATA_ROOT = BASE_DIR / "cloak_user_data"
 
 # Ensure dirs exist at import time
 for _p in (
@@ -43,6 +44,7 @@ for _p in (
     DATA_DIR / "characters",
     DATA_DIR / "media_cache",
     CHROME_USER_DATA_ROOT,
+    CLOAK_USER_DATA_ROOT,
 ):
     _p.mkdir(parents=True, exist_ok=True)
 
@@ -64,6 +66,7 @@ _DEFAULT_CONFIG: dict = {
     "LICENSE_TOKEN": "",
     "MAX_CONCURRENT": 2,
     "MAX_CONCURRENT_IMAGE": 2,
+    "MAX_CONCURRENT_GROK": 2,
 }
 
 _DEFAULT_SETTINGS: dict = {

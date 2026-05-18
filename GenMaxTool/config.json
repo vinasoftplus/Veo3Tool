@@ -1,5 +1,5 @@
 {
-  "api_key": "sk_090922cd929a342f0c625be691228966a382349f91f0",
+  "api_key": "sk_40b39b4846e1c563733b3deae28088f98b26855aec87",
   "characters": [],
   "output_dir": "C:/Users/PC/Desktop/PROMT/peppa",
   "provider": "elevenlabs",
@@ -90,5 +90,35 @@
     "ur",
     "vi",
     "cy"
+  ],
+  "api_keys": [
+    "sk_40b39b4846e1c563733b3deae28088f98b26855aec87",
+    "sk_6f7c676230cf7006d1b07657893b42a8c365575f6807",
+    "sk_8da7e5b8d83e987970ae6b4d48f4b6443cb4180905b5",
+    "sk_0d3aa9ebdfdee0b22e74512daddfa50e2889b21da459",
+    "sk_231abb64c2f25af312bd2dbdabbe5685f9b22be96837",
+    "sk_4927aaa83e4a6f56275529661a1dc954eb734db32098",
+    "sk_3fdbb9546891b2bacd403855c0e867956fd8602a0cb5",
+    "sk_6ad0f281cb2cbdba5fedeedf78e033ea1709049d3b32",
+    "sk_3f594b13475b6d03824a20bc1a84cad0d0b68ec95273",
+    "sk_8b1ca5a876acff96909677f2b57e0b520d6dad32d000",
+    "sk_e0fae6606869f63cb64aad619071ce51b6bb78ec7a4f",
+    "sk_8c7397db98bf266548b736f8c56f504a6b92b6942c75",
+    "sk_c33adb5ef212adf079c1f9031c7948f4559f02c7b708",
+    "sk_da90232cdf368b80898dfbddbb9da960dce74c3223b7",
+    "sk_a6600d788ace548f00e09038ba1501c90d42e868ad89",
+    "sk_912bc0362b768a7c0b9f209d35ed5972e273e89eb91c",
+    "sk_158fd242f2423df66075f194cff9015493ed124df625",
+    "sk_8d191987af19f48eb1b9e9a5e33ba58fe7cf17e1a643",
+    "sk_d3cb860a76e9df39ef782fb1d4f30e13a8ef8ae501fe",
+    "sk_5ffda57898c2661bcb7d2832da921b2a78fdf440a28f",
+    "sk_91259278caa1d0f5a4f08a98befb8d11b654779e5b7c",
+    "sk_0b8e52f5b0d0ceebf69b0c652f44c6a5d8b9963c417e",
+    "sk_5ee4f432349d93d4574391ace0ac72af6d7684de0a60",
+    "sk_182d3057b59007a3faaa4d2b94b46952c967958a4634",
+    "sk_b97436facbb23c68d14748e9e5e4354ebc1d82a3eae0",
+    "sk_b41ab1ff39de2dd4289e3f407443d1767d7a9e5e6053",
+    "sk_5c00045c026fc13efc807702573b819fa043a207f7ef",
+    "sk_55ed42d5a3c50d9fbd78c4d1f688b571d93cfa6253c5"
   ]
 }

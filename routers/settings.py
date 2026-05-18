@@ -48,7 +48,7 @@ async def save_config_route(req: SaveConfigRequest):
         "GEMINI_API_KEY", "GEMINI_API_KEYS", "YOUTUBE_API_KEY",
         "OPENAI_API_KEY", "DEEPSEEK_API_KEY",
         "SEED_MODE", "SEED_VALUE", "CREATE_IMAGE_MODEL",
-        "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE",
+        "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE", "MAX_CONCURRENT_GROK",
         "LICENSE_TOKEN",
     }
     current = load_config()
@@ -91,7 +91,7 @@ _SAVE_VALUE_WHITELIST = {
     "GEMINI_API_KEY", "GEMINI_API_KEYS", "YOUTUBE_API_KEY",
     "OPENAI_API_KEY", "DEEPSEEK_API_KEY",
     "SEED_MODE", "SEED_VALUE", "CREATE_IMAGE_MODEL",
-    "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE",
+    "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE", "MAX_CONCURRENT_GROK",
     "LICENSE_TOKEN",
 }
 
@@ -107,6 +107,11 @@ async def save_value(body: dict):
     if key in {"MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE"}:
         try:
             value = max(1, min(3, int(value)))
+        except Exception:
+            value = 2
+    elif key == "MAX_CONCURRENT_GROK":
+        try:
+            value = max(1, min(5, int(value)))
         except Exception:
             value = 2
     cfg[key] = value

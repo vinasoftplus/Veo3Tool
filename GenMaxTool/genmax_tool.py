@@ -140,9 +140,10 @@ def model_label(item):
 
 
 class GenMaxClient:
-    def __init__(self, api_key_getter, log):
+    def __init__(self, api_key_getter, log, payment_handler=None):
         self.api_key_getter = api_key_getter
         self.log = log
+        self.payment_handler = payment_handler
 
     def headers(self, json_body=True):
         key = self.api_key_getter().strip()
@@ -153,22 +154,49 @@ class GenMaxClient:
             headers["Content-Type"] = "application/json"
         return headers
 
+    def is_payment_error(self, resp):
+        text = ""
+        try:
+            text = resp.text.lower()
+        except Exception:
+            pass
+        return resp.status_code == 402 or any(
+            token in text
+            for token in (
+                "need payment",
+                "payment required",
+                "insufficient credit",
+                "insufficient balance",
+                "not enough credit",
+                "credit balance",
+            )
+        )
+
     def request(self, method, path, params=None, json_body=None, files=None, data=None, stream=False):
         url = BASE_URL + path
-        headers = self.headers(json_body=files is None and data is None)
-        if files is not None or data is not None:
-            headers.pop("Content-Type", None)
-        resp = requests.request(
-            method,
-            url,
-            headers=headers,
-            params=params or None,
-            json=json_body,
-            files=files,
-            data=data,
-            timeout=180,
-            stream=stream,
-        )
+        tried_keys = set()
+        while True:
+            key = self.api_key_getter().strip()
+            tried_keys.add(key)
+            headers = self.headers(json_body=files is None and data is None)
+            if files is not None or data is not None:
+                headers.pop("Content-Type", None)
+            resp = requests.request(
+                method,
+                url,
+                headers=headers,
+                params=params or None,
+                json=json_body,
+                files=files,
+                data=data,
+                timeout=180,
+                stream=stream,
+            )
+            if resp.ok or not self.payment_handler or not self.is_payment_error(resp):
+                break
+            switched = self.payment_handler(key, f"{resp.status_code} {resp.reason}: {resp.text[:500]}")
+            if not switched or self.api_key_getter().strip() in tried_keys:
+                break
         if not resp.ok:
             raise RuntimeError(f"{resp.status_code} {resp.reason}: {resp.text[:1500]}")
         if stream:
@@ -197,19 +225,25 @@ class App(Tk):
         self.geometry("1180x760")
         self.minsize(980, 640)
         self.cfg = load_config()
-        self.api_key = StringVar(value=self.cfg.get("api_key", ""))
+        self.api_keys = self.normalize_api_keys(self.cfg.get("api_keys"), self.cfg.get("api_key", ""))
+        self.api_key_lock = threading.Lock()
+        self.api_key = StringVar(value=self.api_keys[0] if self.api_keys else self.cfg.get("api_key", ""))
         self.is_batch_running = BooleanVar(value=False)
         self.batch_workers = StringVar(value=str(self.cfg.get("batch_workers", 3)))
         self.batch_filter_character = StringVar(value="All")
         self.batch_filter_status = StringVar(value="All")
         self.credit_text = StringVar(value="Credits: --")
+        self.total_credit_text = StringVar(value="Total: --")
         self.user_text = StringVar(value="")
         self.auto_credit_refresh = BooleanVar(value=True)
+        self.last_total_credit_refresh = 0
+        self.thread_key = threading.local()
         self.log_queue = queue.Queue()
-        self.client = GenMaxClient(lambda: self.api_key.get(), self.log)
+        self.client = GenMaxClient(self.get_request_api_key, self.log, self.handle_payment_key)
         self._build()
         self.after(100, self._drain_logs)
         self.after(1000, self.refresh_credits_silent)
+        self.after(1500, lambda: self.run_thread(self.refresh_all_credits))
         self.after(30000, self.credit_refresh_loop)
 
     def _build(self):
@@ -217,9 +251,11 @@ class App(Tk):
         top.pack(fill=X)
         ttk.Label(top, text="API key").pack(side=LEFT)
         ttk.Entry(top, textvariable=self.api_key, show="*", width=55).pack(side=LEFT, padx=6)
+        ttk.Button(top, text="Keys...", command=self.open_api_keys_dialog).pack(side=LEFT)
         ttk.Button(top, text="Save", command=self.save_settings).pack(side=LEFT)
         ttk.Button(top, text="Test /me", command=lambda: self.run_thread(self.test_me)).pack(side=LEFT, padx=6)
         ttk.Button(top, textvariable=self.credit_text, command=lambda: self.run_thread(self.refresh_credits)).pack(side=LEFT, padx=(8, 4))
+        ttk.Button(top, textvariable=self.total_credit_text, command=lambda: self.run_thread(self.refresh_all_credits)).pack(side=LEFT, padx=(0, 4))
         ttk.Label(top, textvariable=self.user_text).pack(side=LEFT)
         ttk.Checkbutton(top, text="Auto credit", variable=self.auto_credit_refresh).pack(side=LEFT, padx=8)
         ttk.Button(top, text="Open API docs", command=lambda: webbrowser.open("https://genmax.io/app/api-docs")).pack(side=RIGHT)
@@ -293,8 +329,104 @@ class App(Tk):
         if hasattr(self, "side_start_batch_button"):
             self.side_start_batch_button.configure(text=side_text, state=state)
 
-    def save_settings(self):
+    def normalize_api_keys(self, keys, fallback=""):
+        raw = []
+        if isinstance(keys, list):
+            raw.extend(str(key) for key in keys)
+        elif isinstance(keys, str):
+            raw.extend(keys.splitlines())
+        if fallback:
+            raw.append(str(fallback))
+        clean = []
+        seen = set()
+        for key in raw:
+            key = key.strip()
+            if key and key not in seen:
+                clean.append(key)
+                seen.add(key)
+        return clean
+
+    def sync_api_key_list_from_field(self):
+        current = self.api_key.get().strip()
+        with self.api_key_lock:
+            if current and current not in self.api_keys:
+                self.api_keys.insert(0, current)
+            elif current in self.api_keys and self.api_keys[0] != current:
+                self.api_keys.remove(current)
+                self.api_keys.insert(0, current)
+
+    def get_request_api_key(self):
+        key = getattr(self.thread_key, "key", "")
+        return key or self.api_key.get()
+
+    def set_thread_api_key(self, key=None):
+        self.thread_key.key = key or self.api_key.get().strip()
+
+    def clear_thread_api_key(self):
+        self.thread_key.key = ""
+
+    def persist_api_keys(self):
+        self.cfg["api_keys"] = list(self.api_keys)
         self.cfg["api_key"] = self.api_key.get().strip()
+        save_config(self.cfg)
+
+    def open_api_keys_dialog(self):
+        win = tk.Toplevel(self)
+        win.title("API keys")
+        win.geometry("720x520")
+        win.transient(self)
+        ttk.Label(win, text="Paste API keys, one key per line").pack(anchor="w", padx=8, pady=(8, 2))
+        text = tk.Text(win, height=22, wrap="none")
+        text.pack(fill=BOTH, expand=True, padx=8, pady=4)
+        with self.api_key_lock:
+            keys = list(self.api_keys)
+        current = self.api_key.get().strip()
+        if current and current not in keys:
+            keys.insert(0, current)
+        text.insert("1.0", "\n".join(keys))
+        status = StringVar(value=f"{len(keys)} keys")
+        bottom = ttk.Frame(win, padding=8)
+        bottom.pack(fill=X)
+        ttk.Label(bottom, textvariable=status).pack(side=LEFT)
+
+        def save_keys():
+            new_keys = self.normalize_api_keys(text.get("1.0", END))
+            with self.api_key_lock:
+                self.api_keys = new_keys
+                self.api_key.set(new_keys[0] if new_keys else "")
+            self.persist_api_keys()
+            status.set(f"Saved {len(new_keys)} keys")
+            self.log(f"Saved {len(new_keys)} API keys")
+            win.destroy()
+            self.run_thread(self.refresh_all_credits)
+
+        ttk.Button(bottom, text="Save keys", command=save_keys).pack(side=RIGHT)
+        ttk.Button(bottom, text="Cancel", command=win.destroy).pack(side=RIGHT, padx=6)
+
+    def handle_payment_key(self, failed_key, reason):
+        with self.api_key_lock:
+            if failed_key in self.api_keys:
+                self.api_keys.remove(failed_key)
+                masked = f"{failed_key[:8]}...{failed_key[-4:]}" if len(failed_key) > 14 else "***"
+                self.log(f"Removed exhausted API key {masked}: {reason}")
+            if not self.api_keys:
+                self.api_key.set("")
+                self.persist_api_keys()
+                self.after(0, lambda: self.credit_text.set("Credits: --"))
+                self.after(0, lambda: self.total_credit_text.set("Total: 0"))
+                return False
+            next_key = self.api_keys[0]
+            self.api_key.set(next_key)
+            self.thread_key.key = next_key
+            self.persist_api_keys()
+        self.log("Switched to next API key.")
+        self.after(0, lambda: self.run_thread(self.refresh_all_credits))
+        return True
+
+    def save_settings(self):
+        self.sync_api_key_list_from_field()
+        self.cfg["api_key"] = self.api_key.get().strip()
+        self.cfg["api_keys"] = list(self.api_keys)
         self.cfg["characters"] = self.get_character_map()
         self.cfg["output_dir"] = self.output_dir.get().strip()
         self.cfg["batch_workers"] = self.get_batch_worker_count()
@@ -311,9 +443,11 @@ class App(Tk):
         self.log("Saved config.json")
 
     def test_me(self):
+        self.sync_api_key_list_from_field()
         data = self.client.request("GET", "/v1/auth/me")
         self.update_credit_display(data)
         self.log(json.dumps(data, ensure_ascii=False, indent=2))
+        self.refresh_all_credits()
 
     def update_credit_display(self, data):
         if not isinstance(data, dict):
@@ -331,9 +465,50 @@ class App(Tk):
         self.after(0, lambda: self.user_text.set(label))
 
     def refresh_credits(self):
+        self.sync_api_key_list_from_field()
         data = self.client.request("GET", "/v1/auth/me")
         self.update_credit_display(data)
         self.log(f"Credits refreshed: {data.get('credit_balance') if isinstance(data, dict) else '--'}")
+        self.refresh_all_credits()
+
+    def fetch_credit_for_key(self, key):
+        resp = requests.get(
+            BASE_URL + "/v1/auth/me",
+            headers={"xi-api-key": key},
+            timeout=60,
+        )
+        if not resp.ok:
+            raise RuntimeError(f"{resp.status_code} {resp.reason}: {resp.text[:500]}")
+        data = resp.json()
+        return data, float(data.get("credit_balance") or 0)
+
+    def refresh_all_credits(self):
+        self.sync_api_key_list_from_field()
+        with self.api_key_lock:
+            keys = list(self.api_keys)
+        if not keys:
+            self.after(0, lambda: self.total_credit_text.set("Total: 0"))
+            return
+        self.last_total_credit_refresh = time.time()
+        total = 0.0
+        ok_count = 0
+        bad_keys = []
+        for key in keys:
+            try:
+                data, credits = self.fetch_credit_for_key(key)
+                total += credits
+                ok_count += 1
+                if key == self.api_key.get().strip():
+                    self.update_credit_display(data)
+            except Exception as exc:
+                self.log(f"Credit check failed for key {key[:8]}...: {exc}")
+                if "need payment" in str(exc).lower() or "payment" in str(exc).lower() or "402" in str(exc):
+                    bad_keys.append(key)
+        for key in bad_keys:
+            self.handle_payment_key(key, "credit check need payment")
+        total_label = f"{total:,.0f}".rstrip("0").rstrip(".")
+        self.after(0, lambda: self.total_credit_text.set(f"Total: {total_label} ({ok_count})"))
+        self.log(f"Total credits refreshed: {total_label} across {ok_count} keys")
 
     def refresh_credits_silent(self):
         if not self.api_key.get().strip():
@@ -343,6 +518,14 @@ class App(Tk):
             self.update_credit_display(data)
         except Exception as exc:
             self.log(f"Credit refresh failed: {exc}")
+            return
+        with self.api_key_lock:
+            multi_key = len(self.api_keys) > 1
+        if multi_key and time.time() - self.last_total_credit_refresh > 60:
+            try:
+                self.refresh_all_credits()
+            except Exception as exc:
+                self.log(f"Total credit refresh failed: {exc}")
 
     def credit_refresh_loop(self):
         if self.auto_credit_refresh.get() and self.api_key.get().strip():
@@ -946,12 +1129,14 @@ class App(Tk):
         self.log(f"Batch started: {len(rows)} lines, {workers} workers, filter: {active_filter}")
 
         def process_row(position, row):
+            self.set_thread_api_key()
             file_name, character, text, line_no, _status = row
             self.after(0, lambda i=line_no: self.set_batch_status(i, "Running"))
             conf = character_map.get(character.strip().lower(), default_conf)
             if not conf["voice_id"]:
                 self.log(f"Skip line {line_no}: missing voice_id for {character}")
                 self.after(0, lambda i=line_no: self.set_batch_status(i, "Skipped: missing voice"))
+                self.clear_thread_api_key()
                 return "skipped"
             payload = {
                 "text": text,
@@ -992,11 +1177,13 @@ class App(Tk):
                     self.log(f"Saved {srt_target}")
                 self.after(0, lambda i=line_no: self.set_batch_status(i, "Done"))
                 self.refresh_credits_silent()
+                self.clear_thread_api_key()
                 return "success"
             except Exception as exc:
                 self.log(f"Line {line_no} failed: {exc}")
                 self.after(0, lambda i=line_no, e=exc: self.set_batch_status(i, f"Failed: {str(e)[:80]}"))
                 self.refresh_credits_silent()
+                self.clear_thread_api_key()
                 return "failed"
 
         counts = Counter()

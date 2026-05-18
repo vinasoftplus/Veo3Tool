@@ -122,6 +122,20 @@
           </svg>
           <span class="nav-label">Studio</span>
         </div>
+        <div class="nav-item" data-tab="grok">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M4 4l16 16M20 4L4 20" />
+            <circle cx="12" cy="12" r="9" />
+          </svg>
+          <span class="nav-label">Grok</span>
+        </div>
+        <div class="nav-item" data-tab="video-editor">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M15 10l4.553-2.53A1 1 0 0 1 21 8.4v7.2a1 1 0 0 1-1.447.93L15 14v-4z"/>
+            <rect x="2" y="6" width="13" height="12" rx="2"/>
+          </svg>
+          <span class="nav-label">Video Editor</span>
+        </div>
       </div>
 
       <div class="nav-section">
@@ -1391,6 +1405,12 @@
                     <div style="font-size:11px;color:var(--text3);margin-top:4px;">Số ảnh tạo cùng lúc — nên để 1-2, tạo
                       ảnh dễ bị block hơn video</div>
                   </div>
+                  <div class="form-group">
+                    <label class="form-label">Max Concurrent Grok (1–5)</label>
+                    <input type="number" id="cfg-max-concurrent-grok" min="1" max="5" step="1" placeholder="2"
+                      style="width:80px;">
+                    <div style="font-size:11px;color:var(--text3);margin-top:4px;">Số cụm Grok chạy cùng lúc khi bấm Tạo tất cả (dùng chung cho ảnh và video)</div>
+                  </div>
                   <button id="save-general-btn" class="btn btn-primary">Lưu cài đặt chung</button>
                 </div>
               </div>
@@ -1439,6 +1459,42 @@
                     </div>
                   </div>
                   <div id="accounts-container"></div>
+                </div>
+              </div>
+              <div class="card" style="margin-top:16px;">
+                <div class="settings-section">
+                  <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px;flex-wrap:wrap;gap:8px;">
+                    <h3 style="margin:0;">Grok Accounts</h3>
+                  </div>
+
+                  <!-- Auto login — disabled -->
+                  <div style="opacity:0.45;pointer-events:none;position:relative;border:1px solid var(--border);border-radius:8px;padding:12px;margin-bottom:14px;">
+                    <div style="position:absolute;top:8px;right:10px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;padding:2px 10px;font-size:11px;color:var(--text2);">Tính năng đang phát triển</div>
+                    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;">Auto Login (email | mật khẩu)</div>
+                    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;gap:8px;">
+                      <button id="btn-grok-login" class="btn btn-primary btn-sm" style="white-space:nowrap;">Login Chrome</button>
+                    </div>
+                    <div class="form-group" style="margin:0">
+                      <label class="form-label">Nhập tài khoản (mỗi dòng: email|matkhau)</label>
+                      <textarea id="cfg-grok-login-lines" rows="3" placeholder="email@gmail.com|matkhau"></textarea>
+                      <div style="font-size:11px;color:var(--text3);margin-top:4px;">Tool sẽ mở Brave theo profile riêng, đăng nhập và lưu cookie vào config.</div>
+                    </div>
+                  </div>
+                  <div id="grok-login-status" style="display:none;margin-bottom:10px;padding:10px 14px;background:var(--bg2);border:1px solid var(--border);border-radius:8px;font-size:12px;color:var(--text2);"></div>
+
+                  <!-- Manual login -->
+                  <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border);">
+                    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:8px;">Login thủ công (tự login trong browser)</div>
+                    <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;">
+                      <input id="grok-manual-index" type="number" min="1" value="1" style="width:64px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:12px;" placeholder="Slot">
+                      <input id="grok-manual-email" type="email" style="flex:1;min-width:160px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;background:var(--bg2);color:var(--text);font-size:12px;" placeholder="Email (tuỳ chọn)">
+                      <button class="btn btn-secondary btn-sm" onclick="Settings.openGrokBrowser()" style="white-space:nowrap;">Mở Browser</button>
+                      <button class="btn btn-primary btn-sm" onclick="Settings.loadGrokCookie()" style="white-space:nowrap;">Load Cookie</button>
+                    </div>
+                    <div id="grok-manual-status" style="display:none;margin-top:8px;padding:8px 12px;background:var(--bg2);border:1px solid var(--border);border-radius:6px;font-size:12px;color:var(--text2);"></div>
+                  </div>
+
+                  <div id="grok-accounts-container"></div>
                 </div>
               </div>
             </div>
@@ -1732,6 +1788,492 @@
         </div>
         <!-- /STUDIO -->
 
+        <!-- VIDEO EDITOR -->
+        <div id="tab-video-editor" class="tab-panel">
+          <div class="ve-page">
+
+            <!-- Toolbar -->
+            <div class="ve-toolbar">
+              <div class="ve-toolbar-left">
+                <span class="ve-toolbar-title">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 10l4.553-2.53A1 1 0 0 1 21 8.4v7.2a1 1 0 0 1-1.447.93L15 14v-4z"/><rect x="2" y="6" width="13" height="12" rx="2"/></svg>
+                  Video Editor
+                </span>
+              </div>
+              <div class="ve-toolbar-right">
+                <button id="ve-clear-all" class="btn btn-secondary btn-sm" title="Xoá tất cả">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>
+                  Xoá tất cả
+                </button>
+              </div>
+            </div>
+
+            <!-- Two-column layout -->
+            <div class="ve-layout">
+
+              <!-- LEFT: Input & Settings -->
+              <div class="ve-panel ve-panel-left">
+
+                <!-- Section: Add Videos -->
+                <div class="ve-card">
+                  <div class="ve-card-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                    <span>Danh sách video</span>
+                    <span class="ve-badge" id="ve-count-badge">0 video</span>
+                  </div>
+                  <div class="ve-card-body">
+                    <div class="ve-drop-zone" id="ve-drop-zone">
+                      <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="6" width="13" height="12" rx="2"/><path d="M15 10l4.553-2.53A1 1 0 0 1 21 8.4v7.2a1 1 0 0 1-1.447.93L15 14v-4z"/></svg>
+                      <div class="ve-drop-text">Kéo thả video vào đây</div>
+                      <div class="ve-drop-sub">hoặc</div>
+                      <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ve-file-input').click()">
+                        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                        Chọn file
+                      </button>
+                      <input type="file" id="ve-file-input" accept="video/*" multiple style="display:none">
+                    </div>
+
+                    <div id="ve-file-list" class="ve-file-list" style="display:none">
+                      <!-- items injected by JS -->
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Section: Trim Settings -->
+                <div class="ve-card">
+                  <div class="ve-card-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="6" cy="6" r="3"/><circle cx="6" cy="18" r="3"/><line x1="20" y1="4" x2="8.12" y2="15.88"/><line x1="14.47" y1="14.48" x2="20" y2="20"/><line x1="8.12" y1="8.12" x2="12" y2="12"/></svg>
+                    <span>Trim video</span>
+                    <label class="ve-toggle">
+                      <input type="checkbox" id="ve-trim-enabled">
+                      <span class="ve-toggle-slider"></span>
+                    </label>
+                  </div>
+                  <div class="ve-card-body" id="ve-trim-body">
+                    <div class="ve-row">
+                      <div class="ve-field">
+                        <label class="ve-label" for="ve-trim-start">Cắt đầu</label>
+                        <div class="ve-input-unit">
+                          <input type="number" id="ve-trim-start" class="ve-input" value="0" min="0" step="0.1">
+                          <span class="ve-unit" id="ve-unit-start">s</span>
+                        </div>
+                      </div>
+                      <div class="ve-field">
+                        <label class="ve-label" for="ve-trim-end">Cắt cuối</label>
+                        <div class="ve-input-unit">
+                          <input type="number" id="ve-trim-end" class="ve-input" value="0" min="0" step="0.1">
+                          <span class="ve-unit" id="ve-unit-end">s</span>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Section: Merge Settings -->
+                <div class="ve-card">
+                  <div class="ve-card-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/></svg>
+                    <span>Cài đặt ghép</span>
+                  </div>
+                  <div class="ve-card-body">
+                    <!-- Merge Mode -->
+                    <div class="ve-field">
+                      <label class="ve-label">Chế độ ghép</label>
+                      <div class="ve-seg ve-seg-3" id="ve-merge-mode">
+                        <button class="ve-seg-btn active" data-val="normal">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                          Thường
+                        </button>
+                        <button class="ve-seg-btn" data-val="loop">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+                          Loop
+                        </button>
+                        <button class="ve-seg-btn" data-val="audio">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                          Audio
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Loop duration (conditional) -->
+                    <div class="ve-field" id="ve-loop-field" style="display:none">
+                      <label class="ve-label" for="ve-loop-duration">Thời lượng mục tiêu (giây)</label>
+                      <input type="number" id="ve-loop-duration" class="ve-input" value="60" min="1" step="1">
+                    </div>
+
+                    <!-- Audio file (conditional) -->
+                    <div class="ve-field" id="ve-audio-field" style="display:none">
+                      <label class="ve-label">File nhạc nền</label>
+                      <div class="ve-file-pick">
+                        <input type="text" id="ve-audio-path" class="ve-input" placeholder="Chưa chọn..." readonly>
+                        <button class="btn btn-secondary btn-sm" onclick="document.getElementById('ve-audio-input').click()">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18V5l12-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="18" cy="16" r="3"/></svg>
+                        </button>
+                        <input type="file" id="ve-audio-input" accept="audio/*" style="display:none">
+                      </div>
+                      <div class="ve-volume-row">
+                        <div class="ve-volume-item">
+                          <label class="ve-label-sm">Tiếng gốc <span id="ve-vol-orig-val">100%</span></label>
+                          <input type="range" id="ve-vol-orig" class="ve-slider" min="0" max="200" value="100" step="5">
+                        </div>
+                        <div class="ve-volume-item">
+                          <label class="ve-label-sm">Nhạc nền <span id="ve-vol-bg-val">80%</span></label>
+                          <input type="range" id="ve-vol-bg" class="ve-slider" min="0" max="200" value="80" step="5">
+                        </div>
+                      </div>
+                    </div>
+
+                    <!-- Transition -->
+                    <div class="ve-field">
+                      <label class="ve-label">Transition</label>
+                      <div class="ve-seg ve-seg-3" id="ve-transition">
+                        <button class="ve-seg-btn active" data-val="none">None</button>
+                        <button class="ve-seg-btn ve-seg-disabled" data-val="fade" disabled title="Tính năng đang phát triển">Fade</button>
+                        <button class="ve-seg-btn ve-seg-disabled" data-val="xfade" disabled title="Tính năng đang phát triển">Xfade</button>
+                      </div>
+                    </div>
+
+                    <!-- Xfade duration (conditional) -->
+                    <div class="ve-field" id="ve-xfade-field" style="display:none">
+                      <label class="ve-label" for="ve-xfade-dur">Thời gian fade (giây)</label>
+                      <input type="number" id="ve-xfade-dur" class="ve-input" value="0.5" min="0.1" max="3" step="0.1">
+                    </div>
+
+                    <!-- Quality -->
+                    <div class="ve-field">
+                      <label class="ve-label">Chất lượng xuất</label>
+                      <div class="ve-quality-grid" id="ve-quality">
+                        <button class="ve-quality-btn" data-val="copy">
+                          <span class="ve-quality-name">Copy</span>
+                          <span class="ve-quality-desc">Nhanh nhất</span>
+                        </button>
+                        <button class="ve-quality-btn" data-val="fast">
+                          <span class="ve-quality-name">Fast</span>
+                          <span class="ve-quality-desc">CRF 28</span>
+                        </button>
+                        <button class="ve-quality-btn active" data-val="medium">
+                          <span class="ve-quality-name">Medium</span>
+                          <span class="ve-quality-desc">CRF 23</span>
+                        </button>
+                        <button class="ve-quality-btn" data-val="high">
+                          <span class="ve-quality-name">High</span>
+                          <span class="ve-quality-desc">CRF 20</span>
+                        </button>
+                        <button class="ve-quality-btn" data-val="ultra">
+                          <span class="ve-quality-name">Ultra</span>
+                          <span class="ve-quality-desc">CRF 18</span>
+                        </button>
+                      </div>
+                    </div>
+
+                    <!-- Output folder -->
+                    <div class="ve-field">
+                      <label class="ve-label">Thư mục lưu</label>
+                      <div class="ve-file-pick">
+                        <input type="text" id="ve-output-folder-display" class="ve-input" placeholder="Chưa chọn thư mục..." readonly style="cursor:pointer;" onclick="document.getElementById('ve-pick-output').click()">
+                        <button class="btn btn-secondary btn-sm" id="ve-pick-output" title="Chọn thư mục lưu output">
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                    <!-- Output filename -->
+                    <div class="ve-field">
+                      <label class="ve-label" for="ve-output-name">Tên file xuất</label>
+                      <input type="text" id="ve-output-name" class="ve-input" placeholder="output.mp4">
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Merge button -->
+                <button class="btn btn-primary ve-merge-btn" id="ve-merge-btn">
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M2 12h20"/></svg>
+                  Ghép video
+                </button>
+
+              </div>
+              <!-- /LEFT -->
+
+              <!-- RIGHT: Preview & Log -->
+              <div class="ve-panel ve-panel-right">
+
+                <!-- Progress card -->
+                <div class="ve-card" id="ve-progress-card" style="display:none">
+                  <div class="ve-card-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg>
+                    <span>Tiến trình</span>
+                    <button class="btn btn-danger btn-sm" id="ve-cancel-btn" style="margin-left:auto">
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                      Huỷ
+                    </button>
+                  </div>
+                  <div class="ve-card-body">
+                    <div class="ve-progress-wrap">
+                      <div class="ve-progress-bar">
+                        <div class="ve-progress-fill" id="ve-progress-fill" style="width:0%"></div>
+                      </div>
+                      <span class="ve-progress-pct" id="ve-progress-pct">0%</span>
+                    </div>
+                    <div class="ve-progress-msg" id="ve-progress-msg">Đang chuẩn bị...</div>
+                  </div>
+                </div>
+
+                <!-- Info panel -->
+                <div class="ve-card">
+                  <div class="ve-card-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                    <span>Thông tin</span>
+                  </div>
+                  <div class="ve-card-body">
+                    <div class="ve-info-grid" id="ve-info-grid">
+                      <div class="ve-info-item">
+                        <span class="ve-info-label">Tổng video</span>
+                        <span class="ve-info-val" id="ve-info-total">0</span>
+                      </div>
+                      <div class="ve-info-item">
+                        <span class="ve-info-label">Chế độ</span>
+                        <span class="ve-info-val" id="ve-info-mode">Thường</span>
+                      </div>
+                      <div class="ve-info-item">
+                        <span class="ve-info-label">Transition</span>
+                        <span class="ve-info-val" id="ve-info-trans">None</span>
+                      </div>
+                      <div class="ve-info-item">
+                        <span class="ve-info-label">Chất lượng</span>
+                        <span class="ve-info-val" id="ve-info-quality">Medium</span>
+                      </div>
+                      <div class="ve-info-item">
+                        <span class="ve-info-label">Trim</span>
+                        <span class="ve-info-val" id="ve-info-trim">Tắt</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Preview -->
+                <div class="ve-card" id="ve-preview-card" style="display:none">
+                  <div class="ve-card-header">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+                    <span>Preview</span>
+                    <button class="btn btn-secondary btn-sm" id="ve-preview-close" style="margin-left:auto;font-size:11px;padding:3px 8px">
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                    </button>
+                  </div>
+                  <div class="ve-card-body" style="padding:0;overflow:hidden;border-radius:0 0 10px 10px;">
+                    <video id="ve-preview-video" controls style="width:100%;display:block;max-height:260px;background:#000;"></video>
+                  </div>
+                </div>
+
+                <!-- Log -->
+                <div class="ve-card">
+                  <div class="ve-card-header" id="ve-log-header" style="cursor:pointer;" onclick="window._veToggleLog()">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+                    <span>Log</span>
+                    <svg id="ve-log-chevron" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="margin-left:auto;transition:transform .2s"><polyline points="18 15 12 9 6 15"/></svg>
+                    <button class="btn btn-secondary btn-sm" id="ve-clear-log" style="margin-left:6px;font-size:11px;padding:3px 8px" onclick="event.stopPropagation();document.getElementById('ve-log').innerHTML='<div class=ve-log-empty>Chưa có thao tác nào...</div>'">Xoá</button>
+                  </div>
+                  <div class="ve-log ve-log-collapsed" id="ve-log">
+                    <div class="ve-log-empty">Chưa có thao tác nào...</div>
+                  </div>
+                </div>
+
+              </div>
+              <!-- /RIGHT -->
+
+            </div>
+            <!-- /layout -->
+
+          </div>
+        </div>
+        <!-- /VIDEO EDITOR -->
+
+        <!-- GROK -->
+        <div id="tab-grok" class="tab-panel">
+          <div class="studio-page grok-page">
+            <div id="grok-sticky-bar" class="studio-sticky-bar">
+              <div class="studio-toolbar-top">
+                <div class="studio-toolbar-top-left">
+                  <button id="grok-gen-all-images" class="btn btn-primary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    Tạo tất cả hình
+                  </button>
+                  <button id="grok-gen-all-videos" class="btn btn-primary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="23 7 16 12 23 17 23 7" />
+                      <rect x="1" y="5" width="15" height="14" rx="2" />
+                    </svg>
+                    Tạo tất cả video (<span id="grok-pending-count">0</span>)
+                  </button>
+                  <button id="grok-stop-all" class="btn btn-danger btn-sm" style="display:none;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                    </svg>
+                    Dừng
+                  </button>
+                </div>
+                <div class="studio-toolbar-top-right">
+                  <button id="grok-import-images" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                      <polyline points="17 8 12 3 7 8" />
+                      <line x1="12" y1="3" x2="12" y2="15" />
+                    </svg>
+                    Import ảnh
+                  </button>
+                  <button id="grok-import-prompts" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                      <polyline points="14 2 14 8 20 8" />
+                      <line x1="16" y1="13" x2="8" y2="13" />
+                      <line x1="16" y1="17" x2="8" y2="17" />
+                    </svg>
+                    Import Prompt
+                  </button>
+                  <button id="grok-save-images-btn" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                      <polyline points="21 15 16 10 5 21" />
+                    </svg>
+                    Lưu ảnh
+                  </button>
+                  <button id="grok-save-all" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2">
+                      <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                      <polyline points="7 10 12 15 17 10" />
+                      <line x1="12" y1="15" x2="12" y2="3" />
+                    </svg>
+                    Lưu video (<span id="grok-saved-count">0</span>)
+                  </button>
+                  <button id="grok-toggle-toolbar" class="btn btn-secondary btn-sm">Ẩn Toolbar</button>
+                </div>
+              </div>
+
+              <div class="studio-toolbar-mid">
+                <div class="studio-toolbar-mid-head">TỶ LỆ KHUNG HÌNH</div>
+                <div class="studio-toolbar-mid-row">
+                  <button id="grok-vault-btn" class="btn btn-secondary btn-sm" title="Kho lưu trữ ảnh">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="2" y="7" width="20" height="14" rx="2" />
+                      <path d="M16 7V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v2" />
+                    </svg>
+                    Thư viện
+                  </button>
+                  <button id="grok-layout-toggle" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="8" height="18" rx="1" />
+                      <rect x="13" y="3" width="8" height="18" rx="1" />
+                    </svg>
+                    <span class="studio-layout-toggle-label">Cụm ngang</span>
+                  </button>
+                  <button id="grok-add-card" class="btn btn-primary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+                      stroke-width="2.5">
+                      <line x1="12" y1="5" x2="12" y2="19" />
+                      <line x1="5" y1="12" x2="19" y2="12" />
+                    </svg>
+                    Thêm cụm
+                  </button>
+                  <div class="studio-aspect-group" id="grok-aspect-group">
+                    <button type="button" class="studio-aspect-btn active" data-val="16:9">16:9</button>
+                    <button type="button" class="studio-aspect-btn" data-val="9:16">9:16</button>
+                    <button type="button" class="studio-aspect-btn" data-val="1:1">1:1</button>
+                    <button type="button" class="studio-aspect-btn" data-val="2:3">2:3</button>
+                    <button type="button" class="studio-aspect-btn" data-val="3:2">3:2</button>
+                  </div>
+                </div>
+              </div>
+
+              <div class="studio-toolbar-models">
+                <div class="studio-model-field">
+                  <div class="studio-model-label">CHẤT LƯỢNG VIDEO</div>
+                  <select id="grok-video-quality" class="studio-bar-select">
+                    <option value="480p">480p</option>
+                    <option value="720p" selected>720p</option>
+                  </select>
+                </div>
+                <div class="studio-model-field">
+                  <div class="studio-model-label">CHẤT LƯỢNG TẠO ẢNH</div>
+                  <select id="grok-image-quality" class="studio-bar-select">
+                    <option value="speed" selected>Speed</option>
+                    <option value="quality">Quality</option>
+                  </select>
+                </div>
+                <div class="studio-model-field">
+                  <div class="studio-model-label">ĐỘ DÀI VIDEO</div>
+                  <select id="grok-video-duration" class="studio-bar-select">
+                    <option value="6" selected>6s</option>
+                    <option value="10">10s</option>
+                  </select>
+                </div>
+              </div>
+
+              <div class="studio-toolbar-bottom">
+                <div class="studio-toolbar-bottom-left">
+                  <label class="studio-bar-toggle t2v-toggle-label" title="Tự lưu video khi xong">
+                    <input type="checkbox" id="grok-auto-download">
+                    <span class="t2v-toggle-track"></span>
+                    <span id="grok-auto-download-label">Auto Lưu (chưa chọn folder)</span>
+                  </label>
+                  <button id="grok-choose-folder" class="btn btn-secondary btn-sm studio-folder-btn"
+                    title="Chọn folder lưu video">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="var(--orange)" stroke="none">
+                      <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
+                    </svg>
+                    <span id="grok-folder-label">Folder</span>
+                  </button>
+                </div>
+                <div class="studio-toolbar-bottom-right">
+                  <button id="grok-clear-images-btn" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                      <circle cx="8.5" cy="8.5" r="1.5"/>
+                      <line x1="3" y1="21" x2="21" y2="3" stroke-width="2.5"/>
+                    </svg>
+                    Xóa hình khỏi cụm
+                  </button>
+                  <button id="grok-clear-all" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M3 7h18"/>
+                      <path d="M8 7V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/>
+                      <path d="M6 7l1 12a1 1 0 0 0 1 .9h8a1 1 0 0 0 1-.9l1-12"/>
+                    </svg>
+                    Xóa tất cả cụm
+                  </button>
+                  <div class="studio-filter-wrap">
+                    <button id="grok-filter-toggle" class="studio-filter-toggle" aria-expanded="false" type="button">
+                      <span class="studio-filter-toggle-top">BỘ LỌC</span>
+                      <span id="grok-filter-current" class="studio-filter-toggle-value">Tất cả cụm : 0</span>
+                      <span class="studio-filter-caret">▼</span>
+                    </button>
+                    <div id="grok-filter-menu" class="studio-filter-menu">
+                      <button class="studio-filter-menu-item active" data-filter="all" type="button"><span class="studio-filter-dot total"></span><span class="studio-filter-text">Tất cả cụm</span><span id="grok-filter-total-count" class="studio-filter-count">0</span></button>
+                      <button class="studio-filter-menu-item" data-filter="running" type="button"><span class="studio-filter-dot running"></span><span class="studio-filter-text">Đang chạy</span><span id="grok-filter-running-count" class="studio-filter-count">0</span></button>
+                      <button class="studio-filter-menu-item" data-filter="completed" type="button"><span class="studio-filter-dot completed"></span><span class="studio-filter-text">Xong</span><span id="grok-filter-done-count" class="studio-filter-count">0</span></button>
+                      <button class="studio-filter-menu-item" data-filter="failed" type="button"><span class="studio-filter-dot failed"></span><span class="studio-filter-text">Lỗi</span><span id="grok-filter-failed-count" class="studio-filter-count">0</span></button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <input type="file" id="grok-images-file" accept="image/*" multiple style="display:none;">
+              <input type="file" id="grok-prompts-file-txt" accept=".txt" style="display:none;">
+            </div>
+
+            <div id="grok-empty" class="studio-empty">
+              <div class="studio-empty-icon">+</div>
+              <div class="studio-empty-title">Grok Studio đang trống</div>
+              <div class="studio-empty-text">Import prompt, import ảnh hoặc bấm "Thêm cụm" để tạo cụm thao tác.</div>
+            </div>
+            <div id="grok-cards" class="studio-cards"></div>
+          </div>
+        </div>
+        <!-- /GROK -->
+
       </div><!-- /content -->
     </div><!-- /main -->
   </div><!-- /app -->
@@ -1840,6 +2382,162 @@
     </div>
   </div>
 
+  <!-- Grok video popup -->
+  <div id="grok-video-popup" class="studio-popup-overlay" style="display:none;"
+    onclick="if(event.target===this)GrokStudio.closeVideoPopup()">
+    <div style="position:relative;display:flex;flex-direction:column;max-width:92vw;max-height:92vh;background:var(--bg2);border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55);">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px;flex-shrink:0;">
+        <span id="grok-video-popup-caption" style="font-size:12px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Video xem trước</span>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="btn btn-secondary btn-sm" onclick="GrokStudio.downloadVideoPopup()" title="Tải video về máy">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Tải về
+          </button>
+          <button class="btn btn-secondary btn-sm" onclick="GrokStudio.deleteVideoPopup()" title="Xóa video này"
+            style="color:var(--red);">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 7h18"/><path d="M8 7V5a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M6 7l1 12a1 1 0 0 0 1 .9h8a1 1 0 0 0 1-.9l1-12"/></svg>
+            Xóa
+          </button>
+          <button style="background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:18px;color:var(--text2);display:flex;align-items:center;justify-content:center;line-height:1;" onclick="GrokStudio.closeVideoPopup()">×</button>
+        </div>
+      </div>
+      <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;position:relative;">
+        <button onclick="GrokStudio.navVideoPopup(-1)" title="Video trước" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:10;background:rgba(0,0,0,0.45);border:none;border-radius:50%;width:38px;height:38px;cursor:pointer;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;transition:background .15s;" onmouseover="this.style.background='rgba(0,0,0,0.75)'" onmouseout="this.style.background='rgba(0,0,0,0.45)'">&#8249;</button>
+        <video id="grok-video-popup-player" controls style="max-width:100%;max-height:75vh;border-radius:8px;display:block;"></video>
+        <button onclick="GrokStudio.navVideoPopup(1)" title="Video tiếp theo" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:10;background:rgba(0,0,0,0.45);border:none;border-radius:50%;width:38px;height:38px;cursor:pointer;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;transition:background .15s;" onmouseover="this.style.background='rgba(0,0,0,0.75)'" onmouseout="this.style.background='rgba(0,0,0,0.45)'">&#8250;</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Grok Save Videos Popup -->
+  <div id="grok-save-videos-popup" class="studio-popup-overlay" style="display:none;"
+    onclick="if(event.target===this)this.style.display='none'">
+    <div class="studio-modal" style="max-width:860px;max-height:90vh;display:flex;flex-direction:column;">
+      <div class="studio-modal-header" style="flex-shrink:0;">
+        <div>
+          <div class="studio-modal-title">Lưu video đã tạo</div>
+          <div class="studio-modal-subtitle">Chọn video muốn tải về máy</div>
+        </div>
+        <button class="studio-modal-close" onclick="document.getElementById('grok-save-videos-popup').style.display='none'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" id="grok-save-videos-select-all">Chọn tất cả</button>
+        <button class="btn btn-secondary btn-sm" id="grok-save-videos-deselect">Bỏ chọn</button>
+        <span style="font-size:12px;color:var(--text3);">Đã chọn: <span id="grok-save-videos-count">0</span> video</span>
+        <div style="flex:1;"></div>
+        <button class="btn btn-primary btn-sm" id="grok-save-videos-to-disk">Tải về máy</button>
+      </div>
+      <div id="grok-save-videos-progress" style="display:none;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;">
+            <div id="grok-save-videos-progress-bar" style="height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width .3s;"></div>
+          </div>
+          <span id="grok-save-videos-progress-text" style="font-size:12px;color:var(--text2);white-space:nowrap;">0 / 0</span>
+        </div>
+      </div>
+      <div id="grok-save-videos-grid" style="overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,180px);justify-content:start;gap:10px;padding:14px;max-height:calc(90vh - 160px);"></div>
+    </div>
+  </div>
+
+  <!-- Grok Save Images Popup -->
+  <div id="grok-save-images-popup" class="studio-popup-overlay" style="display:none;"
+    onclick="if(event.target===this)this.style.display='none'">
+    <div class="studio-modal" style="max-width:860px;max-height:90vh;display:flex;flex-direction:column;">
+      <div class="studio-modal-header" style="flex-shrink:0;">
+        <div>
+          <div class="studio-modal-title">Lưu ảnh đã tạo</div>
+          <div class="studio-modal-subtitle">Chọn ảnh muốn tải về máy</div>
+        </div>
+        <button class="studio-modal-close" onclick="document.getElementById('grok-save-images-popup').style.display='none'">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div style="display:flex;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;">
+        <button class="btn btn-secondary btn-sm" id="grok-save-images-select-all">Chọn tất cả</button>
+        <button class="btn btn-secondary btn-sm" id="grok-save-images-deselect">Bỏ chọn</button>
+        <span style="font-size:12px;color:var(--text3);">Đã chọn: <span id="grok-save-images-count">0</span> ảnh</span>
+        <div style="flex:1;"></div>
+        <button class="btn btn-secondary btn-sm" id="grok-save-images-to-vault" style="display:flex;align-items:center;gap:5px;">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/><line x1="12" y1="12" x2="12" y2="17"/><line x1="9.5" y1="14.5" x2="14.5" y2="14.5"/></svg>
+          Thêm vào kho
+        </button>
+        <button class="btn btn-primary btn-sm" id="grok-save-images-to-disk">Tải về máy</button>
+      </div>
+      <!-- Vault options row (hidden by default) -->
+      <div id="grok-save-images-vault-opts" style="display:none;align-items:center;gap:8px;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;flex-wrap:wrap;background:var(--bg3);">
+        <span style="font-size:12px;color:var(--text2);font-weight:600;">Loại:</span>
+        <select id="grok-vault-upload-type" class="t2v-select" style="min-width:120px;font-size:12px;">
+          <option value="nhanvat">Nhân Vật</option>
+          <option value="vatpham">Vật Phẩm</option>
+          <option value="style">Style</option>
+          <option value="background">Background</option>
+        </select>
+        <span style="font-size:12px;color:var(--text2);font-weight:600;">Nhóm:</span>
+        <select id="grok-vault-upload-category" class="t2v-select" style="min-width:150px;font-size:12px;">
+          <option value="default">Mặc định</option>
+        </select>
+        <button class="btn btn-primary btn-sm" id="grok-save-images-vault-confirm" style="display:flex;align-items:center;gap:5px;">
+          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+          Lưu vào kho
+        </button>
+      </div>
+      <div id="grok-save-images-progress" style="display:none;padding:8px 16px;border-bottom:1px solid var(--border);flex-shrink:0;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div style="flex:1;height:6px;background:var(--bg3);border-radius:99px;overflow:hidden;">
+            <div id="grok-save-images-progress-bar" style="height:100%;background:var(--accent);border-radius:99px;width:0%;transition:width .3s;"></div>
+          </div>
+          <span id="grok-save-images-progress-text" style="font-size:12px;color:var(--text2);white-space:nowrap;">0 / 0</span>
+        </div>
+      </div>
+      <div id="grok-save-images-grid" style="overflow-y:auto;display:grid;grid-template-columns:repeat(auto-fill,140px);justify-content:start;gap:10px;padding:14px;max-height:calc(90vh - 160px);"></div>
+    </div>
+  </div>
+
+  <!-- Grok Image Preview Popup -->
+  <div id="grok-image-popup" class="studio-popup-overlay" style="display:none;"
+    onclick="if(event.target===this)GrokStudio.closeImagePopup()">
+    <div style="position:relative;display:flex;flex-direction:column;max-width:92vw;max-height:92vh;background:var(--bg2);border-radius:16px;overflow:hidden;box-shadow:0 24px 80px rgba(0,0,0,.55);">
+      <div style="display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid var(--border);gap:10px;flex-shrink:0;">
+        <span id="grok-image-popup-caption" style="font-size:12px;color:var(--text2);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Ảnh xem trước</span>
+        <div style="display:flex;gap:6px;flex-shrink:0;">
+          <button class="btn btn-secondary btn-sm" onclick="GrokStudio.downloadImagePopup()" title="Tải ảnh về máy">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Tải về
+          </button>
+          <button style="background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:18px;color:var(--text2);display:flex;align-items:center;justify-content:center;line-height:1;" onclick="GrokStudio.closeImagePopup()">×</button>
+        </div>
+      </div>
+      <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;">
+        <img id="grok-image-popup-img" src="" style="max-width:100%;max-height:75vh;border-radius:8px;display:block;object-fit:contain;">
+      </div>
+    </div>
+  </div>
+
+  <!-- Grok Prompt Edit Popup -->
+  <div id="grok-prompt-popup" class="studio-popup-overlay" style="display:none;"
+    onclick="if(event.target===this)GrokStudio.closePromptPopup()">
+    <div class="studio-modal" style="max-width:600px;width:100%;">
+      <div class="studio-modal-header">
+        <div>
+          <div class="studio-modal-title">Chỉnh sửa Prompt</div>
+          <div class="studio-modal-subtitle" id="grok-prompt-popup-subtitle">Cụm</div>
+        </div>
+        <button class="studio-modal-close" onclick="GrokStudio.closePromptPopup()">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+        </button>
+      </div>
+      <div class="studio-modal-body">
+        <textarea id="grok-prompt-popup-ta" class="studio-prompt-input" rows="6" placeholder="Nhập prompt tại đây..." style="width:100%;resize:vertical;"></textarea>
+        <div style="display:flex;gap:8px;margin-top:12px;justify-content:flex-end;">
+          <button class="btn btn-secondary" onclick="GrokStudio.closePromptPopup()">Hủy</button>
+          <button class="btn btn-primary" onclick="GrokStudio.savePromptPopup()">Lưu</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Studio video popup -->
   <div id="studio-video-popup" class="studio-popup-overlay" style="display:none;"
     onclick="if(event.target===this)Studio.closeVideoPopup()">
@@ -1903,9 +2601,11 @@
         </div>
       </div>
       <div
-        style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;">
+        style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;position:relative;">
+        <button onclick="Studio.navVideoPopup(-1)" title="Video trước" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);z-index:10;background:rgba(0,0,0,0.45);border:none;border-radius:50%;width:38px;height:38px;cursor:pointer;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;transition:background .15s;" onmouseover="this.style.background='rgba(0,0,0,0.75)'" onmouseout="this.style.background='rgba(0,0,0,0.45)'">&#8249;</button>
         <video id="studio-video-popup-player" controls
           style="max-width:100%;max-height:75vh;border-radius:8px;display:block;"></video>
+        <button onclick="Studio.navVideoPopup(1)" title="Video tiếp theo" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);z-index:10;background:rgba(0,0,0,0.45);border:none;border-radius:50%;width:38px;height:38px;cursor:pointer;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;transition:background .15s;" onmouseover="this.style.background='rgba(0,0,0,0.75)'" onmouseout="this.style.background='rgba(0,0,0,0.45)'">&#8250;</button>
       </div>
     </div>
   </div>
@@ -2287,6 +2987,8 @@
   <script src="/static/js/tabs/settings.js?v=7"></script>
   <script src="/static/js/tabs/other.js?v=8"></script>
   <script src="/static/js/tabs/studio_unified.js?v=27"></script>
+  <script src="/static/js/tabs/grok_studio.js?v=4"></script>
+  <script src="/static/js/tabs/video_editor.js?v=1"></script>
   <script src="/static/js/notifications.js?v=1"></script>
 </body>
 

@@ -23,6 +23,7 @@
 
     renderGeneral();
     renderAccounts();
+    loadGrokAccounts().catch(e => console.error('loadGrokAccounts error', e));
   }
 
   // ── General ───────────────────────────────────────────────────────────────
@@ -36,6 +37,7 @@
     const clampConcurrent = (value, fallback = 2) => Math.min(3, Math.max(1, parseInt(value ?? fallback, 10) || fallback));
     if (el('cfg-max-concurrent')) el('cfg-max-concurrent').value = clampConcurrent(cfg.MAX_CONCURRENT);
     if (el('cfg-max-concurrent-image')) el('cfg-max-concurrent-image').value = clampConcurrent(cfg.MAX_CONCURRENT_IMAGE);
+    if (el('cfg-max-concurrent-grok')) el('cfg-max-concurrent-grok').value = Math.min(5, Math.max(1, parseInt(cfg.MAX_CONCURRENT_GROK ?? 2, 10) || 2));
   }
 
   async function saveGeneral() {
@@ -43,6 +45,8 @@
     const maxConcurrent = Math.min(3, Math.max(1, isNaN(rawConcurrent) ? 2 : rawConcurrent));
     const rawImg = parseInt(document.getElementById('cfg-max-concurrent-image')?.value || '2', 10);
     const maxConcurrentImage = Math.min(3, Math.max(1, isNaN(rawImg) ? 2 : rawImg));
+    const rawGrok = parseInt(document.getElementById('cfg-max-concurrent-grok')?.value || '2', 10);
+    const maxConcurrentGrok = Math.min(5, Math.max(1, isNaN(rawGrok) ? 2 : rawGrok));
     const updates = {
       YOUTUBE_API_KEY: document.getElementById('cfg-youtube-key')?.value.trim() || '',
       GEMINI_API_KEYS: document.getElementById('cfg-gemini-keys')?.value.trim() || '',
@@ -51,6 +55,7 @@
       FFMPEG_PATH: document.getElementById('cfg-ffmpeg-path')?.value.trim() || '',
       MAX_CONCURRENT: maxConcurrent,
       MAX_CONCURRENT_IMAGE: maxConcurrentImage,
+      MAX_CONCURRENT_GROK: maxConcurrentGrok,
     };
     for (const [k, v] of Object.entries(updates)) {
       await API.post('/api/settings/save-value', { key: k, value: v });
@@ -542,6 +547,250 @@
   }
 
   // ── Expose ────────────────────────────────────────────────────────────────
+  async function loadGrokAccounts() {
+    const box = document.getElementById('grok-accounts-container');
+    if (!box) return;
+    box.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:10px;">Đang tải tài khoản Grok...</div>';
+    try {
+      const res = await API.get('/api/grok/accounts');
+      renderGrokAccounts(res.accounts || []);
+    } catch (e) {
+      box.innerHTML = `<div style="font-size:12px;color:var(--red);padding:10px;">Không tải được Grok accounts: ${e.message || e}</div>`;
+    }
+  }
+
+  function renderGrokAccounts(items) {
+    const box = document.getElementById('grok-accounts-container');
+    if (!box) return;
+    if (!items.length) {
+      box.innerHTML = `<div style="text-align:center;padding:24px 12px;color:var(--text3);border:1px dashed var(--border);border-radius:12px;"><div style="font-size:13px;font-weight:700;color:var(--text2);margin-bottom:4px;">Chưa có tài khoản Grok</div><div style="font-size:12px;">Nhập email|mật khẩu rồi bấm Login Chrome.</div></div>`;
+      const slotInput = document.getElementById('grok-manual-index');
+      if (slotInput) slotInput.value = 1;
+      return;
+    }
+    // Tính slot trống nhỏ nhất chưa bị dùng, set vào input
+    const usedSlots = new Set(items.map(a => a.index + 1));
+    let nextSlot = 1;
+    while (usedSlots.has(nextSlot)) nextSlot++;
+    const slotInput = document.getElementById('grok-manual-index');
+    if (slotInput) {
+      slotInput.value = nextSlot;
+      slotInput.min = 1;
+      slotInput.title = `Slot đang dùng: ${[...usedSlots].sort((a,b)=>a-b).join(', ')}. Slot trống: ${nextSlot}`;
+    }
+
+    box.innerHTML = items.map(acc => `
+      <div class="account-block" style="margin-top:10px;">
+        <div style="display:flex;align-items:center;gap:10px;">
+          <div class="account-index" style="width:28px;height:28px;border-radius:50%;background:var(--pink-light);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:13px;flex-shrink:0;">${acc.index + 1}</div>
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:6px;">
+              <span style="font-weight:700;font-size:13px;">${acc.email || 'Grok #' + (acc.index + 1)}</span>
+              <span id="grok-tier-badge-${acc.index}"></span>
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px;">${acc.last_login ? '🕐 ' + acc.last_login : (acc.cookie_mask ? '✓ Đã đăng nhập' : 'Chưa đăng nhập')}</div>
+            ${acc.last_error ? `<div style="font-size:11px;color:var(--red);margin-top:3px;">${acc.last_error}</div>` : ''}
+          </div>
+          <label class="studio-bar-toggle t2v-toggle-label" style="margin:0;">
+            <input type="checkbox" ${acc.enabled ? 'checked' : ''} onchange="Settings.toggleGrokAccount(${acc.index}, this.checked)">
+            <span class="t2v-toggle-track"></span>
+            Bật
+          </label>
+          <button class="btn btn-secondary btn-sm" data-grok-check="${acc.index}" onclick="Settings.checkGrokAccount(${acc.index})">Check</button>
+          <button class="btn btn-secondary btn-sm" onclick="Settings.openGrokProfile(${acc.index})" title="Mở browser profile Grok">🌐</button>
+          <button class="btn btn-secondary btn-sm" onclick="Settings.deleteGrokAccount(${acc.index})" style="color:var(--red);">Xóa</button>
+        </div>
+      </div>
+    `).join('');
+  }
+
+  async function loginGrokAccounts() {
+    const input = document.getElementById('cfg-grok-login-lines');
+    const btn = document.getElementById('btn-grok-login');
+    const statusEl = document.getElementById('grok-login-status');
+    const lines = input?.value.trim() || '';
+    if (!lines) return toast('Nhập tài khoản Grok dạng email|mật khẩu', 'error');
+
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang login...'; }
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Đang chuẩn bị...'; }
+
+    let jobId = null;
+    try {
+      const res = await API.post('/api/grok/accounts/login', { lines });
+      jobId = res.job_id;
+    } catch (e) {
+      if (btn) { btn.disabled = false; btn.textContent = 'Login Chrome'; }
+      if (statusEl) statusEl.style.display = 'none';
+      return toast('Login Grok lỗi: ' + (e.message || e), 'error', 7000);
+    }
+
+    // Poll status every 2s
+    const poll = async () => {
+      try {
+        const s = await API.get(`/api/grok/accounts/login-status/${jobId}`);
+        if (statusEl) statusEl.textContent = s.message || '...';
+        if (s.status === 'done') {
+          if (btn) { btn.disabled = false; btn.textContent = 'Login Chrome'; }
+          if (statusEl) statusEl.style.display = 'none';
+          renderGrokAccounts(s.accounts || []);
+          if (s.ok) {
+            if (input) input.value = '';
+            toast('Đã lưu tài khoản Grok', 'success');
+          } else {
+            const err = (s.results || []).map(r => r.error).filter(Boolean).join('; ') || 'Login Grok thất bại';
+            toast(err, 'error', 7000);
+          }
+        } else {
+          setTimeout(poll, 2000);
+        }
+      } catch (e) {
+        if (btn) { btn.disabled = false; btn.textContent = 'Login Chrome'; }
+        if (statusEl) statusEl.style.display = 'none';
+        toast('Lỗi kiểm tra trạng thái login: ' + (e.message || e), 'error', 5000);
+      }
+    };
+    setTimeout(poll, 2000);
+  }
+
+  async function toggleGrokAccount(index, enabled) {
+    const res = await API.post('/api/grok/accounts/toggle', { index, enabled });
+    renderGrokAccounts(res.accounts || []);
+  }
+
+  async function checkGrokAccount(index) {
+    const btn = document.querySelector(`[data-grok-check="${index}"]`);
+    if (btn) { btn.disabled = true; btn.textContent = '...'; }
+    try {
+      const res = await API.post(`/api/grok/accounts/${index}/health`, {});
+      if (!res.ok) {
+        toast('Grok account lỗi: ' + (res.error || 'unknown'), 'error', 6000);
+        return;
+      }
+      const tier = res.tier || '';
+      let label = 'Live';
+      if (tier === 'SUBSCRIPTION_TIER_GROK_PRO') label = 'Live • PRO';
+      else if (tier === 'SUBSCRIPTION_TIER_SUPER_GROK_PRO') label = 'Live • Heavy';
+      toast(`Grok #${index + 1}: ${label}`, 'success', 5000);
+      // Update badge in row
+      const badgeEl = document.getElementById(`grok-tier-badge-${index}`);
+      if (badgeEl) {
+        if (tier === 'SUBSCRIPTION_TIER_GROK_PRO') {
+          badgeEl.innerHTML = '<span style="background:#7c3aed;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;">PRO</span>';
+        } else if (tier === 'SUBSCRIPTION_TIER_SUPER_GROK_PRO') {
+          badgeEl.innerHTML = '<span style="background:#d97706;color:#fff;font-size:10px;font-weight:700;padding:1px 6px;border-radius:99px;">Heavy</span>';
+        } else {
+          badgeEl.innerHTML = '';
+        }
+      }
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Check'; }
+    }
+  }
+
+  async function deleteGrokAccount(index) {
+    if (!confirm(`Xóa tài khoản Grok #${index + 1}?`)) return;
+    const res = await API.delete(`/api/grok/accounts/${index}`);
+    renderGrokAccounts(res.accounts || []);
+    toast('Đã xóa tài khoản Grok', 'success');
+  }
+
+  async function openGrokProfile(index) {
+    try {
+      const res = await API.post('/api/grok/accounts/open-profile', { index });
+      toast(res.ok ? 'Đã mở Chrome profile Grok' : 'Không mở được Chrome profile Grok', res.ok ? 'success' : 'error');
+    } catch (e) {
+      toast('Không mở được Chrome profile: ' + (e.message || e), 'error', 6000);
+    }
+  }
+
+  function _validateGrokSlot(indexEl) {
+    const slot = parseInt(indexEl?.value || '1', 10);
+    const grokContainer = document.getElementById('grok-accounts-container');
+    const usedSlots = new Set(
+      [...(grokContainer ? grokContainer.querySelectorAll('.account-index') : [])].map(el => parseInt(el.textContent.trim(), 10))
+    );
+    if (usedSlots.has(slot)) {
+      toast(`Slot ${slot} đã có tài khoản. Chọn slot khác (đang trống: ${(() => { let s=1; while(usedSlots.has(s)) s++; return s; })()})`, 'error', 5000);
+      return false;
+    }
+    return true;
+  }
+
+  async function openGrokBrowser() {
+    const indexEl = document.getElementById('grok-manual-index');
+    const statusEl = document.getElementById('grok-manual-status');
+    if (!_validateGrokSlot(indexEl)) return;
+
+    // Check browser installed first
+    try {
+      const bs = await API.get('/api/grok/browser-status');
+      if (!bs?.installed) {
+        if (typeof window._showGrokBrowserModal === 'function') window._showGrokBrowserModal();
+        else toast('CloakBrowser chưa được tải. Hãy vào tab Grok Studio để tải về.', 'error', 6000);
+        return;
+      }
+    } catch (_) { }
+
+    const index = Math.max(0, parseInt(indexEl?.value || '1', 10) - 1);
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Đang mở browser...'; }
+    try {
+      const res = await API.post('/api/grok/accounts/open-browser', { index });
+      if (statusEl) statusEl.textContent = `Browser đã mở (${res.mode || ''}). Hãy login xong rồi ấn "Load Cookie".`;
+      toast('Browser đã mở, hãy login vào Grok', 'success', 5000);
+    } catch (e) {
+      if (statusEl) { statusEl.style.display = 'none'; }
+      const msg = e.message || String(e);
+      if (msg.includes('BROWSER_NOT_INSTALLED') || msg.includes('not installed')) {
+        if (typeof window._showGrokBrowserModal === 'function') window._showGrokBrowserModal();
+        else toast('CloakBrowser chưa được tải. Hãy vào tab Grok Studio để tải về.', 'error', 6000);
+      } else {
+        toast('Không mở được browser: ' + msg, 'error', 6000);
+      }
+    }
+  }
+
+  async function loadGrokCookie() {
+    const indexEl = document.getElementById('grok-manual-index');
+    const emailEl = document.getElementById('grok-manual-email');
+    const statusEl = document.getElementById('grok-manual-status');
+    if (!_validateGrokSlot(indexEl)) return;
+    const index = Math.max(0, parseInt(indexEl?.value || '1', 10) - 1);
+    const email = emailEl?.value.trim() || '';
+    if (statusEl) { statusEl.style.display = 'block'; statusEl.textContent = 'Đang load cookie...'; }
+
+    let jobId = null;
+    try {
+      const res = await API.post('/api/grok/accounts/load-cookie', { index, email });
+      jobId = res.job_id;
+    } catch (e) {
+      if (statusEl) statusEl.textContent = 'Lỗi: ' + (e.message || e);
+      return toast('Load cookie thất bại: ' + (e.message || e), 'error', 7000);
+    }
+
+    const poll = async () => {
+      try {
+        const s = await API.get(`/api/grok/accounts/load-cookie-status/${jobId}`);
+        if (statusEl) statusEl.textContent = s.message || '...';
+        if (s.status === 'done') {
+          if (s.ok) {
+            if (statusEl) statusEl.style.display = 'none';
+            renderGrokAccounts(s.accounts || []);
+            toast('Đã lưu cookie Grok thành công!', 'success');
+          } else {
+            if (statusEl) statusEl.textContent = 'Lỗi: ' + s.message;
+            toast('Load cookie thất bại: ' + s.message, 'error', 7000);
+          }
+        } else {
+          setTimeout(poll, 2000);
+        }
+      } catch (e) {
+        if (statusEl) statusEl.textContent = 'Lỗi poll: ' + (e.message || e);
+        toast('Lỗi kiểm tra trạng thái: ' + (e.message || e), 'error', 5000);
+      }
+    };
+    setTimeout(poll, 2000);
+  }
+
   Object.assign(window.Settings, {
     saveProjectId,
     deleteAccount,
@@ -552,6 +801,13 @@
     reloadAccount,
     openImportAccountsModal,
     handleImportFile,
+    loginGrokAccounts,
+    toggleGrokAccount,
+    checkGrokAccount,
+    deleteGrokAccount,
+    openGrokProfile,
+    openGrokBrowser,
+    loadGrokCookie,
     reload: loadSettings,
   });
 

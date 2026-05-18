@@ -7,7 +7,9 @@ __pycache__/
 venv/
 
 chrome_user_data/
+cloak_user_data/
 data/
+chrome/
 
 config/config.json
 config/private_key.pem
@@ -31,3 +33,5 @@ exemple/
 *.log
 Thumbs.db
 config/.license_cache
+ffmpeg.exe
+ffprobe.exe
