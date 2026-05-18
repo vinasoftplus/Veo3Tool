@@ -92,7 +92,8 @@
       "Bash(py -3.10 -c ' *)",
       "Bash(python3 -c \"from cloakbrowser.config import get_binary_path, get_effective_version; v=get_effective_version\\(\\); p=get_binary_path\\(v\\); print\\('version:', v\\); print\\('binary path:', p\\); print\\('exists:', p.exists\\(\\)\\)\")",
       "Bash(python -c \"from cloakbrowser.config import get_binary_path, get_effective_version; v=get_effective_version\\(\\); p=get_binary_path\\(v\\); print\\('version:', v\\); print\\('binary path:', p\\); print\\('exists:', p.exists\\(\\)\\)\")",
-      "Bash(git -C /c/Users/PC/Desktop/Veo3Tool log --oneline -5)"
+      "Bash(git -C /c/Users/PC/Desktop/Veo3Tool log --oneline -5)",
+      "Bash(python -c \"from cloakbrowser.config import get_binary_path, get_effective_version; v=get_effective_version\\(\\); p=get_binary_path\\(v\\); print\\('exists:', p.exists\\(\\), '|', p\\)\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1",

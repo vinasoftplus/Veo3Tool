@@ -4,10 +4,16 @@ function _appHeaders(extra) {
   return h;
 }
 
+async function _apiJson(r) {
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data?.detail || data?.error || data?.message || `HTTP ${r.status}`);
+  return data;
+}
+
 const API = {
   async get(path) {
     const r = await fetch(path, { headers: _appHeaders() });
-    return r.json();
+    return _apiJson(r);
   },
   async post(path, data) {
     const r = await fetch(path, {
@@ -15,15 +21,15 @@ const API = {
       headers: _appHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify(data),
     });
-    return r.json();
+    return _apiJson(r);
   },
   async postForm(path, formData) {
     const r = await fetch(path, { method: 'POST', headers: _appHeaders(), body: formData });
-    return r.json();
+    return _apiJson(r);
   },
   async delete(path) {
     const r = await fetch(path, { method: 'DELETE', headers: _appHeaders() });
-    return r.json();
+    return _apiJson(r);
   },
   async patch(path, data) {
     const r = await fetch(path, {
@@ -31,7 +37,7 @@ const API = {
       headers: _appHeaders({'Content-Type': 'application/json'}),
       body: JSON.stringify(data),
     });
-    return r.json();
+    return _apiJson(r);
   },
 };
 
