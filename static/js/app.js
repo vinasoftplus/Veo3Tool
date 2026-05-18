@@ -86,8 +86,8 @@ function switchTab(tabId) {
   const initFn = window[fnKey];
   if (typeof initFn === 'function') {
     initFn();
-    // settings tab reloads accounts on every visit — don't null it out
-    if (fnKey !== 'init_settings') window[fnKey] = null;
+    // settings + grok tabs reload on every visit — don't null them out
+    if (fnKey !== 'init_settings' && fnKey !== 'init_grok') window[fnKey] = null;
   }
 }
 

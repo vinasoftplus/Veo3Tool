@@ -1594,11 +1594,13 @@
     deleteOutput(cardId, idx) { const c = cards.find(x => x.id === cardId); if (c) { c.outputs.splice(idx, 1); if (c.outputIndex >= c.outputs.length) c.outputIndex = Math.max(0, c.outputs.length - 1); renderAll(); } },
   };
 
-  function _ensureBrowserOnce() {
+  function _ensureBrowser() {
     API.get('/api/grok/browser-status').then(d => {
       if (d && d.installed) return;
       _showBrowserInstallModal();
-    }).catch(() => { });
+    }).catch(() => {
+      _showBrowserInstallModal();
+    });
   }
 
   function _showBrowserInstallModal() {
@@ -1628,7 +1630,7 @@
           <div id="grok-dl-msg" style="font-size:12px;color:var(--text3,#888);text-align:center;">Đang kết nối...</div>
         </div>
         <div id="grok-browser-btn-wrap" style="display:flex;gap:10px;justify-content:flex-end;">
-          <button id="grok-browser-cancel-btn" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border,#444);background:transparent;color:var(--text2,#aaa);cursor:pointer;font-size:13px;" onclick="document.getElementById('grok-browser-modal').remove()">Huỷ</button>
+          <button id="grok-browser-cancel-btn" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border,#444);background:transparent;color:var(--text2,#aaa);cursor:pointer;font-size:13px;" onclick="document.getElementById('grok-browser-modal').remove(); if(typeof switchTab==='function') switchTab('studio');">Huỷ</button>
           <button id="grok-browser-download-btn" style="padding:8px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#a78bfa,#818cf8);color:#fff;cursor:pointer;font-size:13px;font-weight:600;" onclick="window._startGrokBrowserDownload()">Tải về</button>
         </div>
       </div>`;
@@ -1672,14 +1674,18 @@
     };
   };
 
+  let _grokInited = false;
   window.init_grok = function () {
-    bind();
-    applyCardLayout();
-    renderAll();
-    API.get('/api/settings/config-full').then(d => {
-      const v = parseInt((d?.data ?? d)?.MAX_CONCURRENT_GROK ?? 2, 10);
-      _grokMaxConcurrent = Math.min(5, Math.max(1, isNaN(v) ? 2 : v));
-    }).catch(() => { });
-    _ensureBrowserOnce();
+    if (!_grokInited) {
+      _grokInited = true;
+      bind();
+      applyCardLayout();
+      renderAll();
+      API.get('/api/settings/config-full').then(d => {
+        const v = parseInt((d?.data ?? d)?.MAX_CONCURRENT_GROK ?? 2, 10);
+        _grokMaxConcurrent = Math.min(5, Math.max(1, isNaN(v) ? 2 : v));
+      }).catch(() => { });
+    }
+    _ensureBrowser();
   };
 })();
