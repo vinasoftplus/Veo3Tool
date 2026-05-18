@@ -1603,6 +1603,13 @@
     });
   }
 
+  function _closeBrowserModal() {
+    document.getElementById('grok-browser-modal')?.remove();
+    // Switch back to studio tab
+    const studioNav = document.querySelector('.nav-item[data-tab="studio"]');
+    if (studioNav) studioNav.click();
+  }
+
   function _showBrowserInstallModal() {
     if (document.getElementById('grok-browser-modal')) return;
     const modal = document.createElement('div');
@@ -1630,7 +1637,7 @@
           <div id="grok-dl-msg" style="font-size:12px;color:var(--text3,#888);text-align:center;">Đang kết nối...</div>
         </div>
         <div id="grok-browser-btn-wrap" style="display:flex;gap:10px;justify-content:flex-end;">
-          <button id="grok-browser-cancel-btn" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border,#444);background:transparent;color:var(--text2,#aaa);cursor:pointer;font-size:13px;" onclick="document.getElementById('grok-browser-modal').remove(); if(typeof switchTab==='function') switchTab('studio');">Huỷ</button>
+          <button id="grok-browser-cancel-btn" style="padding:8px 18px;border-radius:8px;border:1px solid var(--border,#444);background:transparent;color:var(--text2,#aaa);cursor:pointer;font-size:13px;" onclick="window._closeBrowserModal()">Huỷ</button>
           <button id="grok-browser-download-btn" style="padding:8px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#a78bfa,#818cf8);color:#fff;cursor:pointer;font-size:13px;font-weight:600;" onclick="window._startGrokBrowserDownload()">Tải về</button>
         </div>
       </div>`;
@@ -1638,6 +1645,7 @@
   }
 
   window._showGrokBrowserModal = _showBrowserInstallModal;
+  window._closeBrowserModal = _closeBrowserModal;
 
   window._startGrokBrowserDownload = function () {
     const progressWrap = document.getElementById('grok-browser-progress-wrap');
