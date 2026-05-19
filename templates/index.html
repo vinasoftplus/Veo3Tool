@@ -11,7 +11,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/app.css?v=27">
+  <link rel="stylesheet" href="/static/css/app.css?v=34">
 </head>
 
 <body>
@@ -135,6 +135,14 @@
             <rect x="2" y="6" width="13" height="12" rx="2"/>
           </svg>
           <span class="nav-label">Video Editor</span>
+        </div>
+        <div class="nav-item" data-tab="startend-video" style="opacity:0.4;pointer-events:none;" title="Tính năng đang phát triển">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="6" width="8" height="12" rx="1.5"/>
+            <rect x="14" y="6" width="8" height="12" rx="1.5"/>
+            <path d="M10 12h4M10 9l-2 3 2 3M14 9l2 3-2 3"/>
+          </svg>
+          <span class="nav-label">Start-End</span>
         </div>
       </div>
 
@@ -476,65 +484,224 @@
 
         <!-- START-END VIDEO ════════════════════════════ -->
         <div id="tab-startend-video" class="tab-panel veo-page">
-          <div class="t2v-toolbar">
-            <button id="se-gen-all" class="btn btn-primary">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-                <polygon points="5 3 19 12 5 21 5 3" />
-              </svg>
-              Tạo toàn bộ (<span id="se-pending-count">0</span>)
-            </button>
-            <button id="se-stop" class="btn btn-danger" style="display:none;">Dừng toàn bộ</button>
-            <button id="se-save-all" class="btn btn-secondary">Lưu (<span id="se-saved-count">0</span>)</button>
-            <button id="se-clear-all" class="btn btn-secondary">Xóa toàn bộ card</button>
-            <div class="t2v-toolbar-sep"></div>
-            <div class="t2v-ctrl-group">
-              <button class="se-aspect-btn active" data-val="VIDEO_ASPECT_RATIO_LANDSCAPE">16:9</button>
-              <button class="se-aspect-btn" data-val="VIDEO_ASPECT_RATIO_PORTRAIT">9:16</button>
-            </div>
-            <select id="se-model" class="t2v-select" title="Model">
-              <option value="auto">Auto</option>
-              <option value="flow_fast_relaxed">3.1 Fast relaxed</option>
-              <option value="flow_fast_no_ultra">3.1 Fast (not ultra)</option>
-              <option value="flow_fast">3.1 Fast</option>
-            </select>
-            <div class="t2v-ctrl-group" id="se-output-group">
-              <span style="font-size:11px;color:var(--text2);">Outputs:</span>
-              <button class="se-count-btn active" data-val="1">1</button>
-              <button class="se-count-btn" data-val="2">2</button>
-            </div>
-            <div class="t2v-toolbar-sep"></div>
-            <label class="t2v-toggle-label" title="Tự động upscale 1080p khi video xong">
-              <input type="checkbox" id="se-auto-upscale">
-              <span class="t2v-toggle-track"></span>
-              Auto Upscale 1080p
-            </label>
-            <label class="t2v-toggle-label" title="Tự động tải video vào folder đã chọn">
-              <input type="checkbox" id="se-auto-download">
-              <span class="t2v-toggle-track"></span>
-              Auto Download
-            </label>
-            <div id="se-folder-row" style="display:flex;align-items:center;gap:6px;">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="var(--orange)" stroke="none">
-                <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z" />
-              </svg>
-              <span id="se-folder-label"
-                style="font-size:11px;color:var(--text2);max-width:200px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">Chưa
-                chọn folder</span>
-              <button id="se-choose-folder" class="btn btn-secondary btn-sm">Chọn</button>
-            </div>
-            <div class="t2v-toolbar-sep"></div>
-            <button id="se-import-prompt" class="btn btn-secondary">Import Prompt</button>
-            <input type="file" id="se-import-file" accept=".txt" style="display:none;">
-            <button id="se-add-card" class="btn btn-secondary">Thêm card</button>
-          </div>
+          <div class="studio-page">
+            <div id="se-sticky-bar" class="studio-sticky-bar">
 
-          <div id="se-cards"></div>
-          <div id="se-empty" style="text-align:center;padding:60px 20px;color:var(--text3);">
-            <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
-              style="margin:0 auto 12px;display:block;opacity:.3;">
-              <polygon points="5 3 19 12 5 21 5 3" />
-            </svg>
-            <div>Import prompt hoặc click "Thêm card" để bắt đầu</div>
+              <!-- Row 1: Action buttons (copy Studio) -->
+              <div class="studio-toolbar-top">
+                <div class="studio-toolbar-top-left">
+                  <button id="se-gen-all" class="btn btn-primary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <polygon points="23 7 16 12 23 17 23 7"/><rect x="1" y="5" width="15" height="14" rx="2"/>
+                    </svg>
+                    Tạo tất cả video (<span id="se-pending-count">0</span>)
+                  </button>
+                  <button id="se-stop" class="btn btn-danger btn-sm" style="display:none;">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    </svg>
+                    Dừng
+                  </button>
+                </div>
+                <div class="studio-toolbar-top-right">
+                  <button id="se-import-prompt" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z"/>
+                      <polyline points="14 2 14 8 20 8"/>
+                      <line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+                      <polyline points="10 9 9 9 8 9"/>
+                    </svg>
+                    Import Prompt
+                  </button>
+                  <div class="studio-save-split">
+                    <button id="se-save-all" class="btn btn-secondary btn-sm">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4"/>
+                        <polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+                      </svg>
+                      Lưu video (<span id="se-saved-count">0</span>)
+                    </button>
+                    <div class="studio-save-quality-wrap">
+                      <button id="se-save-quality-toggle" class="btn btn-secondary btn-sm" title="Chọn chất lượng">1080p ▾</button>
+                      <div id="se-save-quality-menu">
+                        <div class="studio-quality-opt" data-q="1080">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                          1080p (Upscale)
+                        </div>
+                        <div class="studio-quality-opt" data-q="720">
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5" style="opacity:0;"><polyline points="20 6 9 17 4 12"/></svg>
+                          720p (Gốc)
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                  <button id="se-toggle-toolbar" class="btn btn-secondary btn-sm" title="Ẩn/hiện phần cài đặt toolbar">
+                    Ẩn Toolbar
+                  </button>
+                </div>
+              </div>
+
+              <!-- Row 2: Add card + Aspect + Model dropdowns (cùng 1 hàng) -->
+              <div class="studio-toolbar-mid">
+                <div class="studio-toolbar-mid-row">
+                  <button id="se-add-card" class="btn btn-primary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                      <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+                    </svg>
+                    Thêm card
+                  </button>
+                  <div class="studio-aspect-group">
+                    <button type="button" class="se-aspect-btn studio-aspect-btn active" data-val="VIDEO_ASPECT_RATIO_LANDSCAPE" title="Ngang 16:9">16:9</button>
+                    <button type="button" class="se-aspect-btn studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_PORTRAIT" title="Dọc 9:16">9:16</button>
+                    <button type="button" class="se-aspect-btn studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_SQUARE" title="Vuông 1:1">1:1</button>
+                  </div>
+                  <div class="studio-model-field">
+                    <div class="studio-model-label">MODEL VIDEO</div>
+                    <select id="se-model" class="studio-bar-select" title="Model video">
+                      <option value="flow_fast" selected data-credit="10 credit">Veo Fast</option>
+                      <option value="flow_lite_low_priority" data-credit="0 credit">Veo Lite Low</option>
+                      <option value="flow_lite" data-credit="5 credit">Veo Lite</option>
+                    </select>
+                  </div>
+                  <div class="studio-model-field">
+                    <div class="studio-model-label">VIDEO / CARD</div>
+                    <select id="se-output-count" class="studio-bar-select" title="Số video / card">
+                      <option value="1" selected>Vid×1</option>
+                      <option value="2">Vid×2</option>
+                    </select>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Row 4: Toggles + folder + filter (copy Studio) -->
+              <div class="studio-toolbar-bottom">
+                <div class="studio-toolbar-bottom-left">
+                  <label class="studio-bar-toggle t2v-toggle-label" title="Auto upscale 1080p khi xong">
+                    <input type="checkbox" id="se-auto-upscale">
+                    <span class="t2v-toggle-track"></span>
+                    1080p
+                  </label>
+                  <label class="studio-bar-toggle t2v-toggle-label" title="Tự lưu video khi xong">
+                    <input type="checkbox" id="se-auto-download">
+                    <span class="t2v-toggle-track"></span>
+                    <span id="se-auto-download-label">Auto Lưu (chưa chọn folder)</span>
+                  </label>
+                  <button id="se-choose-folder" class="btn btn-secondary btn-sm studio-folder-btn" title="Chọn folder lưu video">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="var(--orange)" stroke="none">
+                      <path d="M10 4H4c-1.1 0-2 .9-2 2v12c0 1.1.9 2 2 2h16c1.1 0 2-.9 2-2V8c0-1.1-.9-2-2-2h-8l-2-2z"/>
+                    </svg>
+                    <span id="se-folder-label">Folder</span>
+                  </button>
+                </div>
+                <div class="studio-toolbar-bottom-right">
+                  <button id="se-clear-all" class="btn btn-secondary btn-sm">Xóa tất cả card</button>
+                  <div class="studio-filter-wrap">
+                    <button id="se-filter-toggle" class="studio-filter-toggle" aria-expanded="false" type="button">
+                      <span class="studio-filter-toggle-top">BỘ LỌC</span>
+                      <span id="se-filter-current" class="studio-filter-toggle-value">Tất cả : 0</span>
+                      <span class="studio-filter-caret">▾</span>
+                    </button>
+                    <div id="se-filter-menu" class="studio-filter-menu">
+                      <button class="studio-filter-menu-item active" data-se-filter="all" type="button">
+                        <span class="studio-filter-dot total"></span>
+                        <span class="studio-filter-text">Tất cả</span>
+                        <span id="se-filter-total-count" class="studio-filter-count">0</span>
+                      </button>
+                      <button class="studio-filter-menu-item" data-se-filter="running" type="button">
+                        <span class="studio-filter-dot running"></span>
+                        <span class="studio-filter-text">Đang chạy</span>
+                        <span id="se-filter-running-count" class="studio-filter-count">0</span>
+                      </button>
+                      <button class="studio-filter-menu-item" data-se-filter="completed" type="button">
+                        <span class="studio-filter-dot completed"></span>
+                        <span class="studio-filter-text">Xong</span>
+                        <span id="se-filter-done-count" class="studio-filter-count">0</span>
+                      </button>
+                      <button class="studio-filter-menu-item" data-se-filter="failed" type="button">
+                        <span class="studio-filter-dot failed"></span>
+                        <span class="studio-filter-text">Lỗi</span>
+                        <span id="se-filter-failed-count" class="studio-filter-count">0</span>
+                      </button>
+                      <button class="studio-filter-menu-item" data-se-filter="idle" type="button">
+                        <span class="studio-filter-dot total" style="background:var(--text3)"></span>
+                        <span class="studio-filter-text">Chờ</span>
+                        <span id="se-filter-idle-count" class="studio-filter-count">0</span>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+            </div><!-- /se-sticky-bar -->
+
+            <!-- Hidden file inputs -->
+            <input type="file" id="se-prompts-file-txt" accept=".txt" style="display:none;">
+            <input type="file" id="se-prompts-file-json" accept=".json" style="display:none;">
+            <input type="file" id="se-prompts-file-xlsx" accept=".xlsx,.xls" style="display:none;">
+
+            <div id="se-cards" style="padding:16px;display:flex;flex-direction:column;gap:12px;"></div>
+            <div id="se-empty" style="text-align:center;padding:60px 20px;color:var(--text3);">
+              <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
+                style="margin:0 auto 12px;display:block;opacity:.3;">
+                <rect x="2" y="6" width="8" height="12" rx="1.5"/>
+                <rect x="14" y="6" width="8" height="12" rx="1.5"/>
+                <path d="M10 12h4"/>
+              </svg>
+              <div>Thêm card hoặc Import prompt để bắt đầu</div>
+              <div style="font-size:12px;margin-top:6px;color:var(--text3);">Mỗi card gồm ảnh Start + ảnh End → Veo tạo video transition</div>
+            </div>
+          </div><!-- /studio-page -->
+        </div>
+
+        <!-- SE Import Prompt Popup -->
+        <div id="se-import-popup" class="studio-popup-overlay" style="display:none;">
+          <div class="studio-modal" style="max-width:480px;">
+            <div class="studio-modal-header">
+              <div>
+                <div class="studio-modal-title">Import Prompt</div>
+                <div class="studio-modal-subtitle">Chọn định dạng file để import vào Start-End</div>
+              </div>
+              <button class="studio-modal-close"
+                onclick="document.getElementById('se-import-popup').style.display='none'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div class="studio-modal-body">
+              <div class="studio-import-modes">
+                <button id="se-import-text-btn" class="studio-import-mode-btn" type="button">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
+                    <polyline points="14 2 14 8 20 8" />
+                    <line x1="16" y1="13" x2="8" y2="13" /><line x1="16" y1="17" x2="8" y2="17" />
+                  </svg>
+                  <span class="studio-import-mode-name">TXT</span>
+                  <span class="studio-import-mode-desc">Mỗi dòng = 1 prompt</span>
+                </button>
+                <button id="se-import-json-btn" class="studio-import-mode-btn studio-import-mode-btn--active" type="button">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <polyline points="16 18 22 12 16 6" /><polyline points="8 6 2 12 8 18" />
+                  </svg>
+                  <span class="studio-import-mode-name">JSON</span>
+                  <span class="studio-import-mode-desc">Mảng scene với prompt</span>
+                </button>
+                <button id="se-import-xlsx-btn" class="studio-import-mode-btn" type="button">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="3" y="3" width="18" height="18" rx="2" /><path d="M3 9h18M9 21V9" />
+                    <path d="m7 13 2 2-2 2M13 13l2 2-2 2" />
+                  </svg>
+                  <span class="studio-import-mode-name">Excel</span>
+                  <span class="studio-import-mode-desc">Mỗi hàng = 1 prompt</span>
+                </button>
+              </div>
+              <div class="studio-import-replace-hint" id="se-import-replace-hint" style="display:none;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/>
+                </svg>
+                Đang có <strong id="se-import-card-count">0</strong> card. Import sẽ <strong>thay thế prompt</strong> — số prompt phải khớp số card.
+              </div>
+            </div>
           </div>
         </div>
 
@@ -2373,10 +2540,10 @@
       </div>
 
       <!-- Image area -->
-      <div
-        style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;">
-        <img id="studio-popup-img" src="" alt=""
-          style="max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;display:block;">
+      <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;position:relative;">
+        <button onclick="Studio.navigatePopup(-1)" title="Ảnh trước" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);z-index:10;background:rgba(0,0,0,0.45);border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;line-height:1;">&#8249;</button>
+        <img id="studio-popup-img" src="" alt="" style="max-width:100%;max-height:75vh;object-fit:contain;border-radius:8px;display:block;">
+        <button onclick="Studio.navigatePopup(1)" title="Ảnh tiếp" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:10;background:rgba(0,0,0,0.45);border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;line-height:1;">&#8250;</button>
       </div>
 
     </div>
@@ -2509,8 +2676,10 @@
           <button style="background:none;border:1px solid var(--border);border-radius:8px;width:32px;height:32px;cursor:pointer;font-size:18px;color:var(--text2);display:flex;align-items:center;justify-content:center;line-height:1;" onclick="GrokStudio.closeImagePopup()">×</button>
         </div>
       </div>
-      <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;">
+      <div style="flex:1;overflow:auto;display:flex;align-items:center;justify-content:center;background:var(--bg3);padding:12px;min-height:300px;position:relative;">
+        <button onclick="GrokStudio.navigateImagePopup(-1)" title="Ảnh trước" style="position:absolute;left:10px;top:50%;transform:translateY(-50%);z-index:10;background:rgba(0,0,0,0.45);border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;line-height:1;">&#8249;</button>
         <img id="grok-image-popup-img" src="" style="max-width:100%;max-height:75vh;border-radius:8px;display:block;object-fit:contain;">
+        <button onclick="GrokStudio.navigateImagePopup(1)" title="Ảnh tiếp" style="position:absolute;right:10px;top:50%;transform:translateY(-50%);z-index:10;background:rgba(0,0,0,0.45);border:none;border-radius:50%;width:36px;height:36px;cursor:pointer;color:#fff;font-size:20px;display:flex;align-items:center;justify-content:center;line-height:1;">&#8250;</button>
       </div>
     </div>
   </div>
@@ -2989,6 +3158,7 @@
   <script src="/static/js/tabs/studio_unified.js?v=27"></script>
   <script src="/static/js/tabs/grok_studio.js?v=4"></script>
   <script src="/static/js/tabs/video_editor.js?v=1"></script>
+  <script src="/static/js/tabs/startend_video.js?v=6"></script>
   <script src="/static/js/notifications.js?v=1"></script>
 </body>
 

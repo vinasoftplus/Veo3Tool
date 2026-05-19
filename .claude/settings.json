@@ -93,7 +93,11 @@
       "Bash(python3 -c \"from cloakbrowser.config import get_binary_path, get_effective_version; v=get_effective_version\\(\\); p=get_binary_path\\(v\\); print\\('version:', v\\); print\\('binary path:', p\\); print\\('exists:', p.exists\\(\\)\\)\")",
       "Bash(python -c \"from cloakbrowser.config import get_binary_path, get_effective_version; v=get_effective_version\\(\\); p=get_binary_path\\(v\\); print\\('version:', v\\); print\\('binary path:', p\\); print\\('exists:', p.exists\\(\\)\\)\")",
       "Bash(git -C /c/Users/PC/Desktop/Veo3Tool log --oneline -5)",
-      "Bash(python -c \"from cloakbrowser.config import get_binary_path, get_effective_version; v=get_effective_version\\(\\); p=get_binary_path\\(v\\); print\\('exists:', p.exists\\(\\), '|', p\\)\")"
+      "Bash(python -c \"from cloakbrowser.config import get_binary_path, get_effective_version; v=get_effective_version\\(\\); p=get_binary_path\\(v\\); print\\('exists:', p.exists\\(\\), '|', p\\)\")",
+      "Bash(node --check \"c:\\\\Users\\\\PC\\\\Desktop\\\\Veo3Tool\\\\static\\\\js\\\\tabs\\\\startend_video.js\")",
+      "Bash(python -c \"import cloakbrowser.download as d; import inspect; print\\(inspect.getfile\\(d\\)\\)\")",
+      "Bash(curl -s --connect-timeout 5 -o nul -w \"%{http_code}\" https://cloakbrowser.dev)",
+      "Bash(curl -s --connect-timeout 5 -o nul -w \"%{http_code}\" https://api.github.com/repos/CloakHQ/cloakbrowser/releases)"
     ],
     "additionalDirectories": [
       "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1",

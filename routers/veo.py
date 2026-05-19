@@ -465,10 +465,11 @@ async def startend_video(
     aspect_ratio: str = Form("VIDEO_ASPECT_RATIO_LANDSCAPE"),
     output_count: int = Form(1),
     model: str = Form("auto"),
+    account_index: int = Form(0),
 ):
     from adapters.google_labs import GoogleLabsAdapter
 
-    account = _get_account_or_raise()
+    account = _get_account_or_raise(preferred_index=account_index or None)
     account_index = int(account.get("_index") or 1)
     adapter = GoogleLabsAdapter()
     logger.info("Using %s for startend-video generation", _account_display(account))

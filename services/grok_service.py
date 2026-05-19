@@ -60,6 +60,13 @@ def cloak_browser_installed() -> bool:
         from cloakbrowser.config import get_binary_path, get_effective_version
         return get_binary_path(get_effective_version()).exists()
     except Exception:
+        pass
+    # Fallback for bundled exe where cloakbrowser package may not be available:
+    # scan ~/.cloakbrowser/ for any chrome.exe
+    try:
+        cloak_dir = Path.home() / ".cloakbrowser"
+        return any(cloak_dir.glob("*/chrome.exe"))
+    except Exception:
         return False
 
 
@@ -94,12 +101,18 @@ async def ensure_cloak_browser(progress_cb=None) -> None:
                     progress_cb(95, "Đang giải nén...")
                 )
 
+    try:
+        from cloakbrowser.download import ensure_binary
+    except ImportError:
+        if progress_cb:
+            await progress_cb(-1, "Không thể tải CloakBrowser: package cloakbrowser không có trong bản exe này. Vui lòng chạy bản Python.")
+        return
+
     handler = _ProgressHandler()
     cloak_logger = _logging.getLogger("cloakbrowser")
     cloak_logger.addHandler(handler)
     try:
         loop = asyncio.get_event_loop()
-        from cloakbrowser.download import ensure_binary
         await loop.run_in_executor(None, ensure_binary)
     finally:
         cloak_logger.removeHandler(handler)
@@ -1164,7 +1177,10 @@ class GrokClient:
 
 
 async def _legacy_grok_login_account(email: str, password: str, index: int) -> dict[str, Any]:
-    from playwright.async_api import async_playwright
+    try:
+        from playwright.async_api import async_playwright
+    except ImportError:
+        raise GrokError("Tính năng login tự động cần playwright. Vui lòng chạy bản Python hoặc cài playwright: pip install playwright && playwright install chromium")
 
     profile = f"GROK_{index + 1}"
     opened = await open_grok_profile(profile, GROK_SIGN_IN)

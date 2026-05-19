@@ -757,6 +757,17 @@
     _imagePopup = null;
   }
 
+  function navigateImagePopup(dir) {
+    if (!_imagePopup) return;
+    const { cardId, type } = _imagePopup;
+    const card = cards.find(c => c.id === cardId);
+    if (!card) return;
+    const list = type === 'ref' ? card.refs : card.images;
+    const newIdx = _imagePopup.idx + dir;
+    if (newIdx < 0 || newIdx >= list.length) return;
+    openImagePopup(cardId, type, newIdx);
+  }
+
   async function downloadImagePopup() {
     if (!_imagePopup) return;
     const { b64, url, accountIndex, cardNum, idx } = _imagePopup;
@@ -1576,6 +1587,7 @@
     previewImage,
     openImagePopup,
     closeImagePopup,
+    navigateImagePopup,
     downloadImagePopup,
     openVideoPopup,
     closeVideoPopup,

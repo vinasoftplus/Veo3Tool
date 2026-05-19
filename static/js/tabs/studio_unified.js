@@ -1131,6 +1131,16 @@
     popup = null;
   }
 
+  function navigatePopup(dir) {
+    if (!popup) return;
+    const card = cards.find(c => c.id === popup.cardId);
+    if (!card) return;
+    const list = popup.type === 'generated' ? card.images : popup.type === 'char' ? card.chars : card.refs;
+    const newIdx = popup.idx + dir;
+    if (newIdx < 0 || newIdx >= list.length) return;
+    openPopup(popup.cardId, popup.type, newIdx);
+  }
+
   function openPromptModal(card) {
     const modalId = 'studio-prompt-edit-modal';
     let modal = $(modalId);
@@ -2927,6 +2937,7 @@
   window.Studio = {
     openPopup,
     closePopup,
+    navigatePopup,
     saveToLib,
     downloadImg,
     addToCard,
