@@ -76,24 +76,6 @@ async def ensure_cloak_browser(progress_cb=None) -> None:
     if progress_cb:
         await progress_cb(0, "Đang tải CloakBrowser (~300MB), vui lòng chờ...")
 
-    class _ProgressHandler(_logging.Handler):
-        def emit(self, record):
-            msg = record.getMessage()
-            if "Download progress:" in msg:
-                try:
-                    pct = int(msg.split("%")[0].split()[-1])
-                    asyncio.get_event_loop().call_soon_threadsafe(
-                        asyncio.ensure_future,
-                        progress_cb(pct, f"Đang tải CloakBrowser... {pct}%")
-                    )
-                except Exception:
-                    pass
-            elif "Download complete" in msg or "Binary ready" in msg:
-                asyncio.get_event_loop().call_soon_threadsafe(
-                    asyncio.ensure_future,
-                    progress_cb(95, "Đang giải nén...")
-                )
-
     try:
         from cloakbrowser.download import ensure_binary
     except ImportError:
@@ -101,11 +83,24 @@ async def ensure_cloak_browser(progress_cb=None) -> None:
             await progress_cb(-1, "Không thể tải CloakBrowser: package cloakbrowser không có trong bản exe này. Vui lòng chạy bản Python.")
         return
 
+    loop = asyncio.get_running_loop()
+
+    class _ProgressHandler(_logging.Handler):
+        def emit(self, record):
+            msg = record.getMessage()
+            try:
+                if "Download progress:" in msg:
+                    pct = int(msg.split("%")[0].split()[-1])
+                    loop.call_soon_threadsafe(asyncio.ensure_future, progress_cb(pct, f"Đang tải CloakBrowser... {pct}%"))
+                elif "Download complete" in msg or "Binary ready" in msg:
+                    loop.call_soon_threadsafe(asyncio.ensure_future, progress_cb(95, "Đang giải nén..."))
+            except Exception:
+                pass
+
     handler = _ProgressHandler()
     cloak_logger = _logging.getLogger("cloakbrowser")
     cloak_logger.addHandler(handler)
     try:
-        loop = asyncio.get_event_loop()
         await loop.run_in_executor(None, ensure_binary)
     finally:
         cloak_logger.removeHandler(handler)
