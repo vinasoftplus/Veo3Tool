@@ -1608,9 +1608,11 @@
 
   function _ensureBrowser() {
     API.get('/api/grok/browser-status').then(d => {
+      console.log('[Grok] browser-status:', JSON.stringify(d));
       if (d && d.installed) return;
       _showBrowserInstallModal();
-    }).catch(() => {
+    }).catch((e) => {
+      console.log('[Grok] browser-status error:', e);
       _showBrowserInstallModal();
     });
   }
