@@ -57,13 +57,6 @@ _CLOAK_AVAILABLE: bool | None = None  # None = not checked yet
 def cloak_browser_installed() -> bool:
     """Check if CloakBrowser binary already exists on disk (no download needed)."""
     try:
-        from cloakbrowser.config import get_binary_path, get_effective_version
-        return get_binary_path(get_effective_version()).exists()
-    except Exception:
-        pass
-    # Fallback for bundled exe where cloakbrowser package may not be available:
-    # scan ~/.cloakbrowser/ for any chrome.exe
-    try:
         cloak_dir = Path.home() / ".cloakbrowser"
         return any(cloak_dir.glob("*/chrome.exe"))
     except Exception:
