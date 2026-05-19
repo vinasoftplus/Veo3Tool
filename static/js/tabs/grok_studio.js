@@ -1622,6 +1622,8 @@
     if (studioNav) studioNav.click();
   }
 
+  window._showGrokBrowserModal = function () { _showBrowserInstallModal(); };
+
   function _showBrowserInstallModal() {
     if (document.getElementById('grok-browser-modal')) return;
     const modal = document.createElement('div');

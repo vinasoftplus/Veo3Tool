@@ -741,8 +741,11 @@
       if (statusEl) { statusEl.style.display = 'none'; }
       const msg = e.message || String(e);
       if (msg.includes('BROWSER_NOT_INSTALLED') || msg.includes('not installed')) {
-        if (typeof window._showGrokBrowserModal === 'function') window._showGrokBrowserModal();
-        else toast('CloakBrowser chưa được tải. Hãy vào tab Grok Studio để tải về.', 'error', 6000);
+        const grokNav = document.querySelector('.nav-item[data-tab="grok"]');
+        if (grokNav) grokNav.click();
+        setTimeout(() => {
+          if (typeof window._showGrokBrowserModal === 'function') window._showGrokBrowserModal();
+        }, 300);
       } else {
         toast('Không mở được browser: ' + msg, 'error', 6000);
       }
