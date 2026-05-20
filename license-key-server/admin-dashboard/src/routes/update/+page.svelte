@@ -34,10 +34,20 @@
           <div class="text-xs text-gray-500 mb-1">Download URL</div>
           <a href={data.current.download_url} target="_blank"
             class="text-xs text-pink-400 hover:underline break-all">{data.current.download_url}</a>
-          <div class="mt-1">
+          <div class="mt-2 flex items-center gap-2">
             <span class="text-xs px-2 py-0.5 rounded-full {data.current.required ? 'bg-red-500/20 text-red-400' : 'bg-gray-700 text-gray-400'}">
               {data.current.required ? 'Bắt buộc update' : 'Tùy chọn'}
             </span>
+            <form method="POST" action="?/setRequired">
+              <input type="hidden" name="required" value={data.current.required ? 'false' : 'true'} />
+              <button type="submit"
+                class="text-xs px-2 py-0.5 rounded-full border cursor-pointer transition-colors
+                  {data.current.required
+                    ? 'border-gray-600 text-gray-400 hover:border-gray-500'
+                    : 'border-red-500/40 text-red-400 hover:border-red-500'}">
+                {data.current.required ? 'Chuyển Tùy chọn' : 'Chuyển Bắt buộc'}
+              </button>
+            </form>
           </div>
         </div>
       </div>

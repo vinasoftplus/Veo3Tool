@@ -44,6 +44,30 @@ func GetUpdateInfo(c *fiber.Ctx) error {
 	return c.JSON(fiber.Map{"ok": true, "version": info})
 }
 
+// PATCH /admin/update/required — chỉ đổi field required, không upload lại file
+func SetUpdateRequired(c *fiber.Ctx) error {
+	var body struct {
+		Required bool `json:"required"`
+	}
+	if err := c.BodyParser(&body); err != nil {
+		return c.Status(400).JSON(fiber.Map{"error": "invalid_body"})
+	}
+	data, err := os.ReadFile(versionFile)
+	if err != nil {
+		return c.Status(404).JSON(fiber.Map{"error": "no_version"})
+	}
+	var info VersionInfo
+	if err := json.Unmarshal(data, &info); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "version_file_corrupt"})
+	}
+	info.Required = body.Required
+	out, _ := json.MarshalIndent(info, "", "  ")
+	if err := os.WriteFile(versionFile, out, 0644); err != nil {
+		return c.Status(500).JSON(fiber.Map{"error": "save_failed"})
+	}
+	return c.JSON(fiber.Map{"ok": true, "version": info})
+}
+
 // POST /admin/update/upload — upload EXE + lưu version info
 func UploadUpdate(c *fiber.Ctx) error {
 	version := c.FormValue("version")

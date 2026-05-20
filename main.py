@@ -16,6 +16,44 @@ _EXE_DIR = Path(sys.argv[0]).resolve().parent
 _LOG_FILE = _EXE_DIR / "logs" / "startup.log"
 _LOG_FILE.parent.mkdir(parents=True, exist_ok=True)
 
+
+class _FileLogStream:
+    """stdout/stderr replacement for GUI onefile builds without a console."""
+
+    encoding = "utf-8"
+    errors = "replace"
+
+    def __init__(self, name: str):
+        self.name = name
+
+    def write(self, text):
+        if text is None:
+            return 0
+        text = str(text)
+        if not text:
+            return 0
+        try:
+            with open(_LOG_FILE, "a", encoding="utf-8") as f:
+                f.write(text)
+        except Exception:
+            pass
+        return len(text)
+
+    def flush(self):
+        return None
+
+    def isatty(self):
+        return False
+
+
+# Nuitka --windows-console-mode=disable sets these to None. Several libraries
+# (logging handlers, progress downloaders) still call stream.write().
+if sys.stdout is None:
+    sys.stdout = _FileLogStream("stdout")
+if sys.stderr is None:
+    sys.stderr = _FileLogStream("stderr")
+
+
 def _log(msg: str):
     ts = time.strftime("%Y-%m-%d %H:%M:%S")
     line = f"[{ts}] {msg}\n"
@@ -31,6 +69,21 @@ def _log(msg: str):
         pass
 
 _log(f"=== App starting === BASE_DIR={BASE_DIR} EXE_DIR={_EXE_DIR}")
+
+# Fix playwright in Nuitka onefile: driver lives in temp BASE_DIR, not EXE_DIR
+import os as _os
+_playwright_driver = BASE_DIR / "playwright" / "driver" / "playwright.cmd"
+if not _playwright_driver.exists():
+    # fallback: search common locations
+    for _candidate in [
+        BASE_DIR / "playwright" / "driver",
+        Path(sys.executable).parent / "playwright" / "driver",
+    ]:
+        if _candidate.exists():
+            _playwright_driver = _candidate / "playwright.cmd"
+            break
+_os.environ.setdefault("PLAYWRIGHT_DRIVER_PATH", str(_playwright_driver))
+_log(f"playwright driver path: {_playwright_driver} exists={_playwright_driver.exists()}")
 
 # Ensure data directories exist
 for _d in ("data/jobs", "data/characters", "data/media_cache", "config", "chrome_user_data", "ffmpeg"):

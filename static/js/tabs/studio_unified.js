@@ -3,7 +3,7 @@
   'use strict';
 
   const $ = id => document.getElementById(id);
-  const cfg = { aspect: 'VIDEO_ASPECT_RATIO_LANDSCAPE', model: 'flow_fast', imageModel: 'Nano Banana pro', imageCount: 1, videoCount: 1, autoUpscale: false, autoDownload: false, saveHandle: null, saveFolder: '' };
+  const cfg = { aspect: 'VIDEO_ASPECT_RATIO_LANDSCAPE', model: 'flow_fast', imageModel: 'Nano Banana pro', imageCount: 1, videoCount: 1, durationSeconds: 8, autoUpscale: false, autoDownload: false, saveHandle: null, saveFolder: '' };
   let ready = false;
   let stopAll = false;
   // Semaphore dùng chung cho cả tạo lẻ lẫn hàng loạt — tránh burst reCAPTCHA
@@ -739,6 +739,7 @@
     fd.append('aspect_ratio', cfg.aspect);
     fd.append('output_count', String(cfg.videoCount));
     fd.append('model', cfg.model);
+    fd.append('duration_seconds', String(cfg.durationSeconds || 8));
     fd.append('character_ids_json', JSON.stringify(card.chars.map(ch => ch.id)));
     if (accountIndex !== null) fd.append('account_index', String(accountIndex));
     const syncedCharacterRefs = [];
@@ -1869,6 +1870,7 @@
         if (value === 'flow_lite_low_priority') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 13h9"/><path d="M4 18h6"/><path d="M14 6l2 2 4-4"/><path d="M14 13h6"/><path d="M14 18h3"/></svg>', 'teal');
         if (value === 'flow_lite') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 10-14h-7l0-6z"/></svg>', 'orange');
         if (value === 'flow_fast_no_ultra') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>', 'blue');
+        if (value === 'omni_flash') return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L5 13h6l-1 9 9-13h-6l0-7z"/><path d="M4 4l3 3"/><path d="M17 17l3 3"/></svg>', 'violet');
         return icon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8v8H8z"/></svg>', 'green');
       }
       if (selectId === 'studio-image-model') {
@@ -1970,6 +1972,20 @@
       render();
     }
 
+    function _syncDurationControls() {
+      const group = $('studio-duration-group');
+      if (!group) return;
+      const omni = cfg.model === 'omni_flash';
+      if (!omni) cfg.durationSeconds = 8;
+      group.classList.toggle('is-locked', !omni);
+      group.querySelectorAll('.studio-duration-btn').forEach(btn => {
+        const value = parseInt(btn.dataset.val, 10) || 8;
+        btn.classList.toggle('active', value === cfg.durationSeconds);
+        btn.disabled = !omni;
+        btn.setAttribute('aria-disabled', String(!omni));
+      });
+    }
+
     _qualityToggle?.addEventListener('click', e => {
       e.stopPropagation();
       if (!_qualityMenu) return;
@@ -2017,7 +2033,7 @@
       else saveAllVideos1080();
     });
     $('studio-save-images-btn')?.addEventListener('click', openSaveImagesPopup);
-    $('studio-model').addEventListener('change', e => { cfg.model = e.target.value; });
+    $('studio-model').addEventListener('change', e => { cfg.model = e.target.value; _syncDurationControls(); });
     $('studio-image-model').addEventListener('change', e => { cfg.imageModel = e.target.value; });
     $('studio-image-count').addEventListener('change', e => { cfg.imageCount = parseInt(e.target.value, 10) || 1; });
     $('studio-video-count').addEventListener('change', e => { cfg.videoCount = parseInt(e.target.value, 10) || 1; });
@@ -2040,6 +2056,11 @@
       btn.classList.add('active');
       cfg.aspect = btn.dataset.val;
     }));
+    document.querySelectorAll('.studio-duration-btn').forEach(btn => btn.addEventListener('click', () => {
+      if (cfg.model !== 'omni_flash') return;
+      cfg.durationSeconds = parseInt(btn.dataset.val, 10) || 8;
+      _syncDurationControls();
+    }));
     document.addEventListener('click', e => {
       if (!e.target.closest('.card-action-group')) document.querySelectorAll('.card-insert-menu').forEach(menu => { menu.style.display = 'none'; });
     });
@@ -2048,6 +2069,7 @@
     $('studio-library-picker').addEventListener('click', e => { if (e.target === $('studio-library-picker')) closeLibraryPicker(); });
     $('studio-library-category-filter').addEventListener('change', () => renderLibraryPicker());
     _syncAutoDownloadUI();
+    _syncDurationControls();
     loadLibrarySources().catch(() => { });
     initVaultListeners();
     _initPopupQualityDropdown();

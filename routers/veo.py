@@ -673,6 +673,7 @@ async def studio_video(
     aspect_ratio: str = Form("VIDEO_ASPECT_RATIO_LANDSCAPE"),
     output_count: int = Form(1),
     model: str = Form("auto"),
+    duration_seconds: int = Form(8),
     seed: int | None = Form(None),
     character_ids_json: str = Form("[]"),
     ref_media_ids_json: str = Form("[]"),
@@ -690,6 +691,11 @@ async def studio_video(
     adapter = GoogleLabsAdapter()
     token_option = _token_option()
     recaptcha_token = "" if token_option == "Option 2" else await _get_recaptcha_token("video", account_index=account_index)
+    duration_seconds = int(duration_seconds or 8)
+    if duration_seconds not in (4, 6, 8, 10):
+        duration_seconds = 8
+    if str(model or "").strip().lower() != "omni_flash":
+        duration_seconds = 8
 
     try:
         character_ids = json.loads(character_ids_json or "[]")
@@ -822,6 +828,7 @@ async def studio_video(
                 seed=seed,
                 recaptcha_token="",
                 structured_prompt_parts=structured_prompt_parts,
+                duration_seconds=duration_seconds,
             )
             if uploads:
                 return await request_browser_upload_post(
@@ -854,6 +861,7 @@ async def studio_video(
                 output_count=output_count,
                 model=model,
                 recaptcha_token="",
+                duration_seconds=duration_seconds,
             )
             return await request_browser_upload_post(
                 str(uuid.uuid4()),
@@ -874,6 +882,7 @@ async def studio_video(
                 model=model,
                 seed=seed,
                 recaptcha_token="",
+                duration_seconds=duration_seconds,
             )
             return await request_browser_submit(
                 str(uuid.uuid4()),
@@ -912,6 +921,7 @@ async def studio_video(
                 seed=seed,
                 recaptcha_token=recaptcha_token,
                 structured_prompt_parts=structured_prompt_parts,
+                duration_seconds=duration_seconds,
             )
         if uploaded_refs:
             first_b64, first_mime, _ = uploaded_refs[0]
@@ -927,6 +937,7 @@ async def studio_video(
                 output_count=output_count,
                 model=model,
                 recaptcha_token=recaptcha_token,
+                duration_seconds=duration_seconds,
             )
         return await adapter.text_to_video(
             prompt=prompt,
@@ -936,6 +947,7 @@ async def studio_video(
             model=model,
             seed=seed,
             recaptcha_token=recaptcha_token,
+            duration_seconds=duration_seconds,
         )
 
     result = await _submit_for_account(account, account_index)
@@ -957,6 +969,7 @@ async def studio_video(
             "character_ids": character_ids,
             "aspect_ratio": aspect_ratio,
             "model": model,
+            "duration_seconds": duration_seconds,
             "operations": operations,
             "token": account.get("ACCESS_TOKEN", ""),
             "project_id": account.get("PROJECT_ID", ""),

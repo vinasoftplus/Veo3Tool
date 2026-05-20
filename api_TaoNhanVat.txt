@@ -1,0 +1,378 @@
+Flow nhân vật: Create entity -> Upload image -> tạo entities 
+
+API Create entities:
+HEader:
+Request URL
+https: //labs.google/fx/api/trpc/flow.createEntity
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+142.250.197.49: 443
+Referrer Policy
+strict-origin-when-cross-origin
+alt-svc
+h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+cache-control
+private
+content-length
+311
+content-type
+application/json
+date
+Tue,
+19 May 2026 14: 46: 30 GMT
+expires
+Tue,
+19 May 2026 14: 46: 30 GMT
+server
+Google Frontend
+set-cookie
+__Secure-next-auth.session-token=eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..wZDdPflu9q56cYeI.8RZ7AzdYqjK7v4nTH1rIYfcnZM8brqMcnpYngZSLF1m7KLibiLm0frf0MxzEtbdtoQJpKmjwYgmaqySnePyYcibgcdpYvaNMx11PYyP2zqU9gTxQd3d6eegsy_bkHKlQueZaN3rbuj08WC-TO0Gaax7YNxMOsfrdB9Xc7713E3IEdg-FuNb35Ev-abk_mPwNGFK8RYwsFI_X_iwT4Bd5lX13ogHwuGxi3RAXvlxx2HHwJBV8vo36qewnpRSuJ2Lmg46xnsBMyh9VjvSV6FjusK_3ptl8aOgOoTXcI1q6OzGkjxwSU8FJunKSeQWbl-NBL3GE0GPOLB2_qN6xfL8kj9LZLSkP5fD1LZzeHwkbqcNIIliHg9m9N74Ww4d2_DupAzKXFbRWPYQ-6pm-AdRhCUU6FDvNV9D4MKTd9M3UZ-CercNuQXL1inJ-Xe_m9cRPUzwN4aZvO7MOMILmkbVetSbaf1l3qLv9H_8tdr2q-wozOU5v_sJyAuRZKjs_e7NspzW9i4AkMpN9LQ9GOYFayPVVw47e3cDrY4kn1Sw31XsS_3lNfyd0HMX9uy4rJfEzrqa8hcKcKy5tAUJTeU8KLy-DGtahgrlfmNf2L3-PC44xxjXMnXqBo3AQOtLbEwFruT0ILo-nizTzMLRoRPgTJJwz4bc2Dhf-LlODqOQvYZx3AquecxjGwRTZls0r0Rkhrt5-G_AGzRjbRCpgjNWrcNYCzhnmZWna-bPx17yC8gFNnknAqXRuILL2jFyChZnT_kF9w81rT5x2hx6PEVGZhm1-1ESUVKEHdi1hg_o2wGokOoea04GDNuv4MCEyKH6ecOy3134GiJX-eV2BdDnIhimFgZfiwa395mkE_r9kxxE0Y0l8kQXBJddDZ1pdV9CTKcEGzUlfLu86RXdlbn42lsDpHSHH-jDdBdjsMCwHkinNpp5aFVENb4_AgUfbfth8T0YVJt1_heyDkty3MLBO0EU8eQluIjcZp1Y.30XgQG9UIRtlJkVKhBsRUg; Path=/; Expires=Thu,
+18 Jun 2026 14: 46: 30 GMT; HttpOnly; Secure; SameSite=Lax
+vary
+Accept-Encoding
+x-cloud-trace-context
+4684f51fa3e232f15c685ffc0607bbb9
+:authority
+labs.google
+:method
+POST
+:path
+/fx/api/trpc/flow.createEntity
+:scheme
+https
+accept
+* /*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+content-length
+61
+content-type
+application/json
+cookie
+_ga=GA1.1.300748980.1778916319; EMAIL=%22s15524h627%40kukurodu53.sbs%22; __Host-next-auth.csrf-token=2895f5ccdfa7ef5b880fdd5ed982096c3dca22efb9df008a23f2fcce11679c36%7Cc06a6d9438bf41ae16e962ec73093a318ef775b979648f7c8ddf2f957d90dd25; __Secure-next-auth.callback-url=https%3A%2F%2Flabs.google%2Ffx%2Fvi%2Ftools%2Fflow; email=s15524h627%40kukurodu53.sbs; _ga_X2GNH8R5NS=GS2.1.s1779201821$o5$g1$t1779201965$j60$l0$h1312102949; __Secure-next-auth.session-token=eyJhbGciOiJkaXIiLCJlbmMiOiJBMjU2R0NNIn0..R4g8XkOtuHqCwl91.DouHYig14Otfuo3dzcg2LuUfTuv5LbWsmFiRXmYm_MrvJi-4X7tbTL_tv3vIA6enPfbkHBWrmGU-g5T62yPQwdOwxFqX3QPU3FVk3X0EG7xq1apRrjxYxccoNInBPOnEADxc6Kpn0dGKSQ0rjFS2e7afK_ZZ6YHtLDiHThGy3ckHMPn8-GEOT_FBUPU8vMgvDpdqoJ7AwLU3abZj70J1Rw2KLdbJPnmHMbkSZAwOkIRy2CbxVh-8sO4TPCjz48zZlr3W9c3LKN8Uq3LXjrbO9CV8tY60c-OMrXqfYar8GSk1qZXecTMvRtIjMIGUrtIsIeayzg6oWEq65ry_io8Q8d40sCyVJc1L9s71ktNw3VG-5OuIAuzk1X7EKhytYSE5KeiaGg_oY33d4iRS4aPskDwokcAMV3b-WJNtK6pDfgn0YVhMhMcICoRUnQuBB5v31d5lLoDVqTkMsQxOwxvrCZh6eQeacPE9oVGSw89Fd0d5KPU-v6j-IbxeWZcSSppZiNIe_8uCSG1lT2Efg_Fcg1vaYHHI-8LGPU-vl-Ish8OALeaPId-4wQZeVJXt6_o9L2ziVvHh-pzoW7QDwarwANzwi20kJJ1ChaZ75zZWM2nm3Skz9aCcExUj1hqlOaAg_vB_Z9D15-im-cuED-UADL3_H-AKkq8Q2qFnTHOKa0xiG4yRyiPiIz9RxfoRTADkvIknWPKvPVFDjGZZIUsSJ60edCE3FbQxNPADSVd4YvWZcCT55_BjTt3uZhyEsgzVpOmOdVzXR3PDfkbjp1qX5O06MMUWw5YNTFumXbm-A2POLTYq2r7kiNmqdi2Tuf_Hrdw2bkfqAmJH2jHkC1Pmi46Ngmykr95d0pWqxz5MYtzaYnGWJn274W4xcBJ8KEskvjVR5dBesDVOzO66yv6vTbJRCCR-yL4lMxtt8_41AZeNXxl5E19CcO33y_jh5V1IX6i2sPz1oOW84YbWBDXGMhCNm7HoMk49cpM.ENx4LoioiDqCqOljffpDrg
+origin
+https://labs.google
+priority
+u=1, i
+referer
+https://labs.google/fx/vi/tools/flow/project/d5d1b18b-1318-4af7-9bca-5507fee78e5b/characters
+sec-ch-ua
+"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Windows"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+same-origin
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
+
+payload: {"json":{"projectId":"d5d1b18b-1318-4af7-9bca-5507fee78e5b"}}
+Response:
+{
+    "result": {
+        "data": {
+            "json": {
+                "projectId": "d5d1b18b-1318-4af7-9bca-5507fee78e5b",
+                "entityId": "54dc424f-4cc8-43a8-b579-b650de2608c1",
+                "entityInfo": {
+                    "entityType": "CHARACTER",
+                    "displayName": "Untitled Character",
+                    "characterInfo": {}
+                },
+                "createTime": "2026-05-19T14:46:30.836424Z",
+                "updateTime": "2026-05-19T14:46:30.836424Z"
+            }
+        }
+    }
+}
+
+API upload image:
+Header
+Request URL
+https://aisandbox-pa.googleapis.com/v1/flow/uploadImage
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+142.250.198.42:443
+Referrer Policy
+strict-origin-when-cross-origin
+access-control-allow-credentials
+true
+access-control-allow-origin
+https://labs.google
+access-control-expose-headers
+vary,vary,vary,content-encoding,date,server,content-length
+alt-svc
+h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+content-encoding
+gzip
+content-length
+478
+content-type
+application/json; charset=UTF-8
+date
+Tue, 19 May 2026 14:46:43 GMT
+server
+ESF
+vary
+Origin
+vary
+X-Origin
+vary
+Referer
+x-content-type-options
+nosniff
+x-frame-options
+SAMEORIGIN
+x-xss-protection
+0
+:authority
+aisandbox-pa.googleapis.com
+:method
+POST
+:path
+/v1/flow/uploadImage
+:scheme
+https
+accept
+*/*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+authorization
+Bearer ya29.a0AQvPyIMWgc7nlYooG0v3xMK34qsBfRjoodsJJIzbXXOsEGjFDDhSyhgqs50nqLR3fTAEfTOPxtwiANnJUWZRmDuVj2z9OiV5v4NicUe2dPpXzUBe8VeD7L3Q9FSMYGFMgw4ctB_NKcX6-wqalduSJnyhfvefA9-aR5s3MU6sAMIVZl1B9Kwv_w2nnlLiybTE6mdVzzK0fn4YfRhSDLBXwTBcRt0mdiBZsMYVn915b3Jt-EG5HY3lH9KiB1VHyANLvOi-qzcC41eGzQHvjSfieZaFfP2fduM6Mxejnx0y43fAgLADW-ufsiPy-1EkN9trUlh7VwqjxJM42Wvv4PlWzeRM1l8tX5VdSfXFDFp6394aCgYKAd8SARISFQHGX2MizOqf2E75QDGl5tKEZstQmw0370
+content-length
+2302344
+content-type
+text/plain;charset=UTF-8
+origin
+https: //labs.google
+priority
+u=1, i
+referer
+https: //labs.google/
+sec-ch-ua
+"Chromium";v="148",
+"Google Chrome";v="148",
+"Not/A)Brand";v="99"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Windows"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+cross-site
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
+x-browser-channel
+stable
+x-browser-copyright
+Copyright 2026 Google LLC. All Rights Reserved.
+x-browser-validation
+puPtlXuojC+VILE1bgaJ40YGt+E=
+x-browser-year
+2026
+x-client-data
+CKmdygEIk6HLAQiFoM0BCMbKlDAYosHPAQ==
+Decoded:
+message ClientVariations {
+    // Active Google-visible variation IDs on this client. These are reported for analysis, but do not directly affect any server-side behavior.
+  repeated int32 variation_id = [
+        3313321,
+        3330195,
+        3362821,
+        101000518
+    ];
+  // Active Google-visible variation IDs on this client that trigger server-side behavior. These are reported for analysis *and* directly affect server-side behavior.
+  repeated int32 trigger_variation_id = [
+        3399842
+    ];
+}
+
+payload: {
+    "clientContext": {
+        "projectId": "d5d1b18b-1318-4af7-9bca-5507fee78e5b",
+        "tool": "PINHOLE"
+    },
+    "imageBytes":"iVBORw0KGgoAAAANSUhEUgAAA60AAAaICAIAAADgnq+qAABnL2NhQlgAAGcvanVtYgAAAB5qdW1kYzJwYQARABCAAACqADibcQNjMnBhAAAAZwlqdW1iAAAAR2p1bWRjMm1hABEAEIAAAKoAOJtxA3VybjpjMnBhOjBjZjI5MzA0LWNkZDktNDhkNC05ZmYzLWU0MDkyOGRjMTA3ZgAAABblanVtYgAAAClqdW1kYzJhcwARABCAAACqADibcQNjMnBhLmFzc2VydGlvbnMAAAAJ0Wp1bWIAAAA7anVtZEDLDDK7ikidpwsq1vR/Q2kTYzJwYS5pY29uAAAAABhjMnNoltNOqgdNvnTCYvsOVF3VWgAAABdiZmRiAGltYWdlL3N2Zyt4bWwAAAAJd2JpZGI8c3ZnIHdpZHRoPSI3MTYiIGhlaWdodD0iNzE2IiB2aWV3Qm94PSIwIDAgNzE2IDcxNiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KPHBhdGggZD0iTTUwOC43NDkgMzE3LjM5OUM1MTYuNzc3IDI4Ny4zMTQgNTA4Ljk5MSAyNTMuODg0IDQ4NS4zODkgMjMwLjI4MkM0NjEuNzg4IDIwNi42ODEgNDI4LjM2IDE5OC44OTUgMzk4LjI3MyAyMDYuOTIzQzM3Ni4yMzEgMTg0LjkyOCAzNDMuMzkgMTc0Ljk1NiAzMTEuMTQ4IDE4My41OTZDMjc4LjkwNiAxOTIuMjM0IDI1NS40NSAyMTcuMjkyIDI0Ny4zNiAyNDcuMzYxQzIxNy4yOTEgMjU1LjQ1MSAxOTIuMjMzIDI3OC45MSAxODMuNTk1IDMxMS4xNDlDMTc0Ljk1NyAzNDMuMzkxIDE4NC45MjcgMzc2LjIzMiAyMDYuOTI0IDM5OC4yNzRDMTk4Ljg5NiA0MjguMzU5IDIwNi42ODMgNDYxLjc4OSAyMzAuMjg0IDQ4NS4zOTFDMjUzLjg4NSA1MDguOTkyIDI4Ny4zMTMgNTE2Ljc3OSAzMTcuNDAxIDUwOC43NUMzMzkuNDQyIDUzMC43NDUgMzcyLjI4NiA1NDAuNzE3IDQwNC41MjUgNTMyLjA3OUM0MzYuNzY3IDUyMy40NDEgNDYwLjIyMyA0OTguMzg0IDQ2OC4zMTMgNDY4LjMxNUM0OTguMzgzIDQ2MC4yMjQgNTIzLjQ0IDQzNi43NjYgNTMyLjA3OCA0MDQuNTI2QzU0MC43MTYgMzcyLjI4NSA1MzAuNzQ3IDMzOS40NDMgNTA4Ljc0OSAzMTcuNDAyVjMxNy4zOTlaTTQ3MC44OTkgMjQ0Ljc3NkM0ODYuODkyIDI2MC43NyA0OTMuNDg4IDI4Mi42MDEgNDkwLjY4NyAzMDMuNDEyTDQxNS41NzcgMjYwLjA0NkM0MTIuNDExIDI1OC4yMTggNDA4LjUwOSAyNTguMjE4IDQwNS4zNDUgMjYwLjA0NkwzMTcuNDAxIDMxMC44MlYyNzcuNTI2QzMxNy40MDEgMjc1LjE5MSAzMTguNjUyIDI3My4wMDUgMzIwLjY3NiAyNzEuODM3TDM4Ny42NDQgMjMzLjE3NEM0MTQuMTc4IDIxOC4zNTMgNDQ4LjM0NiAyMjIuMjIzIDQ3MC45MDEgMjQ0Ljc3Nkg0NzAuODk5Wk0zNTcuODM3IDMxMS4xNDRMMzk4LjI3NSAzMzQuNDkxVjM4MS4xODVMMzU3LjgzNyA0MDQuNTMyTDMxNy4zOTggMzgxLjE4NVYzMzQuNDkxTDM1Ny44MzcgMzExLjE0NFpNMjY0Ljc3NiAyNjkuNjkzQzI2NS4yMDcgMjM5LjMwNSAyODUuNjQ0IDIxMS42NDkgMzE2LjQ1MyAyMDMuMzkzQzMzOC4zIDE5Ny41NCAzNjAuNTA1IDIwMi43NDQgMzc3LjEyNyAyMTUuNTczTDMwMi4wMTQgMjU4LjkzN0MyOTguODQ4IDI2MC43NjQgMjk2Ljg5OCAyNjQuMTQ0IDI5Ni44OTggMjY3Ljc5OFYzNjkuMzQ2TDI2OC4wNjUgMzUyLjY5OUMyNjYuMDQzIDM1MS41MzEgMjY0Ljc3NiAzNDkuMzUzIDI2NC43NzYgMzQ3LjAxN1YyNjkuNjkxVjI2OS42OTNaTTIwMy4zOTEgMzE2LjQ1NEMyMDkuMjQ0IDI5NC42MDggMjI0Ljg1NCAyNzcuOTc4IDI0NC4yNzYgMjY5Ljk5OVYzNTYuNzNDMjQ0LjI3NiAzNjAuMzg0IDI0Ni4yMjYgMzYzLjc2MyAyNDkuMzkyIDM2NS41OTFMMzM3LjMzNyA0MTYuMzY1TDMwOC41MDMgNDMzLjAxM0MzMDYuNDgxIDQzNC4xODEgMzAzLjk2MSA0MzQuMTg4IDMwMS45MzkgNDMzLjAyTDIzNC45NzEgMzk0LjM1N0MyMDguODY4IDM3OC43ODkgMTk1LjEzOCAzNDcuMjYxIDIwMy4zOTEgMzE2LjQ1NFpNMjQ0Ljc3NSA0NzAuOUMyMjguNzgxIDQ1NC45MDYgMjIyLjE4NiA0MzMuMDc1IDIyNC45ODYgNDEyLjI2NEwzMDAuMDk2IDQ1NS42M0MzMDMuMjYzIDQ1Ny40NTcgMzA3LjE2NCA0NTcuNDU3IDMxMC4zMjggNDU1LjYzTDM5OC4yNzMgNDA0Ljg1NlY0MzguMTQ5QzM5OC4yNzMgNDQwLjQ4NSAzOTcuMDIyIDQ0Mi42NzEgMzk0Ljk5NyA0NDMuODM5TDMyOC4wMjkgNDgyLjUwMkMzMDEuNDk1IDQ5Ny4zMjIgMjY3LjMyNyA0OTMuNDUyIDI0NC43NzIgNDcwLjlIMjQ0Ljc3NVpNNDUwLjgShow more
+response: {
+        "media": {
+            "name": "fae9e5ba-9c84-440c-9ef2-7650333b2772",
+            "projectId": "d5d1b18b-1318-4af7-9bca-5507fee78e5b",
+            "workflowId": "8403fec5-afc2-49bc-8d78-bfc3a51cee24",
+            "workflowStepId": "CAE",
+            "mediaMetadata": {
+                "createTime": "2026-05-19T14:46:32.733981Z",
+                "requestData": {
+                    "clientPlatform": "CLIENT_PLATFORM_WEB"
+                },
+                "visibility": "PRIVATE"
+            },
+            "image": {
+                "userUploadedImage": {
+                    "aspectRatio": "IMAGE_ASPECT_RATIO_UNSPECIFIED"
+                },
+                "dimensions": {
+                    "width": 941,
+                    "height": 1672
+                }
+            }
+        },
+        "workflow": {
+            "name": "8403fec5-afc2-49bc-8d78-bfc3a51cee24",
+            "metadata": {
+                "displayName": "0f3fbfb6a5d8.png",
+                "createTime": "2026-05-19T14:46:32.733981Z",
+                "primaryMediaId": "fae9e5ba-9c84-440c-9ef2-7650333b2772"
+            },
+            "projectId": "d5d1b18b-1318-4af7-9bca-5507fee78e5b",
+            "parentEntityId": "54dc424f-4cc8-43a8-b579-b650de2608c1"
+        }
+    }
+
+
+API entities:
+header
+Request URL
+https: //aisandbox-pa.googleapis.com/v1/flow/entities
+Request Method
+PATCH
+Status Code
+200 OK
+Remote Address
+142.250.198.42: 443
+Referrer Policy
+strict-origin-when-cross-origin
+access-control-allow-credentials
+true
+access-control-allow-origin
+https: //labs.google
+access-control-expose-headers
+vary,vary,vary,content-encoding,date,server,content-length
+alt-svc
+h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+content-encoding
+gzip
+content-length
+366
+content-type
+application/json; charset=UTF-8
+date
+Tue,
+    19 May 2026 14: 47: 17 GMT
+server
+ESF
+vary
+Origin
+vary
+X-Origin
+vary
+Referer
+x-content-type-options
+nosniff
+x-frame-options
+SAMEORIGIN
+x-xss-protection
+0
+:authority
+aisandbox-pa.googleapis.com
+:method
+PATCH
+:path
+/v1/flow/entities
+:scheme
+https
+accept
+*/*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+authorization
+Bearer ya29.a0AQvPyIMWgc7nlYooG0v3xMK34qsBfRjoodsJJIzbXXOsEGjFDDhSyhgqs50nqLR3fTAEfTOPxtwiANnJUWZRmDuVj2z9OiV5v4NicUe2dPpXzUBe8VeD7L3Q9FSMYGFMgw4ctB_NKcX6-wqalduSJnyhfvefA9-aR5s3MU6sAMIVZl1B9Kwv_w2nnlLiybTE6mdVzzK0fn4YfRhSDLBXwTBcRt0mdiBZsMYVn915b3Jt-EG5HY3lH9KiB1VHyANLvOi-qzcC41eGzQHvjSfieZaFfP2fduM6Mxejnx0y43fAgLADW-ufsiPy-1EkN9trUlh7VwqjxJM42Wvv4PlWzeRM1l8tX5VdSfXFDFp6394aCgYKAd8SARISFQHGX2MizOqf2E75QDGl5tKEZstQmw0370
+content-length
+495
+content-type
+text/plain;charset=UTF-8
+origin
+https://labs.google
+priority
+u=1, i
+referer
+https://labs.google/
+sec-ch-ua
+"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Windows"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+cross-site
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
+x-browser-channel
+stable
+x-browser-copyright
+Copyright 2026 Google LLC. All Rights Reserved.
+x-browser-validation
+puPtlXuojC+VILE1bgaJ40YGt+E=
+x-browser-year
+2026
+x-client-data
+CKmdygEIk6HLAQiFoM0BCMbKlDAYosHPAQ==
+Decoded:
+message ClientVariations {
+  // Active Google-visible variation IDs on this client. These are reported for analysis, but do not directly affect any server-side behavior.
+  repeated int32 variation_id = [3313321, 3330195, 3362821, 101000518];
+  // Active Google-visible variation IDs on this client that trigger server-side behavior. These are reported for analysis *and* directly affect server-side behavior.
+  repeated int32 trigger_variation_id = [3399842];
+}
+
+{"entity":{"projectId":"d5d1b18b-1318-4af7-9bca-5507fee78e5b","entityId":"54dc424f-4cc8-43a8-b579-b650de2608c1","entityInfo":{"displayName":"ok con dê","characterInfo":{"personalityNotes":"COn tôm hùm","audioReferences":[{"presetVoiceId":"algieba"}],"imageReferences":[{"workflowId":"8403fec5-afc2-49bc-8d78-bfc3a51cee24"},{}]}}},"updateMask":"entityInfo.displayName,entityInfo.characterInfo.personalityNotes,entityInfo.characterInfo.audioReferences,entityInfo.characterInfo.imageReferences"}
+
+{
+  "entity": {
+    "projectId": "d5d1b18b-1318-4af7-9bca-5507fee78e5b",
+    "entityId": "54dc424f-4cc8-43a8-b579-b650de2608c1",
+    "entityInfo": {
+      "entityType": "CHARACTER",
+      "displayName": "ok con dê",
+      "characterInfo": {
+        "imageReferences": [
+          {
+            "workflowId": "8403fec5-afc2-49bc-8d78-bfc3a51cee24"
+          },
+          {}
+        ],
+        "audioReferences": [
+          {
+            "presetVoiceId": "algieba"
+          }
+        ],
+        "personalityNotes": "COn tôm hùm"
+      }
+    },
+    "createTime": "2026-05-19T14:46:30.836424Z",
+    "updateTime": "2026-05-19T14:47:17.403188Z"
+  }
+}

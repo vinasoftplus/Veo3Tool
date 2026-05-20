@@ -1,0 +1,53 @@
+Fenrir
+Male, excitable, younger pitch
+-----------------------------------
+Gacrux
+Female, mature, mid pitch
+-----------------------------------
+Iapetus
+Male, clear, mid-low pitch
+-----------------------------------
+Kore
+Female, firm, mid pitch
+-----------------------------------
+Laomedeia
+Female, upbeat, mid-high pitch
+-----------------------------------
+Leda
+Female, youthful, mid-high pitch
+-----------------------------------
+Orus
+Male, firm, mid-low pitch
+-----------------------------------
+Puck
+Male, upbeat, mid pitch
+-----------------------------------
+Pulcherrima
+Ungendered, forward, mid-high pitch
+-----------------------------------
+Rasalgethi
+Male, informative, mid pitch
+-----------------------------------
+Sadachbia
+Male, lively, low pitch
+-----------------------------------
+Sadaltager
+Male, knowledgeable, mid pitch
+-----------------------------------
+Schedar
+Male, even, mid-low pitch
+-----------------------------------
+Sulafat
+Female, warm, mid pitch
+-----------------------------------
+Umbriel
+Male, smooth, lower pitch
+-----------------------------------
+Vindemiatrix
+Female, gentle, mid pitch
+-----------------------------------
+Zephyr
+Female, bright, mid-high pitch
+-----------------------------------
+Zubenelgenubi
+Male, casual, mid-low pitch

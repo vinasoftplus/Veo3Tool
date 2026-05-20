@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import logging
 import mimetypes
 import time
@@ -570,17 +571,23 @@ async def ensure_browser_sse():
             try:
                 await ensure_cloak_browser(progress_cb=on_progress)
             except Exception as e:
-                await q.put(f"data: {json.dumps({'pct': -1, 'msg': str(e)})}\n\n")
+                with contextlib.suppress(Exception):
+                    await q.put(f"data: {json.dumps({'pct': -1, 'msg': str(e)})}\n\n")
             finally:
-                await q.put(None)  # sentinel
+                with contextlib.suppress(Exception):
+                    await q.put(None)  # sentinel
 
         task = asyncio.create_task(run())
-        while True:
-            item = await q.get()
-            if item is None:
-                break
-            yield item
-        await task
+        try:
+            while True:
+                item = await q.get()
+                if item is None:
+                    break
+                yield item
+        except Exception:
+            pass
+        with contextlib.suppress(Exception):
+            await task
 
     return StreamingResponse(generate(), media_type="text/event-stream")
 

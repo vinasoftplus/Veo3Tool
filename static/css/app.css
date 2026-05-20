@@ -3985,12 +3985,71 @@ html.theme-dawn #studio-gen-all-videos {
   left: 2px;
   top: -28px;
   font-size: 13px;
+  line-height: 1;
   font-weight: 700;
   letter-spacing: .18em;
   text-transform: uppercase;
   color: color-mix(in srgb, var(--accent) 72%, #5c2a4a 28%);
   white-space: nowrap;
   padding-right: 8px;
+}
+
+#studio-sticky-bar .studio-duration-group {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 54px;
+  margin-top: 28px;
+  padding: 3px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 24%, transparent);
+  background: color-mix(in srgb, var(--accent) 8%, #fff);
+  align-self: flex-end;
+}
+
+#studio-sticky-bar .studio-duration-group::before {
+  content: 'THỜI LƯỢNG';
+  position: absolute;
+  left: 2px;
+  top: -28px;
+  font-size: 13px;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: .18em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--accent) 72%, #5c2a4a 28%);
+  white-space: nowrap;
+  padding-right: 8px;
+}
+
+#studio-sticky-bar .studio-duration-btn {
+  min-height: 32px;
+  min-width: 42px;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  color: var(--text2);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background .18s ease, color .18s ease, box-shadow .18s ease, opacity .18s ease;
+}
+
+#studio-sticky-bar .studio-duration-btn.active {
+  background: color-mix(in srgb, var(--accent) 16%, #fff);
+  color: var(--accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 30%, transparent);
+}
+
+#studio-sticky-bar .studio-duration-group.is-locked {
+  opacity: .58;
+  filter: saturate(.7);
+}
+
+#studio-sticky-bar .studio-duration-group.is-locked .studio-duration-btn {
+  cursor: not-allowed;
 }
 
 #studio-sticky-bar .studio-toolbar-models {
@@ -4129,8 +4188,10 @@ html.dark #studio-sticky-bar {
 
 html.theme-night #studio-sticky-bar .studio-toolbar-mid-head,
 html.theme-night #studio-sticky-bar .studio-model-label,
+html.theme-night #studio-sticky-bar .studio-duration-group::before,
 html.dark #studio-sticky-bar .studio-toolbar-mid-head,
-html.dark #studio-sticky-bar .studio-model-label {
+html.dark #studio-sticky-bar .studio-model-label,
+html.dark #studio-sticky-bar .studio-duration-group::before {
   color: #a78bfa;
 }
 
@@ -4139,6 +4200,23 @@ html.dark #studio-sticky-bar .studio-bar-select {
   background: linear-gradient(180deg, rgba(19, 25, 38, .96), rgba(11, 15, 24, .94));
   border-color: rgba(167, 139, 250, .3);
   color: #f3f4f6;
+}
+
+html.theme-night #studio-sticky-bar .studio-duration-group,
+html.dark #studio-sticky-bar .studio-duration-group {
+  background: var(--bg3);
+  border-color: var(--border);
+}
+
+html.theme-night #studio-sticky-bar .studio-duration-btn,
+html.dark #studio-sticky-bar .studio-duration-btn {
+  color: var(--text2);
+}
+
+html.theme-night #studio-sticky-bar .studio-duration-btn.active,
+html.dark #studio-sticky-bar .studio-duration-btn.active {
+  background: var(--bg2);
+  color: var(--accent);
 }
 
 /* Fix native select dropdown options in dark mode */
@@ -5108,7 +5186,16 @@ html.theme-dawn #studio-sticky-bar .studio-filter-toggle:hover {
   align-self: flex-end;
 }
 
+#studio-sticky-bar .studio-duration-group {
+  margin-top: 28px !important;
+  align-self: flex-end;
+}
+
 #studio-sticky-bar .studio-aspect-group::before {
+  top: -28px;
+}
+
+#studio-sticky-bar .studio-duration-group::before {
   top: -28px;
 }
 

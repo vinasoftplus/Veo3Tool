@@ -91,6 +91,7 @@ func main() {
 	// Update management
 	adminAuth.Get("/update", handlers.GetUpdateInfo)
 	adminAuth.Post("/update/upload", handlers.UploadUpdate)
+	adminAuth.Patch("/update/required", handlers.SetUpdateRequired)
 	// Notification management
 	adminAuth.Get("/notifications", handlers.AdminListNotifications)
 	adminAuth.Post("/notifications", handlers.AdminCreateNotification)

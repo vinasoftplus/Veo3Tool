@@ -91,9 +91,9 @@ async def ensure_cloak_browser(progress_cb=None) -> None:
             try:
                 if "Download progress:" in msg:
                     pct = int(msg.split("%")[0].split()[-1])
-                    loop.call_soon_threadsafe(asyncio.ensure_future, progress_cb(pct, f"Đang tải CloakBrowser... {pct}%"))
+                    asyncio.run_coroutine_threadsafe(progress_cb(pct, f"Đang tải CloakBrowser... {pct}%"), loop)
                 elif "Download complete" in msg or "Binary ready" in msg:
-                    loop.call_soon_threadsafe(asyncio.ensure_future, progress_cb(95, "Đang giải nén..."))
+                    asyncio.run_coroutine_threadsafe(progress_cb(95, "Đang giải nén..."), loop)
             except Exception:
                 pass
 

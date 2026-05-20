@@ -985,6 +985,7 @@ async def get_quality_url(req: ImageQualityRequest):
     account = _get_account_or_raise(req.account_index)
     account_idx = int(account.get("_index") or 1)
     payload = adapter.build_upscale_image_payload(req.media_id, quality=req.quality, recaptcha_token="", account=account)
+    upscale_timeout = 150.0 if str(req.quality).lower() == "4k" else 90.0
 
     # Dùng extension để inject recaptcha token, retry tối đa 2 lần
     result = {"ok": False}
@@ -996,6 +997,7 @@ async def get_quality_url(req: ImageQualityRequest):
             payload=payload,
             access_token=account.get("ACCESS_TOKEN", ""),
             account_index=account_idx,
+            timeout_seconds=upscale_timeout,
         )
         if result.get("ok"):
             break
@@ -1069,6 +1071,7 @@ async def batch_save_lib(req: BatchSaveLibRequest):
         if req.quality != "1k" and media_id:
             from routers.extension import request_browser_submit
             from adapters.google_labs import URL_UPSCALE_IMAGE
+            upscale_timeout = 150.0 if str(req.quality).lower() == "4k" else 90.0
             for attempt in range(2):
                 try:
                     payload = adapter.build_upscale_image_payload(media_id, quality=req.quality, recaptcha_token="", account=account)
@@ -1077,6 +1080,7 @@ async def batch_save_lib(req: BatchSaveLibRequest):
                         url=URL_UPSCALE_IMAGE, payload=payload,
                         access_token=account.get("ACCESS_TOKEN", ""),
                         account_index=account_index,
+                        timeout_seconds=upscale_timeout,
                     )
                     if result.get("ok"):
                         body_json = _json.loads(result.get("body", "{}"))

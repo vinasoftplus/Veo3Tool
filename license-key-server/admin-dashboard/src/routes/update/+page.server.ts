@@ -16,6 +16,20 @@ export const load: PageServerLoad = async ({ cookies }) => {
 };
 
 export const actions: Actions = {
+  setRequired: async ({ request, cookies }) => {
+    const token = cookies.get('session');
+    if (!token) throw redirect(302, '/login');
+    const form = await request.formData();
+    const required = form.get('required') === 'true';
+    const res = await fetch(`${BACKEND}/admin/update/required`, {
+      method: 'PATCH',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ required }),
+    }).catch(() => null);
+    if (!res?.ok) return fail(500, { error: 'Cập nhật thất bại' });
+    return { success: true };
+  },
+
   upload: async ({ request, cookies }) => {
     const token = cookies.get('session');
     if (!token) throw redirect(302, '/login');

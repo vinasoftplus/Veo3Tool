@@ -1,0 +1,385 @@
+APi tạo video với nhân vật entities:
+generate api:
+Header
+Request URL
+https://aisandbox-pa.googleapis.com/v1/video:batchAsyncGenerateVideoReferenceImages
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+142.250.198.42: 443
+Referrer Policy
+strict - origin - when - cross - origin
+access - control - allow - credentials
+true
+access - control - allow - origin
+https://labs.google
+access - control - expose - headers
+vary, vary, vary, content - encoding, date, server, content - length
+alt - svc
+h3 = ":443"; ma = 2592000, h3 - 29=":443"; ma = 2592000
+content - encoding
+gzip
+content - length
+955
+content - type
+application / json; charset = UTF - 8
+date
+Tue, 19 May 2026 15:06: 57 GMT
+server
+ESF
+vary
+Origin
+vary
+X - Origin
+vary
+Referer
+x - content - type - options
+nosniff
+x - frame - options
+SAMEORIGIN
+x - xss - protection
+0
+: authority
+aisandbox - pa.googleapis.com
+: method
+POST
+: path
+    / v1 / video: batchAsyncGenerateVideoReferenceImages
+: scheme
+https
+accept
+    */*
+accept-encoding
+gzip, deflate, br, zstd
+accept-language
+en-US,en;q=0.9
+authorization
+Bearer ya29.a0AQvPyIPdDw-u2Lt0x-2B6m147ZR9fJRP-PceLuTlhbnaJFXU1oevbce5SZYK2k06y1K7cUeaQOg5uqE9LRWocmk5HkJANdTTmn3znr423OHFwmgx-ndGikZE2K2D4TJeycA6ijcRZem0Vd1QcHrtCLT991rBqRx3t4_3FiAtxCYpjf-lel89ZvvZ74e1SU1uUmLOC2jCCxVgDV6DS2UI2CFQFUR9hniIYTQr1Sv_VWYSVScpqbNtmHx0npZzCbfn30UCwvb9X-pa3sJHeTQCoZuTwECQPROFv8vRgUgVf62k7hTcAEEQuZJMlNCvKnqmIIHy1JEIoy_NDk735FdR3SYGAQkijHwC_Uat3Wdq7C8aCgYKAYwSARQSFQHGX2MitLs-bKYn3b3ckq4ia3sxcQ0370
+content-length
+3128
+content-type
+text/plain;charset=UTF-8
+origin
+https://labs.google
+priority
+u=1, i
+referer
+https://labs.google/
+sec-ch-ua
+"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"
+sec-ch-ua-mobile
+?0
+sec-ch-ua-platform
+"Windows"
+sec-fetch-dest
+empty
+sec-fetch-mode
+cors
+sec-fetch-site
+cross-site
+user-agent
+Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36
+x-browser-channel
+stable
+x-browser-copyright
+Copyright 2026 Google LLC. All Rights Reserved.
+x-browser-validation
+puPtlXuojC+VILE1bgaJ40YGt+E=
+x-browser-year
+2026
+x-client-data
+CKmdygEIk6HLAQiFoM0BCMbKlDAYosHPAQ==
+Decoded:
+message ClientVariations {
+  // Active Google-visible variation IDs on this client. These are reported for analysis, but do not directly affect any server-side behavior.
+  repeated int32 variation_id = [3313321, 3330195, 3362821, 101000518];
+  // Active Google-visible variation IDs on this client that trigger server-side behavior. These are reported for analysis *and* directly affect server-side behavior.
+  repeated int32 trigger_variation_id = [3399842];
+}
+
+payload: {"mediaGenerationContext":{"batchId":"4acc9b92-2184-42c9-996c-8e8c572310f4","audioFailurePreference":"BLOCK_SILENCED_VIDEOS"},"clientContext":{"projectId":"06e3e8c5-1dd0-4a3b-8319-6080c47a3084","tool":"PINHOLE","userPaygateTier":"PAYGATE_TIER_TWO","sessionId":";1779203214449","recaptchaContext":{"token":"0cAFcWeA6xd9eg1aOmHE-gQxOiLI38R9kGIyGipBvOVYvBN3uMQvZ1ZeapxsT31z4bxkSAvp-UYxXh_jhBDRpavW62PaDKlRXQPigzXxYM7G2vMyYvCK5EUmXR7zPL99jbjhxMu8dSboyeAYdfEmoqX766fOqQ-VO1vg5gsd2gvTLG3VPVLA87bXCqadrKJqUwEcg3qPLvCrE5X9Ir_3bECWVYfG6xYqGfT5GBePcV6kKeTx2knD8vwCGMUJC9bjyHeogo3fM5apPVn7a_Qh-KLWURUGZ0bmIL9betiv--68iQSDfsVATZbev0CwpyuBEgwRNqMqhNSxEKzkBpoI9ZvY2_xDa-7CHneWBt6W0tAGxSuYqObjWzNlzoqRa8hOROC1spgttQAuvUOmWjZHgoVEK6mRH2YWS2hnzICAUQVNJgl338UUuOAq1qTbovIWmLgE7P4YLHjyOPW71_iLd3XTYXYXgtpOvA2cXMYWUCJ5jObq4Poh8-YXMpzyISLfNP7l9v1W4_ki4WbSyAFWn5Jt42eWEVl1PHOYvk1tsTTGK1YmyLDnPXBMu_H0NQQbAeycdr_wKHa1ohS2IjnjT3jDsgRYuv4Ueb25RTGNBYh9Jsk-q8LYhaYQ7cTYjP-82iN8Ht4ck4Eie1DkQO6QQN1YqPFo_nKkWUcv7YyvpcRWKV_JEH3nhjgriCMWdrSPqz1Iji-nRCJPya8_PBzqHPHeBfgKT2i3NBn2PJdi6MgbnPDgUxW8Kr0s4udCVvTyK7Z0Tq7dN1CU6sQeWSx_gtT8KJcaioHt6zvmEq7vUVGuzEGLpoMSAhv2m36tCFKnM_43ZHuTVhFvsmJKbxphS6ZAEHnvBv3cMSvDH_osWjvz_2so5Wkiwls7RiAwZNmeGvyAGTqJjy68PXLsfZPvX1wkiNQmK_6GLT8QFmDgaQHLJq8uj7b9yyKmqqiE82yhtQJMKHopncyMxk8R332dHdx_3Ix_jp0OqEV6XwGl1Eref0X7E86RE5_kis8FJaE6uF0TWYIr_Pg1Oj9Pe7nEreB9Chj8cks2D95gvLggRNMJO54eogdZdW8bB4YXQ2CA7K0pnxwIhnxIHbdIhbdnHMzlDndUdSYfimHhogKCRc9Bt8daa_o5JHIsD7IrNinvWJZKgz3eurjY_WuH7_geJf8v2uPNzqJRUHESy-bg54NtIzW7RhvEW5LZGocinzDb5odXZzysu0NxgHbfh8U6eWVpdoUfFFG7UT7kBoFCINba2ycltRoY7zXiLVWG7iGg2kLvp2KO-ICEHeE8UJB6bQVwJzqkaFKIcS9Ang97Iu_TkQpkLoUzI25aokMuFUPWfK1ECt3OcYUZaa-w-ccYD_7JpQW2fZh8qbfIE2ovCL9WIvIpdYuaqJCeSsQiDSU3Lcs2yC3v_6EjXhCJ813Iuzs_M8RHhogBor53DRz1Mmqhl9nbSE6MYIqz9JGvTXEsK-64I2_6LhPcOLXE6b4yk-IcGyVRVVltL8jVUF6xquMbzTnx1jgXp5r_PEaG08PlvSd0n5ypBVPje2nzMQ_pe6KAMt7raO3GqkjRn1gSRbOG5DaLEiG55swP0zoB5Xj9m4md1G7x8LC_zgJrtFp12p0CzTmki4vYIjV9DQwcNBtHNRqIfFn8lsTBfxTHRpSMn0JiCPVnwW8CMBUs7wvbjgmlzwN5nM3jYQcqDJqS4tbCa7a-ABt78vsW2Onl4Utih5BaqQKXQfMW1HPYV0pY-lupYH1eVE-OG-iw6-HqGh7TsZ_XCdIpFNaK4mo40p2CR1GarKzRCC838EElQkQkvuUAfsfqPbwGViv6uupzDsYHtak6XcJ-jlio2LddtzjmR554ZeSKDPwlwYoZvw6rybpXxgGIqQIp34gzmCiEIGrOQ0IAONIuu2wYIpztn22J1YZzYlq1tCeuCUhOfNDxGGiJnWqfVYx0JPCzZ3aYrdPId8YNWJIQhX0TMCAmBD_NnxhEvFKUFg8xXlakG64FTjNc9fZz2erGMepjAudvkcvp4Lz6i7sQn85o7ErDHY3tf7C-259jE3Tpd_-vW8b-oM7A70GV4pWfrz2KZOxY-0zHkuuyV3oow-uiGMbfMMzhVbeyBTvD5288qFVMWGVgZBr0OsADU943Q-PH_jpK7VjnmjMo_4reram6nadgHQQdA-iAloErLtfDQrk_rG_DYn9NVdxCQ2HSra4II2eJP61YE60IMsA3oPKuU","applicationType":"RECAPTCHA_APPLICATION_TYPE_WEB"}},"requests":[{"aspectRatio":"VIDEO_ASPECT_RATIO_LANDSCAPE","textInput":{"structuredPrompt":{"parts":[{"reference":{"entity":{"handle":"George","entityId":"9f42196e-1851-4f9e-9a0a-099c08f376b1"}}},{"reference":{"entity":{"handle":"Untitled Character","entityId":"3466c59a-4452-47d9-be4b-120846c9986e"}}},{"text":" ôm nhau"}]}},"videoModelKey":"abra_r2v_4s","seed":6302,"metadata":{},"referenceEntities":[{"enShow more
+
+response:
+{
+  "remainingCredits": 25,
+  "workflows": [
+    {
+      "name": "76735962-6847-4c84-9e79-0a66f99682ac",
+      "metadata": {
+        "displayName": "GeorgeUntitled Character ôm nhau",
+        "createTime": "2026-05-19T15:06:45.096068Z",
+        "primaryMediaId": "654af8f3-8974-43d1-bd52-9c8257288d27",
+        "batchId": "4acc9b92-2184-42c9-996c-8e8c572310f4",
+        "updateTime": "2026-05-19T15:06:52.649865Z"
+      },
+      "projectId": "06e3e8c5-1dd0-4a3b-8319-6080c47a3084"
+    }
+  ],
+  "media": [
+    {
+      "name": "654af8f3-8974-43d1-bd52-9c8257288d27",
+      "projectId": "06e3e8c5-1dd0-4a3b-8319-6080c47a3084",
+      "workflowId": "76735962-6847-4c84-9e79-0a66f99682ac",
+      "workflowStepId": "CAE",
+      "mediaMetadata": {
+        "createTime": "2026-05-19T15:06:45.096068Z",
+        "mediaTitle": "GeorgeUntitled Character ôm nhau",
+        "requestData": {
+          "videoGenerationRequestData": {
+            "videoModelControlInput": {
+              "videoModelName": "abra_r2v_4s",
+              "videoGenerationMode": "VIDEO_GENERATION_MODE_REFERENCE_TO_VIDEO",
+              "videoModelCapabilities": [
+                "VIDEO_MODEL_CAPABILITY_MULTI_REFERENCE"
+              ],
+              "videoAspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE"
+            },
+            "videoGenerationEntityInputs": [
+              {
+                "entityId": "9f42196e-1851-4f9e-9a0a-099c08f376b1"
+              },
+              {
+                "entityId": "3466c59a-4452-47d9-be4b-120846c9986e"
+              }
+            ]
+          },
+          "promptInputs": [
+            {
+              "structuredPrompt": {
+                "parts": [
+                  {
+                    "reference": {
+                      "entity": {
+                        "entityId": "9f42196e-1851-4f9e-9a0a-099c08f376b1",
+                        "handle": "George"
+                      }
+                    }
+                  },
+                  {
+                    "reference": {
+                      "entity": {
+                        "entityId": "3466c59a-4452-47d9-be4b-120846c9986e",
+                        "handle": "Untitled Character"
+                      }
+                    }
+                  },
+                  {
+                    "text": " ôm nhau"
+                  }
+                ]
+              }
+            }
+          ],
+          "clientPlatform": "CLIENT_PLATFORM_WEB"
+        },
+        "mediaStatus": {
+          "mediaGenerationStatus": "MEDIA_GENERATION_STATUS_SCHEDULED"
+        },
+        "visibility": "PRIVATE"
+      },
+      "video": {
+        "generatedVideo": {
+          "seed": 6302,
+          "prompt": "image_0.png image_1.png image_2.png ôm nhau",
+          "model": "abra_r2v_4s",
+          "baseImageMediaGenerationId": "",
+          "isLooped": false,
+          "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE"
+        },
+        "dimensions": {
+          "length": "4s"
+        }
+      }
+    }
+  ]
+}
+
+
+header:
+Request URL
+https://aisandbox-pa.googleapis.com/v1/video:batchCheckAsyncVideoGenerationStatus
+Request Method
+POST
+Status Code
+200 OK
+Remote Address
+142.250.198.42:443
+Referrer Policy
+strict-origin-when-cross-origin
+access-control-allow-credentials
+true
+access-control-allow-origin
+https://labs.google
+access-control-expose-headers
+vary,vary,vary,content-encoding,date,server,content-length
+alt-svc
+h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+content-encoding
+gzip
+content-length
+867
+content-type
+application/json; charset=UTF-8
+date
+Tue, 19 May 2026 15:07:50 GMT
+server
+ESF
+vary
+Origin
+vary
+X-Origin
+vary
+Referer
+x-content-type-options
+nosniff
+x-frame-options
+SAMEORIGIN
+x-xss-protection
+0
+:authority
+aisandbox-pa.googleapis.com
+:method
+POST
+:path
+/v1/video:batchCheckAsyncVideoGenerationStatus
+:scheme
+https
+accept
+*/*
+    accept - encoding
+gzip, deflate, br, zstd
+accept - language
+en - US, en; q = 0.9
+authorization
+Bearer ya29.a0AQvPyIPdDw - u2Lt0x - 2B6m147ZR9fJRP - PceLuTlhbnaJFXU1oevbce5SZYK2k06y1K7cUeaQOg5uqE9LRWocmk5HkJANdTTmn3znr423OHFwmgx - ndGikZE2K2D4TJeycA6ijcRZem0Vd1QcHrtCLT991rBqRx3t4_3FiAtxCYpjf - lel89ZvvZ74e1SU1uUmLOC2jCCxVgDV6DS2UI2CFQFUR9hniIYTQr1Sv_VWYSVScpqbNtmHx0npZzCbfn30UCwvb9X - pa3sJHeTQCoZuTwECQPROFv8vRgUgVf62k7hTcAEEQuZJMlNCvKnqmIIHy1JEIoy_NDk735FdR3SYGAQkijHwC_Uat3Wdq7C8aCgYKAYwSARQSFQHGX2MitLs - bKYn3b3ckq4ia3sxcQ0370
+content - length
+110
+content - type
+text / plain; charset = UTF - 8
+origin
+https://labs.google
+priority
+u = 1, i
+referer
+https://labs.google/
+sec - ch - ua
+"Chromium"; v = "148", "Google Chrome"; v = "148", "Not/A)Brand"; v = "99"
+sec - ch - ua - mobile
+    ? 0
+sec - ch - ua - platform
+"Windows"
+sec - fetch - dest
+empty
+sec - fetch - mode
+cors
+sec - fetch - site
+cross - site
+user - agent
+Mozilla / 5.0(Windows NT 10.0; Win64; x64) AppleWebKit / 537.36(KHTML, like Gecko) Chrome / 148.0.0.0 Safari / 537.36
+x - browser - channel
+stable
+x - browser - copyright
+Copyright 2026 Google LLC.All Rights Reserved.
+    x - browser - validation
+puPtlXuojC + VILE1bgaJ40YGt + E=
+x - browser - year
+2026
+x - client - data
+CKmdygEIk6HLAQiFoM0BCMbKlDAYosHPAQ ==
+    Decoded:
+message ClientVariations {
+  // Active Google-visible variation IDs on this client. These are reported for analysis, but do not directly affect any server-side behavior.
+  repeated int32 variation_id = [3313321, 3330195, 3362821, 101000518];
+  // Active Google-visible variation IDs on this client that trigger server-side behavior. These are reported for analysis *and* directly affect server-side behavior.
+  repeated int32 trigger_variation_id = [3399842];
+}
+
+payload: { "media": [{ "name": "654af8f3-8974-43d1-bd52-9c8257288d27", "projectId": "06e3e8c5-1dd0-4a3b-8319-6080c47a3084" }] }
+
+response:
+{
+    "remainingCredits": 25,
+        "media": [
+            {
+                "name": "654af8f3-8974-43d1-bd52-9c8257288d27",
+                "projectId": "06e3e8c5-1dd0-4a3b-8319-6080c47a3084",
+                "workflowId": "76735962-6847-4c84-9e79-0a66f99682ac",
+                "workflowStepId": "CAE",
+                "mediaMetadata": {
+                    "createTime": "2026-05-19T15:06:45.096068Z",
+                    "mediaTitle": "GeorgeUntitled Character ôm nhau",
+                    "requestData": {
+                        "videoGenerationRequestData": {
+                            "videoModelControlInput": {
+                                "videoModelName": "abra_r2v_4s",
+                                "videoGenerationMode": "VIDEO_GENERATION_MODE_REFERENCE_TO_VIDEO",
+                                "videoModelCapabilities": [
+                                    "VIDEO_MODEL_CAPABILITY_MULTI_REFERENCE"
+                                ],
+                                "videoAspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE"
+                            },
+                            "videoGenerationEntityInputs": [
+                                {
+                                    "entityId": "9f42196e-1851-4f9e-9a0a-099c08f376b1"
+                                },
+                                {
+                                    "entityId": "3466c59a-4452-47d9-be4b-120846c9986e"
+                                }
+                            ]
+                        },
+                        "promptInputs": [
+                            {
+                                "structuredPrompt": {
+                                    "parts": [
+                                        {
+                                            "reference": {
+                                                "entity": {
+                                                    "entityId": "9f42196e-1851-4f9e-9a0a-099c08f376b1",
+                                                    "handle": "George"
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "reference": {
+                                                "entity": {
+                                                    "entityId": "3466c59a-4452-47d9-be4b-120846c9986e",
+                                                    "handle": "Untitled Character"
+                                                }
+                                            }
+                                        },
+                                        {
+                                            "text": " ôm nhau"
+                                        }
+                                    ]
+                                }
+                            }
+                        ],
+                        "clientPlatform": "CLIENT_PLATFORM_WEB"
+                    },
+                    "mediaStatus": {
+                        "mediaGenerationStatus": "MEDIA_GENERATION_STATUS_SUCCESSFUL"
+                    },
+                    "visibility": "PRIVATE"
+                },
+                "video": {
+                    "generatedVideo": {
+                        "seed": 6302,
+                        "prompt": "image_0.png image_1.png image_2.png ôm nhau",
+                        "model": "abra_r2v_4s",
+                        "baseImageMediaGenerationId": "",
+                        "isLooped": false,
+                        "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE"
+                    },
+                    "dimensions": {
+                        "length": "4s"
+                    },
+                    "operation": {
+                        "name": "654af8f3-8974-43d1-bd52-9c8257288d27"
+                    }
+                }
+            }
+        ]
+}
+

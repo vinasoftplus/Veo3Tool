@@ -176,6 +176,21 @@ def _resolve_video_model_key(kind: str, account: dict, aspect_ratio: str, model:
     return model or ""
 
 
+def _video_duration_seconds(value: int | str | None) -> int:
+    try:
+        seconds = int(value or 8)
+    except Exception:
+        seconds = 8
+    return seconds if seconds in (4, 6, 8, 10) else 8
+
+
+def _omni_flash_model_key(model: str, duration_seconds: int | str | None = 8) -> str | None:
+    normalized = str(model or "").strip().lower()
+    if normalized != "omni_flash":
+        return None
+    return f"abra_r2v_{_video_duration_seconds(duration_seconds)}s"
+
+
 def _endpoint_name(url: str) -> str:
     if "batchAsyncGenerateVideoText" in url:
         return "text-to-video"
@@ -327,8 +342,9 @@ class GoogleLabsAdapter:
         seed: int | None = None,
         recaptcha_token: str = "",
         structured_prompt_parts: list[dict] | None = None,
+        duration_seconds: int = 8,
     ) -> dict:
-        model_key = _resolve_video_model_key("t2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("t2v", account, aspect_ratio, model)
         eff_seed = seed if seed is not None else _random_seed()
 
         def _make_t2v_req() -> dict:
@@ -362,8 +378,9 @@ class GoogleLabsAdapter:
         output_count: int = 1,
         model: str = "auto",
         recaptcha_token: str = "",
+        duration_seconds: int = 8,
     ) -> dict:
-        model_key = _resolve_video_model_key("i2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("i2v", account, aspect_ratio, model)
 
         def _make_i2v_req() -> dict:
             return {
@@ -512,6 +529,7 @@ class GoogleLabsAdapter:
         seed: int | None = None,
         recaptcha_token: str = "",
         structured_prompt_parts: list[dict] | None = None,
+        duration_seconds: int = 8,
     ) -> dict:
         payload = self.build_text_to_video_payload(
             prompt=prompt,
@@ -521,6 +539,7 @@ class GoogleLabsAdapter:
             model=model,
             seed=seed,
             recaptcha_token=recaptcha_token,
+            duration_seconds=duration_seconds,
         )
         return await _async_send(URL_T2V, payload, _token(account), _cookie(account))
 
@@ -534,6 +553,7 @@ class GoogleLabsAdapter:
         output_count: int = 1,
         model: str = "auto",
         recaptcha_token: str = "",
+        duration_seconds: int = 8,
     ) -> dict:
         payload = self.build_image_to_video_payload(
             media_id=media_id,
@@ -543,6 +563,7 @@ class GoogleLabsAdapter:
             output_count=output_count,
             model=model,
             recaptcha_token=recaptcha_token,
+            duration_seconds=duration_seconds,
         )
         return await _async_send(URL_I2V, payload, _token(account), _cookie(account))
 
@@ -557,8 +578,9 @@ class GoogleLabsAdapter:
         output_count: int = 1,
         model: str = "auto",
         recaptcha_token: str = "",
+        duration_seconds: int = 8,
     ) -> dict:
-        model_key = _resolve_video_model_key("i2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("i2v", account, aspect_ratio, model)
         def _make_startend_req() -> dict:
             r: dict[str, Any] = {
                 "aspectRatio": aspect_ratio,
@@ -595,8 +617,9 @@ class GoogleLabsAdapter:
         seed: int | None = None,
         recaptcha_token: str = "",
         structured_prompt_parts: list[dict] | None = None,
+        duration_seconds: int = 8,
     ) -> dict:
-        model_key = _resolve_video_model_key("r2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("r2v", account, aspect_ratio, model)
         refs = [
             {"mediaId": mid, "imageUsageType": "IMAGE_USAGE_TYPE_ASSET"}
             for mid in reference_media_ids[:3] if mid
@@ -635,8 +658,9 @@ class GoogleLabsAdapter:
         output_count: int = 1,
         model: str = "auto",
         recaptcha_token: str = "",
+        duration_seconds: int = 8,
     ) -> dict:
-        model_key = _resolve_video_model_key("i2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("i2v", account, aspect_ratio, model)
         def _make_se_req() -> dict:
             r: dict[str, Any] = {
                 "aspectRatio": aspect_ratio,
@@ -676,8 +700,9 @@ class GoogleLabsAdapter:
         seed: int | None = None,
         recaptcha_token: str = "",
         structured_prompt_parts: list[dict] | None = None,
+        duration_seconds: int = 8,
     ) -> dict:
-        model_key = _resolve_video_model_key("r2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("r2v", account, aspect_ratio, model)
         refs = [
             {"mediaId": mid, "imageUsageType": "IMAGE_USAGE_TYPE_ASSET"}
             for mid in reference_media_ids[:3]

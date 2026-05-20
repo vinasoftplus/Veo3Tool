@@ -97,7 +97,10 @@
       "Bash(node --check \"c:\\\\Users\\\\PC\\\\Desktop\\\\Veo3Tool\\\\static\\\\js\\\\tabs\\\\startend_video.js\")",
       "Bash(python -c \"import cloakbrowser.download as d; import inspect; print\\(inspect.getfile\\(d\\)\\)\")",
       "Bash(curl -s --connect-timeout 5 -o nul -w \"%{http_code}\" https://cloakbrowser.dev)",
-      "Bash(curl -s --connect-timeout 5 -o nul -w \"%{http_code}\" https://api.github.com/repos/CloakHQ/cloakbrowser/releases)"
+      "Bash(curl -s --connect-timeout 5 -o nul -w \"%{http_code}\" https://api.github.com/repos/CloakHQ/cloakbrowser/releases)",
+      "Bash(py -3.10 -c \"import inspect; from cloakbrowser import launch_persistent_context_async; print\\(inspect.getfile\\(launch_persistent_context_async\\)\\)\")",
+      "Bash(py -3.10 -c \"import playwright; from pathlib import Path; d = Path\\(playwright.__file__\\).parent / 'driver'; print\\(d\\); print\\(list\\(d.iterdir\\(\\)\\)[:5] if d.exists\\(\\) else 'NOT FOUND'\\)\")",
+      "Bash(py -3.10 -c \"import playwright; from pathlib import Path; d = Path\\(playwright.__file__\\).parent; print\\(d\\)\")"
     ],
     "additionalDirectories": [
       "C:\\Users\\PC\\Downloads\\VEO_PACK\\VEO_PACK\\extension-treov2_backupv8_1",
