@@ -508,35 +508,8 @@ async def library_assets():
     from services.library_service import list_assets
 
     items = await list_assets()
-    active_accounts = [
-        a for a in get_active_accounts()
-        if str(a.get("PROJECT_ID", "")).strip()
-    ]
-    required = len(active_accounts)
-    active_keys = {
-        (int(a.get("_index") or 0), str(a.get("PROJECT_ID", "") or ""))
-        for a in active_accounts
-    }
     for item in items:
-        syncs = item.get("syncs") or []
-        ok_syncs = [
-            s for s in syncs
-            if (int(s.get("account_index") or 0), str(s.get("project_id") or "")) in active_keys
-            and s.get("status") == "synced"
-            and _valid_sync_media_id(s.get("media_id", ""))
-        ]
-        item["sync_required_count"] = required
-        item["sync_count"] = len(ok_syncs)
-        if item.get("asset_type") != "nhanvat":
-            item["sync_status_label"] = ""
-        elif required <= 0:
-            item["sync_status_label"] = "Chưa có account"
-        elif len(ok_syncs) >= required:
-            item["sync_status_label"] = f"Đã Sync {len(ok_syncs)}/{required}"
-        elif len(ok_syncs) > 0:
-            item["sync_status_label"] = f"Thiếu Sync {len(ok_syncs)}/{required}"
-        else:
-            item["sync_status_label"] = "Chưa Sync"
+        item.pop("syncs", None)
     return {"ok": True, "items": items}
 
 
@@ -571,7 +544,6 @@ class SyncLibraryAssetsRequest(BaseModel):
     asset_ids: list[str]
 
 
-@router.post("/library/assets/sync-characters")
 async def library_sync_characters(req: SyncLibraryAssetsRequest):
     """Upload selected character assets to every active Labs account and store mediaId per account/project."""
     from adapters.google_labs import GoogleLabsAdapter
@@ -692,7 +664,6 @@ async def library_sync_characters(req: SyncLibraryAssetsRequest):
     return {"ok": total_ok > 0, "synced": total_ok, "failed": total_failed, "items": results}
 
 
-@router.post("/library/assets/sync-characters/start")
 async def library_sync_characters_start(req: SyncLibraryAssetsRequest):
     asset_ids = [str(x or "").strip() for x in (req.asset_ids or []) if str(x or "").strip()]
     if not asset_ids:
@@ -716,7 +687,6 @@ async def library_sync_characters_start(req: SyncLibraryAssetsRequest):
     return _CHAR_SYNC_JOBS[job_id]
 
 
-@router.get("/library/assets/sync-characters/{job_id}")
 async def library_sync_character_status(job_id: str):
     job = _CHAR_SYNC_JOBS.get(str(job_id or ""))
     if not job:

@@ -86,6 +86,7 @@
       const credits = acc._credits != null ? acc._credits : '...';
       const isLive = acc._live;
       const isDie = acc._live === false;
+      const isEnabled = acc.ENABLED !== false;
 
       const statusDot = isDie
         ? `<span style="display:inline-flex;align-items:center;gap:5px;font-size:12px;color:var(--red);"><span style="width:8px;height:8px;border-radius:50%;background:var(--red);display:inline-block;"></span>Die</span>`
@@ -104,6 +105,11 @@
             ${email ? `<div style="font-size:11px;color:var(--text3);font-family:monospace;">${acc.ACCESS_TOKEN?.slice(0, 20)}...</div>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:10px;flex-shrink:0;">
+            <label class="studio-bar-toggle t2v-toggle-label" style="margin:0;font-size:12px;">
+              <input type="checkbox" ${isEnabled ? 'checked' : ''} onchange="Settings.toggleVeoAccount(${idx}, this.checked)">
+              <span class="t2v-toggle-track"></span>
+              Bật
+            </label>
             ${statusDot}
             <span style="font-size:12px;color:var(--text2);">Credit: <strong>${acc._credits != null ? acc._credits.toLocaleString() : 'N/A'}</strong></span>
           </div>
@@ -119,11 +125,8 @@
 
         <div style="display:flex;gap:6px;flex-wrap:wrap;">
           <button class="btn btn-primary btn-sm" onclick="Settings.openCookieModal(${idx})"
-            style="flex:1;min-width:120px;">
-            🍪 Load Cookie
-          </button>
-          <button class="btn btn-secondary btn-sm" onclick="Settings.openManualTokenModal(${idx})" style="flex:1;min-width:100px;">
-            ✏️ Nhập Token
+            style="flex:1;min-width:160px;">
+            🍪 Cookie
           </button>
           <button class="btn btn-secondary btn-sm" onclick="Settings.reloadAccount(${idx})" title="Kiểm tra cookie live/die + lấy credit" style="flex-shrink:0;">
             🔄
@@ -210,6 +213,18 @@
     await API.post('/api/settings/account', { index: acc._index, account: {} });
     toast('Đã xóa tài khoản', 'success');
     await loadSettings();
+  }
+
+  async function toggleVeoAccount(idx, enabled) {
+    const acc = accounts[idx];
+    if (!acc) return;
+    const cfg2 = await API.get('/api/settings/config-full');
+    const current = (cfg2.data || {})[acc._key] || {};
+    current.ENABLED = !!enabled;
+    await API.post('/api/settings/account', { index: acc._index, account: current });
+    accounts[idx].ENABLED = !!enabled;
+    toast(enabled ? 'Đã bật account' : 'Đã tắt account', 'success');
+    renderAccounts();
   }
 
   // ── Manual token modal ────────────────────────────────────────────────────
@@ -794,9 +809,164 @@
     setTimeout(poll, 2000);
   }
 
+  // ── Auto Login modal (batch) ──────────────────────────────────────────────
+  async function openAutoLoginModal() {
+    const existing = document.getElementById('auto-login-modal');
+    if (existing) existing.remove();
+
+    // Check CloakBrowser installed
+    try {
+      const bs = await API.get('/api/grok/browser-status');
+      if (!bs?.installed) {
+        if (typeof window._showGrokBrowserModal === 'function') window._showGrokBrowserModal();
+        else toast('CloakBrowser chưa được tải. Hãy vào tab Grok để tải về.', 'error', 6000);
+        return;
+      }
+    } catch (_) {
+      toast('Không kiểm tra được CloakBrowser. Hãy đảm bảo server đang chạy.', 'error', 5000);
+      return;
+    }
+
+    const modal = document.createElement('div');
+    modal.id = 'auto-login-modal';
+    modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;display:flex;align-items:center;justify-content:center;';
+    modal.innerHTML = `
+      <div style="background:var(--bg2,#1e1e2e);border:1px solid var(--border,#333);border-radius:14px;padding:18px;width:760px;max-width:94vw;max-height:88vh;overflow-y:auto;display:flex;flex-direction:column;gap:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="font-size:16px;font-weight:700;color:var(--text1,#fff);">⚡ Auto Login Google (Hàng loạt)</div>
+          <button onclick="document.getElementById('auto-login-modal').remove()" style="background:none;border:none;color:var(--text3);font-size:18px;cursor:pointer;">✕</button>
+        </div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.6;">
+          Mỗi dòng một tài khoản theo định dạng <strong style="color:var(--text2);font-family:monospace;">email|mật_khẩu</strong><br>
+          Tool sẽ mở song song từng tài khoản và tự lưu vào slot trống.
+        </div>
+        <div>
+          <label style="font-size:11px;color:var(--text3);display:block;margin-bottom:6px;">Danh sách tài khoản <span style="color:red;">*</span></label>
+          <textarea id="al-batch-input" rows="4" placeholder="email1@gmail.com|matkhau1&#10;email2@gmail.com|matkhau2&#10;email3@gmail.com|matkhau3"
+            style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);font-size:13px;font-family:monospace;box-sizing:border-box;resize:vertical;line-height:1.6;"></textarea>
+        </div>
+        <div id="al-summary" style="display:none;font-size:12px;color:var(--text2);"></div>
+        <div id="al-log" style="display:none;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:8px;max-height:300px;overflow-y:auto;"></div>
+        <div style="display:flex;gap:8px;justify-content:flex-end;">
+          <button onclick="document.getElementById('auto-login-modal').remove()"
+            style="padding:8px 18px;border-radius:8px;border:1px solid var(--border);background:transparent;color:var(--text2);cursor:pointer;font-size:13px;">Huỷ</button>
+          <button id="al-submit-btn" onclick="Settings._doAutoLogin()"
+            style="padding:8px 20px;border-radius:8px;border:none;background:linear-gradient(135deg,#6366f1,#8b5cf6);color:#fff;cursor:pointer;font-size:13px;font-weight:600;">⚡ Bắt đầu Login</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+  }
+
+  async function _doAutoLogin() {
+    const rawText = document.getElementById('al-batch-input')?.value || '';
+    const logEl = document.getElementById('al-log');
+    const summaryEl = document.getElementById('al-summary');
+    const btn = document.getElementById('al-submit-btn');
+
+    const lines = rawText.split('\n').map(l => l.trim()).filter(l => l && l.includes('|'));
+    if (lines.length === 0) return toast('Nhập ít nhất 1 dòng theo định dạng email|mật_khẩu', 'error');
+
+    if (logEl) { logEl.style.display = 'grid'; logEl.innerHTML = ''; }
+    if (summaryEl) { summaryEl.style.display = 'block'; summaryEl.textContent = `Đang mở ${lines.length} phiên login...`; }
+    if (btn) { btn.disabled = true; btn.textContent = '⏳ Đang xử lý...'; }
+
+    function makeLogCard(index, email, slot) {
+      const card = document.createElement('div');
+      card.id = `al-log-card-${index}`;
+      card.style.cssText = 'background:var(--bg3);border:1px solid var(--border);border-radius:10px;padding:10px;min-height:120px;display:flex;flex-direction:column;gap:6px;';
+      card.innerHTML = `
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;">
+          <div style="font-size:12px;font-weight:700;color:var(--text1);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">#${slot + 1} ${email}</div>
+          <span data-status style="font-size:11px;color:var(--text3);white-space:nowrap;">Đang chạy</span>
+        </div>
+        <pre data-log style="margin:0;white-space:pre-wrap;font:11px/1.45 monospace;color:var(--text2);max-height:170px;overflow:auto;"></pre>`;
+      logEl?.appendChild(card);
+      return card;
+    }
+
+    function appendCardLog(card, msg) {
+      const pre = card?.querySelector('[data-log]');
+      if (pre) { pre.textContent += msg + '\n'; pre.scrollTop = pre.scrollHeight; }
+    }
+
+    function setCardStatus(card, status, ok) {
+      const el = card?.querySelector('[data-status]');
+      if (!el) return;
+      el.textContent = status;
+      el.style.color = ok ? 'var(--green)' : 'var(--red)';
+    }
+
+    async function getFreeSlots(count) {
+      const cfgRes = await API.get('/api/settings/config-full');
+      const cfgData = cfgRes.data || {};
+      const slots = [];
+      for (let i = 1; i <= 30 && slots.length < count; i++) {
+        const acc = cfgData[`account${i}`];
+        if (!acc || (!acc.COOKIE && !acc.ACCESS_TOKEN)) slots.push(i - 1);
+      }
+      let next = 30;
+      while (slots.length < count) slots.push(next++);
+      return slots;
+    }
+
+    let successCount = 0;
+    let failCount = 0;
+    const slots = await getFreeSlots(lines.length);
+    const tasks = lines.map(async (line, i) => {
+      const parts = line.split('|');
+      const email = parts[0].trim();
+      const password = parts.slice(1).join('|').trim();
+      const accountIndex = slots[i];
+
+      if (!email || !password) {
+        failCount++;
+        return;
+      }
+
+      const card = makeLogCard(i, email, accountIndex);
+      appendCardLog(card, `[${i + 1}/${lines.length}] Login...`);
+      try {
+        const res = await API.post('/api/settings/auto-login', { email, password, account_index: accountIndex });
+        if (res.logs) res.logs.forEach(l => appendCardLog(card, l));
+        if (res.ok) {
+          appendCardLog(card, `Thành công | Project: ${res.project_id || 'N/A'}`);
+          setCardStatus(card, 'OK', true);
+          successCount++;
+        } else {
+          const label = res.status === 'verify' ? 'Cần verify' : (res.status === 'invalid' ? 'Sai/không hợp lệ' : 'Fail');
+          appendCardLog(card, `${label}: ${res.error || 'unknown'}`);
+          setCardStatus(card, label, false);
+          failCount++;
+        }
+      } catch (e) {
+        appendCardLog(card, `Lỗi: ${e.message || e}`);
+        setCardStatus(card, 'Lỗi', false);
+        failCount++;
+      }
+      if (summaryEl) summaryEl.textContent = `Đang xử lý: ${successCount} thành công, ${failCount} lỗi / ${lines.length}`;
+    });
+
+    await Promise.all(tasks);
+    if (summaryEl) summaryEl.textContent = `Kết quả: ${successCount} thành công, ${failCount} lỗi / ${lines.length}`;
+
+    if (successCount > 0) {
+      toast(`Đã login thành công ${successCount}/${lines.length} tài khoản`, 'success', 5000);
+      loadSettings();
+      // Đổi nút thành "Đóng" thay vì gọi lại _doAutoLogin
+      if (btn) {
+        btn.disabled = false;
+        btn.textContent = '✅ Đóng';
+        btn.onclick = () => document.getElementById('auto-login-modal')?.remove();
+      }
+    } else {
+      if (btn) { btn.disabled = false; btn.textContent = '🔁 Thử lại'; }
+    }
+  }
+
   Object.assign(window.Settings, {
     saveProjectId,
     deleteAccount,
+    toggleVeoAccount,
     openManualTokenModal,
     saveManualToken,
     openCookieModal,
@@ -811,6 +981,8 @@
     openGrokProfile,
     openGrokBrowser,
     loadGrokCookie,
+    openAutoLoginModal,
+    _doAutoLogin,
     reload: loadSettings,
   });
 
@@ -823,6 +995,7 @@
       TIER: acc.TIER || 'NORMAL',
       EMAIL: acc.EMAIL || '',
       COOKIE: acc.COOKIE || '',
+      ENABLED: acc.ENABLED !== false,
     };
     await API.post('/api/settings/account', { index: acc._index, account: a });
     toast('Đã lưu', 'success');

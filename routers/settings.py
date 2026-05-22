@@ -328,3 +328,69 @@ async def auto_refresh_all():
         "failed": len([r for r in results if not r.get("ok")]),
         "details": list(results),
     }
+
+
+class AutoLoginRequest(BaseModel):
+    email: str
+    password: str
+    account_index: int = 0  # 0-based
+
+
+@router.post("/auto-login")
+async def auto_login(req: AutoLoginRequest):
+    """
+    Tự động login Google bằng CloakBrowser → lấy cookie + token + project_id → lưu vào account.
+    Trả về SSE-style progress qua response thông thường (logs list).
+    """
+    from services.auto_login_service import auto_login_google
+    from services.config_service import load_config, save_account
+
+    logs: list[str] = []
+
+    def log_cb(msg: str):
+        logs.append(msg)
+
+    try:
+        result = await auto_login_google(
+            email=req.email,
+            password=req.password,
+            account_index=req.account_index,
+            log_cb=log_cb,
+        )
+    except Exception as e:
+        logs.append(f"❌ Lỗi: {e}")
+        err = str(e)
+        status = "error"
+        if "VERIFY_REQUIRED" in err:
+            status = "verify"
+        elif "INVALID_ACCOUNT" in err:
+            status = "invalid"
+        return {"ok": False, "error": err, "status": status, "logs": logs}
+
+    # Lưu vào config
+    cfg = load_config()
+    acc_key = f"account{req.account_index + 1}"
+    current = dict(cfg.get(acc_key, {}))
+    current["EMAIL"] = result.get("email", req.email)
+    current["COOKIE"] = result.get("cookie", "")
+    current["LABS_COOKIE"] = result.get("labs_cookie", "")
+    current["ACCESS_TOKEN"] = result.get("access_token", "")
+    if result.get("project_id"):
+        current["PROJECT_ID"] = result["project_id"]
+    if not current.get("TYPE_ACCOUNT"):
+        current["TYPE_ACCOUNT"] = "ULTRA"
+    if not current.get("PROFILE_NAME"):
+        current["PROFILE_NAME"] = f"PROFILE_{req.account_index + 1}"
+    current["ENABLED"] = current.get("ENABLED", True) is not False
+
+    save_account(req.account_index + 1, current)
+
+    return {
+        "ok": True,
+        "email": result.get("email"),
+        "project_id": result.get("project_id"),
+        "token_preview": result["access_token"][:30] + "..." if result.get("access_token") else "",
+        "has_cookie": bool(result.get("cookie")),
+        "has_labs_cookie": bool(result.get("labs_cookie")),
+        "logs": logs,
+    }

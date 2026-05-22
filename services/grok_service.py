@@ -736,9 +736,17 @@ def _acc_cookie_header(acc: dict[str, Any]) -> str:
     return str(c or "")
 
 
+def _grok_account_slot_used(acc: Any) -> bool:
+    if not isinstance(acc, dict):
+        return False
+    return bool(acc.get("email") or acc.get("cookie") or acc.get("profile") or acc.get("last_login") or acc.get("last_error"))
+
+
 def public_grok_accounts() -> list[dict[str, Any]]:
     safe = []
     for idx, acc in enumerate(load_grok_accounts()):
+        if not _grok_account_slot_used(acc):
+            continue
         cookie_str = _acc_cookie_header(acc)
         safe.append(
             {
@@ -760,10 +768,10 @@ def pick_account(index: int | None = None) -> tuple[int, dict[str, Any]]:
     accounts = load_grok_accounts()
     if index is not None and 0 <= index < len(accounts):
         acc = accounts[index]
-        if _acc_has_cookie(acc):
+        if _grok_account_slot_used(acc) and acc.get("enabled", True) and _acc_has_cookie(acc):
             return index, acc
     for idx, acc in enumerate(accounts):
-        if acc.get("enabled", True) and _acc_has_cookie(acc):
+        if _grok_account_slot_used(acc) and acc.get("enabled", True) and _acc_has_cookie(acc):
             return idx, acc
     raise GrokError("Chưa có tài khoản Grok đã login/cookie hợp lệ")
 
@@ -1702,8 +1710,33 @@ async def grok_login_account(email: str, password: str, index: int) -> dict[str,
 _MANUAL_CONTEXTS: dict[str, Any] = {}
 
 
+async def delete_grok_profile(profile: str) -> None:
+    """Close live Grok browser contexts and remove profile folders for one fixed slot."""
+    import shutil
+
+    for contexts in (_MANUAL_CONTEXTS, _CLOAK_CONTEXTS):
+        ctx = contexts.pop(profile, None)
+        if ctx:
+            with contextlib.suppress(Exception):
+                await ctx.close()
+
+    _PROFILE_GROK_TABS.pop(profile, None)
+    _PROFILE_CDP_PORTS.pop(profile, None)
+    _PROFILE_READY.discard(profile)
+
+    for root, is_cloak in ((CHROME_USER_DATA_ROOT, False), (CLOAK_USER_DATA_ROOT, True)):
+        profile_dir = root / str(profile)
+        if profile_dir.exists():
+            if is_cloak:
+                _kill_chromium_holding_profile(profile_dir)
+            with contextlib.suppress(Exception):
+                shutil.rmtree(str(profile_dir), ignore_errors=True)
+
+
 async def open_browser_for_manual_login(index: int) -> dict[str, Any]:
     """Open a visible CloakBrowser window at grok.com/imagine for the user to login manually."""
+    if index < 0:
+        raise GrokError("Slot Grok khong hop le")
     profile = f"GROK_{index + 1}"
 
     # Close any existing manual context for this profile
@@ -1711,6 +1744,12 @@ async def open_browser_for_manual_login(index: int) -> dict[str, Any]:
     if old:
         with contextlib.suppress(Exception):
             await old.close()
+    hidden = _CLOAK_CONTEXTS.pop(profile, None)
+    if hidden:
+        with contextlib.suppress(Exception):
+            await hidden.close()
+    _PROFILE_GROK_TABS.pop(profile, None)
+    _PROFILE_CDP_PORTS.pop(profile, None)
 
     if not _cloak_available():
         raise GrokError("CloakBrowser chưa được cài đặt. Hãy tải về trong tab Grok.")
@@ -1720,11 +1759,21 @@ async def open_browser_for_manual_login(index: int) -> dict[str, Any]:
     from cloakbrowser import launch_persistent_context_async
 
     user_data_dir = _profile_dir(profile, cloak=True)
-    # Visible window (no hidden args) so user can interact
+    _kill_chromium_holding_profile(user_data_dir)
+    # Visible normal window so user can interact. Do not reuse hidden 1x1/off-screen args.
     ctx = await launch_persistent_context_async(
         user_data_dir=str(user_data_dir),
         headless=False,
-        args=["--start-maximized", "--no-default-browser-check", "--no-first-run"],
+        args=[
+            "--window-position=80,80",
+            "--window-size=1280,900",
+            "--force-device-scale-factor=1",
+            "--high-dpi-support=1",
+            "--disable-popup-blocking",
+            "--no-default-browser-check",
+            "--no-first-run",
+        ],
+        viewport=None,
         stealth_args=True,
         humanize=False,
     )
@@ -1732,11 +1781,15 @@ async def open_browser_for_manual_login(index: int) -> dict[str, Any]:
     pages = ctx.pages
     page = pages[0] if pages else await ctx.new_page()
     await page.goto(GROK_SIGN_IN, wait_until="domcontentloaded", timeout=60000)
+    with contextlib.suppress(Exception):
+        await page.keyboard.press("Control+0")
     return {"ok": True, "profile": profile, "mode": "cloakbrowser"}
 
 
 async def load_cookie_from_manual_login(index: int, email: str = "") -> dict[str, Any]:
     """Navigate to grok.com/imagine, wait for all anti-bot cookies, then save account."""
+    if index < 0:
+        raise GrokError("Slot Grok khong hop le")
     profile = f"GROK_{index + 1}"
     ctx = _MANUAL_CONTEXTS.get(profile)
 
@@ -1777,15 +1830,11 @@ async def load_cookie_from_manual_login(index: int, email: str = "") -> dict[str
         await ctx.close()
 
     accounts_data = load_grok_accounts()
-    acc_index = index
-    if email:
-        for i, a in enumerate(accounts_data):
-            if a.get("email") == email:
-                acc_index = i
-                break
+    while len(accounts_data) <= index:
+        accounts_data.append({})
 
     account = {
-        "email": email or (accounts_data[acc_index].get("email") if acc_index < len(accounts_data) else ""),
+        "email": email or (accounts_data[index].get("email") if isinstance(accounts_data[index], dict) else ""),
         "profile": profile,
         "cookie": raw_cookies,
         "statsig_id": statsig_id,
@@ -1793,10 +1842,7 @@ async def load_cookie_from_manual_login(index: int, email: str = "") -> dict[str
         "last_login": time.strftime("%Y-%m-%d %H:%M:%S"),
         "last_error": "",
     }
-    if acc_index < len(accounts_data):
-        accounts_data[acc_index] = account
-    else:
-        accounts_data.append(account)
+    accounts_data[index] = account
     save_grok_accounts(accounts_data)
     return {"ok": True, "profile": profile, "accounts": public_grok_accounts()}
 

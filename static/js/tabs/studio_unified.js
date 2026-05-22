@@ -398,7 +398,7 @@
       const url = out?.video_url || out?.videoUri || out?.fifeUrl || '';
       if (card.busyImage) return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang tạo ảnh...</div></div>';
       if (card.upscaling) return `<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang upscale ${card.upscaleResolution === '4k' ? '4K' : '1080p'}...</div></div>`;
-      if (card.status === 'processing' && card.upscaleFailed) return `<div style="text-align:center;padding:12px;color:var(--orange);font-size:12px;white-space:pre-wrap;"><div style="font-weight:700;margin-bottom:6px;">Upscale đã gửi nhưng chưa có kết quả 1080p</div><button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="Studio.retryUpscale('${card.id}')">Upscale lại</button></div>`;
+      if (card.status === 'processing' && card.upscaleFailed) return `<div style="text-align:center;padding:12px;color:var(--orange);font-size:12px;white-space:pre-wrap;"><div style="font-weight:700;margin-bottom:6px;">${card.error || 'Upscale đã gửi nhưng chưa có kết quả 1080p'}</div><button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="Studio.retryUpscale('${card.id}')">Upscale lại</button></div>`;
       if (card.status === 'processing') return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang xử lý...</div></div>';
       if (card.status === 'running') return `<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang tạo video...</div>${card.error ? `<div style="margin-top:8px;color:var(--orange);font-size:12px;white-space:pre-wrap;">${card.error}</div>` : ''}</div>`;
       if (card.status === 'failed') return `<div style="padding:12px;color:var(--red);font-size:12px;white-space:pre-wrap;">${card.error || 'Thất bại'}${card.upscaleFailed ? `<br><button class="btn btn-primary btn-sm" style="margin-top:8px;" onclick="Studio.retryUpscale('${card.id}')">Upscale lại</button>` : ''}</div>`;
@@ -1070,37 +1070,72 @@
   async function upscaleCard(cardId, outputIndex, resolution = '1080p') {
     const card = cards.find(c => c.id === cardId);
     if (!card || card.upscaling) return false;
-    const out = card.outputs[outputIndex];
-    if (!out) return false;
+    const safeIndex = Math.max(0, Math.min(Number(outputIndex) || 0, Math.max(0, (card.outputs || []).length - 1)));
+    const out = (card.outputs || [])[safeIndex];
+    if (!card.jobId) {
+      card.status = 'failed';
+      card.error = 'Không tìm thấy job video gốc để upscale lại.';
+      card.upscaleFailed = true;
+      renderCard(card, false);
+      updateStats();
+      return false;
+    }
+    if (!out) {
+      card.status = 'failed';
+      card.error = 'Không tìm thấy video gốc để upscale lại.';
+      card.upscaleFailed = true;
+      renderCard(card, false);
+      updateStats();
+      return false;
+    }
     card.status = 'processing';
     card.upscaling = true;
     card.upscaleResolution = resolution;
     card.upscaleFailed = false;
+    card.error = '';
     renderCard(card, false);
     updateStats();
     try {
-      const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', { operation_name: out.operation_name || '', output_index: outputIndex, account_index: card.videoAccountIndex || null, resolution });
+      const res = await API.post('/api/veo/job/' + card.jobId + '/upscale', {
+        operation_name: out.operation_name || '',
+        output_index: safeIndex,
+        account_index: card.videoAccountIndex || null,
+        resolution,
+        media_name: card.upscaleMediaName || '',
+      });
       if (res.ok && Array.isArray(res.outputs) && res.outputs.length) {
         if (res.account_index) card.videoAccountIndex = res.account_index;
-        card.outputs[outputIndex] = { ...card.outputs[outputIndex], ...res.outputs[0], _upscaled: true };
+        card.outputs[safeIndex] = { ...card.outputs[safeIndex], ...res.outputs[0], _upscaled: true };
+        card.upscaleMediaName = '';
         card.upscaleFailed = false;
         card.status = 'completed';
+        card.error = '';
         toast(`Upscale ${resolution === '4k' ? '4K' : '1080p'} thành công`, 'success');
         return true;
       } else if (res.ok && (res.pending || res.started)) {
         if (res.account_index) card.videoAccountIndex = res.account_index;
+        if (res.media_name) card.upscaleMediaName = res.media_name;
         card.upscaleFailed = true;
         card.status = 'processing';
-        toast(res.message || 'Upscale đã được gửi, chờ thêm để có kết quả', 'info');
+        card.error = [
+          res.message || 'Upscale đã gửi nhưng chưa lấy được kết quả 1080p.',
+          res.redirect_status ? `Redirect status: ${res.redirect_status}` : '',
+          res.redirect_body ? `Chi tiết: ${res.redirect_body}` : '',
+        ].filter(Boolean).join('\n');
+        toast(card.error, 'info');
         return false;
       } else {
         card.status = 'failed';
-        toast(res.body || res.message || 'Upscale thất bại', 'error');
+        card.upscaleFailed = true;
+        card.error = res.body || res.message || 'Upscale thất bại';
+        toast(card.error, 'error');
         return false;
       }
     } catch (err) {
       card.status = 'failed';
-      toast('Lỗi upscale: ' + err.message, 'error');
+      card.upscaleFailed = true;
+      card.error = 'Lỗi upscale: ' + err.message;
+      toast(card.error, 'error');
       return false;
     } finally {
       card.upscaling = false;
@@ -1531,7 +1566,7 @@
     const activeIndices = [];
     for (let i = 1; i <= 10; i++) {
       const acc = d[`account${i}`];
-      if (acc && (acc.ACCESS_TOKEN || acc.COOKIE)) activeIndices.push(i);
+      if (acc && acc.ENABLED !== false && (acc.ACCESS_TOKEN || acc.COOKIE)) activeIndices.push(i);
     }
     const maxConcurrent = Math.min(3, Math.max(1, parseInt(d.MAX_CONCURRENT || '2', 10) || 2));
     const maxConcurrentImage = Math.min(3, Math.max(1, parseInt(d.MAX_CONCURRENT_IMAGE || '2', 10) || 2));
@@ -1901,6 +1936,14 @@
         </span>`;
     }
 
+    function _studioModelCredit(opt) {
+      if (!opt) return '';
+      if (opt.value !== 'omni_flash') return opt.dataset?.credit || '';
+      const map = { 4: 15, 6: 20, 8: 25, 10: 30 };
+      const seconds = parseInt(cfg.durationSeconds || 8, 10) || 8;
+      return `${map[seconds] || 25} credit`;
+    }
+
     function _enhanceStudioSelect(selectEl) {
       if (!selectEl || selectEl.dataset.fancyReady === '1') return;
       selectEl.dataset.fancyReady = '1';
@@ -1923,7 +1966,7 @@
       function render() {
         const selectedOpt = selectEl.options[selectEl.selectedIndex];
         const selectedText = _studioFancyLabel(selectId, selectEl.value, selectedOpt?.textContent?.trim() || '');
-        const selectedCredit = selectId === 'studio-model' ? (selectedOpt?.dataset?.credit || '') : '';
+        const selectedCredit = selectId === 'studio-model' ? _studioModelCredit(selectedOpt) : '';
         trigger.innerHTML = `
           <span class="studio-dd-trigger-main">
             ${_studioFancyIconHtml(selectId, selectEl.value)}
@@ -1938,7 +1981,7 @@
         Array.from(selectEl.options).forEach(opt => {
           const val = opt.value;
           const label = _studioFancyLabel(selectId, val, opt.textContent.trim());
-          const credit = selectId === 'studio-model' ? (opt.dataset.credit || '') : '';
+          const credit = selectId === 'studio-model' ? _studioModelCredit(opt) : '';
           const btn = document.createElement('button');
           btn.type = 'button';
           btn.className = 'studio-dd-option' + (val === selectEl.value ? ' active' : '');
@@ -2060,6 +2103,7 @@
       if (cfg.model !== 'omni_flash') return;
       cfg.durationSeconds = parseInt(btn.dataset.val, 10) || 8;
       _syncDurationControls();
+      $('studio-model')?.dispatchEvent(new Event('change', { bubbles: true }));
     }));
     document.addEventListener('click', e => {
       if (!e.target.closest('.card-action-group')) document.querySelectorAll('.card-insert-menu').forEach(menu => { menu.style.display = 'none'; });
@@ -2528,6 +2572,11 @@
         } else {
           toast(`Upscale ${label} xong nhưng không lấy được URL`, 'error');
         }
+      } else if (res.ok && (res.pending || res.started)) {
+        if (res.account_index) card.videoAccountIndex = res.account_index;
+        card.upscaleFailed = true;
+        card.status = 'processing';
+        toast(res.message || `Upscale ${label} đã gửi, chờ thêm để có kết quả`, 'info');
       } else {
         toast(res.body || res.message || `Upscale ${label} thất bại`, 'error');
       }
@@ -2663,7 +2712,6 @@
                ${_vaultSelectedIds.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation()">
         <img src="${item.url}" alt="${item.name}" loading="lazy">
         <span class="studio-vault-card-badge">${typeLabel[item.asset_type] || 'Kho'}</span>
-        ${item.asset_type === 'nhanvat' ? `<span class="studio-vault-sync-badge ${item.sync_count && item.sync_count >= (item.sync_required_count || 0) && item.sync_required_count ? 'synced' : item.sync_count ? 'partial' : 'missing'}">${item.sync_status_label || 'Chưa Sync'}</span>` : ''}
         <div class="studio-vault-card-label">${item.name || 'Chưa đặt tên'}</div>
       </div>
     `).join('');
@@ -2775,8 +2823,6 @@
         name: item.name || '',
         character_code: item.name || '',
         media_id: item.media_id || '',
-        syncs: item.syncs || [],
-        flow_handle: (item.syncs || []).find(s => s.flow_handle)?.flow_handle || '',
       });
       card.refIndex = 0;
       renderCard(card, false);
@@ -2808,8 +2854,6 @@
           name: item.name || '',
           character_code: item.name || '',
           media_id: item.media_id || '',
-          syncs: item.syncs || [],
-          flow_handle: (item.syncs || []).find(s => s.flow_handle)?.flow_handle || '',
         });
         card.refIndex = 0;
         totalAdded++;
@@ -2817,87 +2861,6 @@
     }
     rerender();
     toast(totalAdded ? `Load nhanh: thêm ${totalAdded} ảnh vào các cụm` : 'Không khớp tên nào trong prompt', totalAdded ? 'success' : 'info');
-  }
-
-  function showSyncProgress(job) {
-    let box = document.getElementById('sync-progress-card');
-    if (!box) {
-      box = document.createElement('div');
-      box.id = 'sync-progress-card';
-      box.className = 'sync-progress-card';
-      box.style.position = 'fixed';
-      box.style.left = '50%';
-      box.style.bottom = '28px';
-      box.style.transform = 'translateX(-50%)';
-      box.style.zIndex = '12000';
-      box.innerHTML = `
-        <div class="sync-progress-head">
-          <span>Đồng bộ nhân vật</span>
-          <span class="sync-progress-percent">0%</span>
-        </div>
-        <div class="sync-progress-track"><div class="sync-progress-fill"></div></div>
-        <div class="sync-progress-message">Đang chuẩn bị...</div>
-      `;
-      document.body.appendChild(box);
-    }
-    const pct = Math.max(0, Math.min(100, Number(job?.progress || 0)));
-    box.querySelector('.sync-progress-fill').style.width = pct + '%';
-    box.querySelector('.sync-progress-percent').textContent = pct + '%';
-    box.querySelector('.sync-progress-message').textContent =
-      job?.message || `Đang đồng bộ ${job?.done || 0}/${job?.total || 0}`;
-    if (job && ['completed', 'failed'].includes(job.status)) {
-      setTimeout(() => box.remove(), 1800);
-    }
-  }
-
-  async function runCharacterSync(assetIds, btn) {
-    const start = await API.post('/api/image/library/assets/sync-characters/start', { asset_ids: assetIds });
-    if (!start.ok || !start.job_id) throw new Error(start.detail || start.message || 'Không tạo được job đồng bộ');
-    showSyncProgress(start);
-    let job = start;
-    while (job && !['completed', 'failed'].includes(job.status)) {
-      await new Promise(r => setTimeout(r, 900));
-      job = await API.get(`/api/image/library/assets/sync-characters/${start.job_id}`);
-      showSyncProgress(job);
-      if (btn) {
-        btn.innerHTML = `<span class="spinner" style="width:13px;height:13px;border-width:2px;"></span> ${job.progress || 0}%`;
-      }
-    }
-    return job;
-  }
-
-  async function vaultSyncSelectedCharacters() {
-    if (!_vaultSelectedIds.size) return toast('Chưa chọn ảnh nhân vật nào', 'error');
-    const selected = _vaultAssets.filter(a => _vaultSelectedIds.has(a.id));
-    const invalid = selected.filter(a => a.asset_type !== 'nhanvat');
-    const targets = selected.filter(a => a.asset_type === 'nhanvat');
-    if (!targets.length) return toast('Chỉ đồng bộ được ảnh loại Nhân Vật', 'error');
-    if (invalid.length) toast(`Bỏ qua ${invalid.length} ảnh không phải Nhân Vật`, 'info');
-
-    const btn = $('vault-sync-selected-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.dataset.oldText = btn.innerHTML;
-      btn.innerHTML = '<span class="spinner" style="width:13px;height:13px;border-width:2px;"></span> Đang đồng bộ...';
-    }
-    try {
-      const res = await runCharacterSync(targets.map(a => a.id), btn);
-      if (!res || !res.ok || res.status === 'failed') {
-        toast(res?.detail || res?.message || 'Đồng bộ nhân vật thất bại', 'error');
-        return;
-        toast(res.detail || res.message || 'Đồng bộ nhân vật thất bại', 'error');
-        return;
-      }
-      toast(`Đồng bộ xong: ${res.synced || 0} lượt sync` + ((res.failed || 0) ? `, lỗi ${res.failed}` : ''), (res.failed || 0) ? 'info' : 'success');
-      await openVault();
-    } catch (err) {
-      toast('Lỗi đồng bộ nhân vật: ' + (err.message || err), 'error');
-    } finally {
-      if (btn) {
-        btn.disabled = false;
-        if (btn.dataset.oldText) btn.innerHTML = btn.dataset.oldText;
-      }
-    }
   }
 
   function initVaultListeners() {
@@ -2918,7 +2881,6 @@
       renderVaultGrid();
     });
     $('vault-load-quick-btn')?.addEventListener('click', vaultLoadQuick);
-    $('vault-sync-selected-btn')?.addEventListener('click', vaultSyncSelectedCharacters);
     $('vault-add-to-card-btn')?.addEventListener('click', () => {
       if (!_vaultSelectedIds.size) return toast('Chưa chọn ảnh nào', 'error');
       const btn = $('vault-add-to-card-btn');

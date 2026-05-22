@@ -507,17 +507,62 @@
     $('grok-stop-all').style.display = 'none';
   }
 
-  function importImages(files) {
-    const list = Array.from(files || []);
-    if (!list.length) return;
-    if (!cards.length) cards.push(newCard());
-    let idx = 0;
-    for (const file of list) {
-      const card = cards[idx % cards.length];
-      card.refs.push({ url: URL.createObjectURL(file), file, label: file.name });
-      idx++;
+  function importImagesLegacy(files) {
+    const list = Array.from(files || []).filter(file => String(file.type || '').startsWith('image/'));
+    if (!list.length) return toast('KhÃ´ng cÃ³ áº£nh há»£p lá»‡', 'error');
+
+    if (cards.length > 0) {
+      if (list.length !== cards.length) {
+        return toast(
+          `Sá»‘ áº£nh khÃ´ng khá»›p: chá»n ${list.length} áº£nh nhÆ°ng Grok Ä‘ang cÃ³ ${cards.length} cá»¥m. Vui lÃ²ng chá»n Ä‘Ãºng ${cards.length} áº£nh.`,
+          'error',
+          6000
+        );
+      }
+      cards.forEach((card, i) => {
+        card.refs.unshift({ url: URL.createObjectURL(list[i]), file: list[i], label: list[i].name || 'áº¢nh import' });
+      });
+      renderAll();
+      toast(`ÄÃ£ thÃªm ${list.length} áº£nh vÃ o ${list.length} cá»¥m theo thá»© tá»±`, 'success');
+      return;
     }
+
+    list.forEach(file => {
+      const card = newCard();
+      card.refs.push({ url: URL.createObjectURL(file), file, label: file.name || 'áº¢nh import' });
+      cards.push(card);
+    });
     renderAll();
+    toast(`ÄÃ£ náº¡p ${list.length} áº£nh vÃ o Grok`, 'success');
+  }
+
+  function importImages(files) {
+    const list = Array.from(files || []).filter(file => String(file.type || '').startsWith('image/'));
+    if (!list.length) return toast('Không có ảnh hợp lệ', 'error');
+
+    if (cards.length > 0) {
+      if (list.length !== cards.length) {
+        return toast(
+          `Số ảnh không khớp: chọn ${list.length} ảnh nhưng Grok đang có ${cards.length} cụm. Vui lòng chọn đúng ${cards.length} ảnh.`,
+          'error',
+          6000
+        );
+      }
+      cards.forEach((card, i) => {
+        card.refs.unshift({ url: URL.createObjectURL(list[i]), file: list[i], label: list[i].name || 'Ảnh import' });
+      });
+      renderAll();
+      toast(`Đã thêm ${list.length} ảnh vào ${list.length} cụm theo thứ tự`, 'success');
+      return;
+    }
+
+    list.forEach(file => {
+      const card = newCard();
+      card.refs.push({ url: URL.createObjectURL(file), file, label: file.name || 'Ảnh import' });
+      cards.push(card);
+    });
+    renderAll();
+    toast(`Đã nạp ${list.length} ảnh vào Grok`, 'success');
   }
 
   function openImportPopup() {
@@ -557,7 +602,7 @@
             </div>
             <div id="grok-import-hint" style="display:none;font-size:12px;color:var(--text3);padding:10px 12px;background:var(--bg3);border-radius:8px;display:flex;align-items:flex-start;gap:8px;">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" style="flex-shrink:0;margin-top:1px;"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              Đang có <strong id="grok-import-card-count">0</strong> cụm. Import sẽ thêm vào danh sách hiện tại.
+              Đang có <strong id="grok-import-card-count">0</strong> cụm. Import sẽ thay thế prompt trong cụm hiện tại - số prompt phải khớp số cụm.
             </div>
           </div>
         </div>
@@ -592,6 +637,19 @@
           const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: '' });
           const prompts = rows.map(row => (Array.isArray(row) ? row : [row]).join('\t').trim()).filter(Boolean);
           if (!prompts.length) return toast('Không tìm thấy prompt nào trong file Excel', 'error');
+          if (cards.length > 0) {
+            if (prompts.length !== cards.length) {
+              return toast(
+                `Prompt không khớp: file có ${prompts.length} hàng nhưng Grok đang có ${cards.length} cụm. Vui lòng import đúng ${cards.length} prompt.`,
+                'error',
+                6000
+              );
+            }
+            cards.forEach((card, i) => { card.prompt = prompts[i]; });
+            renderAll();
+            toast(`Đã thay thế ${prompts.length} prompt từ Excel`, 'success');
+            return;
+          }
           prompts.forEach(p => cards.push(newCard(p)));
           renderAll();
           toast(`Đã import ${prompts.length} prompt từ Excel`, 'success');
@@ -616,6 +674,19 @@
       prompts = text.split(/\r?\n/).map(x => x.trim()).filter(Boolean);
     }
     if (!prompts.length) return toast('Không tìm thấy prompt nào trong file', 'error');
+    if (cards.length > 0) {
+      if (prompts.length !== cards.length) {
+        return toast(
+          `Prompt không khớp số cụm: file có ${prompts.length} prompt nhưng Grok đang có ${cards.length} cụm. Vui lòng import đúng ${cards.length} prompt.`,
+          'error',
+          6000
+        );
+      }
+      cards.forEach((card, i) => { card.prompt = prompts[i]; });
+      renderAll();
+      toast(`Đã thay thế ${prompts.length} prompt (giữ nguyên ảnh/video)`, 'success');
+      return;
+    }
     prompts.forEach(line => cards.push(newCard(line)));
     renderAll();
     toast(`Đã import ${prompts.length} prompt`, 'success');

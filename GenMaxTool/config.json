@@ -1,5 +1,5 @@
 {
-  "api_key": "sk_40b39b4846e1c563733b3deae28088f98b26855aec87",
+  "api_key": "sk_0d3aa9ebdfdee0b22e74512daddfa50e2889b21da459",
   "characters": [],
   "output_dir": "C:/Users/PC/Desktop/PROMT/peppa",
   "provider": "elevenlabs",
@@ -92,9 +92,6 @@
     "cy"
   ],
   "api_keys": [
-    "sk_40b39b4846e1c563733b3deae28088f98b26855aec87",
-    "sk_6f7c676230cf7006d1b07657893b42a8c365575f6807",
-    "sk_8da7e5b8d83e987970ae6b4d48f4b6443cb4180905b5",
     "sk_0d3aa9ebdfdee0b22e74512daddfa50e2889b21da459",
     "sk_231abb64c2f25af312bd2dbdabbe5685f9b22be96837",
     "sk_4927aaa83e4a6f56275529661a1dc954eb734db32098",

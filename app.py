@@ -36,7 +36,7 @@ def _setup_logging() -> None:
     root.setLevel(logging.INFO)
 
 
-CURRENT_VERSION = "1.5.3"
+CURRENT_VERSION = "1.5.4"
 
 _update_info: dict = {}  # cache kết quả check update
 
@@ -93,7 +93,7 @@ def create_app() -> FastAPI:
             path = request.url.path
 
             # Always allow static assets and public paths
-            if path.startswith(("/static/", "/jobs/", "/characters/", "/studio-images/", "/library-images/")):
+            if path.startswith(("/static/", "/jobs/", "/characters/", "/studio-images/", "/library-images/", "/consistent-character-images/")):
                 return await call_next(request)
             if path in _PUBLIC_PATHS:
                 return await call_next(request)
@@ -144,13 +144,16 @@ def create_app() -> FastAPI:
 
         await init_db()
         from services.character_service import init_characters_table
+        from services.consistent_character_service import init_consistent_character_tables
         from services.library_service import init_library_tables, ensure_default_category
         await init_characters_table()
+        await init_consistent_character_tables()
         await init_library_tables()
         await ensure_default_category()
         # Ensure data dirs exist
         (APP_BASE / "data" / "jobs").mkdir(parents=True, exist_ok=True)
         (APP_BASE / "data" / "characters").mkdir(parents=True, exist_ok=True)
+        (APP_BASE / "data" / "consistent_characters").mkdir(parents=True, exist_ok=True)
         (APP_BASE / "data" / "library").mkdir(parents=True, exist_ok=True)
         (APP_BASE / "data" / "chrome_userdata").mkdir(parents=True, exist_ok=True)
         (APP_BASE / "data" / "studio").mkdir(parents=True, exist_ok=True)
@@ -158,6 +161,7 @@ def create_app() -> FastAPI:
         # Mount studio-images after startup so the directory exists
         app.mount("/studio-images", StaticFiles(directory=str(APP_BASE / "data" / "studio"), html=False), name="studio-images")
         app.mount("/library-images", StaticFiles(directory=str(APP_BASE / "data" / "library"), html=False), name="library-images")
+        app.mount("/consistent-character-images", StaticFiles(directory=str(APP_BASE / "data" / "consistent_characters"), html=False), name="consistent-character-images")
 
         # Start auto token refresh background task
         try:

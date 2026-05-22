@@ -16,6 +16,7 @@ from services.grok_service import (
     GrokClient,
     GrokError,
     cloak_browser_installed,
+    delete_grok_profile,
     ensure_cloak_browser,
     download_with_account,
     grok_login_account,
@@ -96,9 +97,25 @@ def _pick_next_account(exclude_indices: set[int]) -> tuple[int, dict[str, Any]] 
     for idx, acc in enumerate(accounts):
         if idx in exclude_indices:
             continue
-        if acc.get("enabled", True) and acc.get("cookie"):
+        if _grok_slot_used(acc) and acc.get("enabled", True) and acc.get("cookie"):
             return idx, acc
     return None
+
+
+def _grok_slot_used(acc: Any) -> bool:
+    return isinstance(acc, dict) and bool(acc.get("email") or acc.get("cookie") or acc.get("profile") or acc.get("last_login") or acc.get("last_error"))
+
+
+def _first_free_grok_slot(accounts: list[dict[str, Any]]) -> int:
+    for idx, acc in enumerate(accounts):
+        if not _grok_slot_used(acc):
+            return idx
+    return len(accounts)
+
+
+def _trim_empty_grok_tail(accounts: list[dict[str, Any]]) -> None:
+    while accounts and not _grok_slot_used(accounts[-1]):
+        accounts.pop()
 
 
 async def _run_image_job(
@@ -280,12 +297,17 @@ async def _run_login_job(job_id: str, lines: list[str]) -> None:
         if not email or not password:
             results.append({"ok": False, "email": email, "error": "Thiếu email hoặc mật khẩu"})
             continue
-        index = next((i2 for i2, acc in enumerate(accounts_data) if acc.get("email") == email), len(accounts_data))
+        index = next(
+            (i2 for i2, acc in enumerate(accounts_data) if _grok_slot_used(acc) and acc.get("email") == email),
+            _first_free_grok_slot(accounts_data),
+        )
         job["status"] = "running"
         job["message"] = f"[{i+1}/{total}] Đang mở Chrome đăng nhập {email}..."
         job["email"] = email
         try:
             account = await grok_login_account(email, password, index)
+            while len(accounts_data) <= index:
+                accounts_data.append({})
             if index < len(accounts_data):
                 accounts_data[index] = account
             else:
@@ -324,7 +346,7 @@ async def login_status(job_id: str):
 @router.post("/accounts/toggle")
 async def toggle_account(req: GrokAccountToggleRequest):
     accounts_data = load_grok_accounts()
-    if req.index < 0 or req.index >= len(accounts_data):
+    if req.index < 0 or req.index >= len(accounts_data) or not _grok_slot_used(accounts_data[req.index]):
         raise HTTPException(404, "Không tìm thấy tài khoản Grok")
     accounts_data[req.index]["enabled"] = bool(req.enabled)
     save_grok_accounts(accounts_data)
@@ -333,19 +355,14 @@ async def toggle_account(req: GrokAccountToggleRequest):
 
 @router.delete("/accounts/{index}")
 async def delete_account(index: int):
-    import shutil
     accounts_data = load_grok_accounts()
-    if index < 0 or index >= len(accounts_data):
+    if index < 0 or index >= len(accounts_data) or not _grok_slot_used(accounts_data[index]):
         raise HTTPException(404, "Không tìm thấy tài khoản Grok")
     profile = accounts_data[index].get("profile") or f"GROK_{index + 1}"
-    accounts_data.pop(index)
+    accounts_data[index] = {}
+    _trim_empty_grok_tail(accounts_data)
     save_grok_accounts(accounts_data)
-    # Remove Chrome + CloakBrowser profile directories
-    from services.config_service import CHROME_USER_DATA_ROOT, CLOAK_USER_DATA_ROOT
-    for root in (CHROME_USER_DATA_ROOT, CLOAK_USER_DATA_ROOT):
-        profile_dir = root / str(profile)
-        if profile_dir.exists():
-            shutil.rmtree(profile_dir, ignore_errors=True)
+    await delete_grok_profile(str(profile))
     return {"ok": True, "accounts": public_grok_accounts()}
 
 
@@ -362,7 +379,7 @@ async def health(index: int):
 @router.post("/accounts/open-profile")
 async def open_profile(req: GrokOpenProfileRequest):
     accounts_data = load_grok_accounts()
-    if req.index < 0 or req.index >= len(accounts_data):
+    if req.index < 0 or req.index >= len(accounts_data) or not _grok_slot_used(accounts_data[req.index]):
         raise HTTPException(404, "Không tìm thấy tài khoản Grok")
     # Reuse open_browser_for_manual_login so CloakBrowser profiles open from CLOAK_USER_DATA_ROOT
     return await open_browser_for_manual_login(req.index)
@@ -590,4 +607,3 @@ async def ensure_browser_sse():
             await task
 
     return StreamingResponse(generate(), media_type="text/event-stream")
-

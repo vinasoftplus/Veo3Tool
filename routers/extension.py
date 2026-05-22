@@ -264,6 +264,51 @@ async def request_browser_submit(
                 break
 
 
+async def request_browser_character_entity(
+    job_id: str,
+    *,
+    payload: dict,
+    access_token: str,
+    account_index: int = 1,
+    timeout_seconds: float = 180.0,
+) -> dict:
+    loop = asyncio.get_event_loop()
+    fut: asyncio.Future = loop.create_future()
+    normalized_account_index = max(1, int(account_index or 1))
+    _pending_browser_submit[job_id] = fut
+    _browser_job_accounts[job_id] = normalized_account_index
+    _browser_submit_queue.append(
+        {
+            "jobId": job_id,
+            "jobKind": "browser_character_entity",
+            "jobType": "image",
+            "accountIndex": normalized_account_index,
+            "payload": payload,
+            "accessToken": access_token,
+        }
+    )
+    logger.info(
+        "ðŸŒ [Server] Xáº¿p hÃ ng browser-character-entity cho job_%s (account #%s)",
+        job_id[:8],
+        normalized_account_index,
+    )
+    try:
+        result = await asyncio.wait_for(asyncio.shield(fut), timeout=float(timeout_seconds or 180.0))
+        return result or {"ok": False, "status": 0, "body": "No browser result"}
+    except asyncio.TimeoutError:
+        logger.warning("âš ï¸ Timeout khi chá» browser-character-entity cho job_%s", job_id[:8])
+        return {"ok": False, "status": 0, "body": "Browser character sync timeout"}
+    finally:
+        _pending_browser_submit.pop(job_id, None)
+        _inflight_jobs.discard(job_id)
+        account_for_job = _browser_job_accounts.pop(job_id, normalized_account_index)
+        _release_browser_slot(job_id, account_for_job, "image")
+        for i, item in enumerate(_browser_submit_queue):
+            if item["jobId"] == job_id:
+                _browser_submit_queue.pop(i)
+                break
+
+
 @router.get("/poll-job")
 async def poll_job():
     # Browser submit jobs — pop ngay khi trả, đánh dấu in-flight

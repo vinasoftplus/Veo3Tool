@@ -76,6 +76,14 @@ def _valid_synced_media_id(media_id: str) -> bool:
         return False
 
 
+def _is_uuid_text(value: str) -> bool:
+    try:
+        uuid.UUID(str(value or "").strip())
+        return True
+    except Exception:
+        return False
+
+
 def _build_reference_prompt_parts(prompt: str, synced_refs: list[dict]) -> list[dict] | None:
     """Convert exact character codes in prompt into Flow structured reference parts."""
     text = str(prompt or "")
@@ -183,14 +191,19 @@ async def _poll_video_job(job_id: str, token: str, operations: list, account_ind
                     outputs = []
                     for idx, v in enumerate(videos):
                         op_name = ""
+                        op_item = {}
                         if len(operations) == 1:
-                            op_name = ((operations[0] or {}).get("operation") or {}).get("name", "")
+                            op_item = operations[0] or {}
+                            op_name = ((op_item.get("operation") or {}).get("name", ""))
                         elif idx < len(operations):
-                            op_name = ((operations[idx] or {}).get("operation") or {}).get("name", "")
+                            op_item = operations[idx] or {}
+                            op_name = ((op_item.get("operation") or {}).get("name", ""))
                         outputs.append({
                             "video_url": v.get("videoUrl") or v.get("fifeUrl", ""),
                             "media_id": v.get("mediaId", ""),
                             "operation_name": v.get("operationName") or op_name,
+                            "workflow_id": v.get("workflowId") or op_item.get("_workflow_id", ""),
+                            "batch_id": v.get("batchId") or op_item.get("_batch_id", ""),
                         })
                     await job_store.update_job(job_id, "completed", outputs=outputs, progress=100)
                     logger.info("🎉 Job %s hoàn thành | outputs=%s", job_id[:8], len(outputs))
@@ -1062,19 +1075,40 @@ async def upscale_job(job_id: str, body: dict):
         elif ops:
             operation_name = ((ops[0] or {}).get("operation") or {}).get("name", "")
 
+    primary_media_id = ""
     media_id = ""
+    workflow_id = str(body.get("workflow_id") or "")
+    ops = job_params.get("operations") or []
+    if 0 <= output_index < len(ops):
+        op_item = ops[output_index] or {}
+        primary_media_id = str(op_item.get("_primary_media_id") or "")
+        workflow_id = workflow_id or str(op_item.get("_workflow_id") or "")
+    elif len(ops) == 1:
+        op_item = ops[0] or {}
+        primary_media_id = str(op_item.get("_primary_media_id") or "")
+        workflow_id = workflow_id or str(op_item.get("_workflow_id") or "")
+
     outputs = job.get("outputs") or []
     if 0 <= output_index < len(outputs):
-        media_id = outputs[output_index].get("media_id", "")
+        output = outputs[output_index]
+        media_id = output.get("media_id", "")
+        workflow_id = workflow_id or str(output.get("workflow_id") or "")
 
     if not operation_name and not media_id:
         raise HTTPException(400, "Missing operation_name")
 
-    resolved_media_id = adapter._resolve_upscale_media_id(operation_name, media_id)
+    resolved_media_id = primary_media_id or (media_id if _is_uuid_text(media_id) else "") or adapter._resolve_upscale_media_id(operation_name, "")
     if not resolved_media_id:
         raise HTTPException(400, "Missing mediaId for upscale")
+    if not workflow_id:
+        if 0 <= output_index < len(ops):
+            workflow_id = str((ops[output_index] or {}).get("_workflow_id") or "")
+        elif len(ops) == 1:
+            workflow_id = str((ops[0] or {}).get("_workflow_id") or "")
+    if not workflow_id:
+        raise HTTPException(400, "Missing workflowId for upscale")
 
-    logger.info("[Upscale] mediaId=%r account=#%s aspect=%s", resolved_media_id, account_index, job_aspect)
+    logger.info("[Upscale] mediaId=%r workflowId=%r account=#%s aspect=%s", resolved_media_id, workflow_id, account_index, job_aspect)
 
     def _should_try_next_account(status: int, body_text: str) -> bool:
         if status in (0, 400, 403, 404):
@@ -1091,9 +1125,10 @@ async def upscale_job(job_id: str, body: dict):
         ))
 
     # Chỉ failover account khi có dấu hiệu media/account mismatch rõ ràng.
-    all_accounts = get_active_accounts()
-    other_accounts = [a for a in all_accounts if int(a.get("_index") or 0) != account_index]
-    accounts_to_try = [account] + other_accounts
+    accounts_to_try = [account]
+    existing_media_name = str(body.get("media_name") or "").strip()
+    if existing_media_name.endswith("_upsampled"):
+        accounts_to_try = []
 
     result = None
     used_account_index = account_index
@@ -1101,7 +1136,13 @@ async def upscale_job(job_id: str, body: dict):
     for acc in accounts_to_try:
         used_index = int(acc.get("_index") or 1)
         upscale_resolution = body.get("resolution", "1080p")
-        upscale_payload = adapter.build_upscale_payload(resolved_media_id, account=acc, recaptcha_token="", resolution=upscale_resolution)
+        upscale_payload = adapter.build_upscale_payload(
+            resolved_media_id,
+            account=acc,
+            recaptcha_token="",
+            resolution=upscale_resolution,
+            workflow_id=workflow_id,
+        )
         if upscale_payload.get("requests"):
             upscale_payload["requests"][0]["aspectRatio"] = job_aspect
 
@@ -1124,7 +1165,7 @@ async def upscale_job(job_id: str, body: dict):
         body_text = result.get("body", "")
         body_preview = str(body_text or "").replace("\r", " ").replace("\n", " ")[:300]
         logger.warning("[Upscale] account #%s HTTP %s body=%s", used_index, status, body_preview)
-        if _should_try_next_account(status, body_text):
+        if False and _should_try_next_account(status, body_text):
             logger.warning("[Upscale] account #%s → HTTP %s, thử account tiếp theo...", used_index, status)
             await asyncio.sleep(1)
             continue
@@ -1133,14 +1174,24 @@ async def upscale_job(job_id: str, body: dict):
         used_account = acc
         break
 
-    if not result or not result.get("ok"):
+    if existing_media_name.endswith("_upsampled"):
+        logger.info("[Upscale] Retry existing media redirect/status: %s", existing_media_name)
+        upscale_operations = [{
+            "_format": "media",
+            "name": existing_media_name,
+            "projectId": str(used_account.get("PROJECT_ID") or ""),
+        }]
+    elif not result or not result.get("ok"):
         return {
             "ok": False,
             "body": result.get("body", "") if result else "No result",
             "account_index": used_account_index,
         }
-
-    upscale_operations = adapter.parse_operations(result.get("body", ""))
+    else:
+        upscale_operations = adapter.parse_upscale_media_status_requests(
+            result.get("body", ""),
+            fallback_project_id=str(used_account.get("PROJECT_ID") or ""),
+        )
     if not upscale_operations:
         return {
             "ok": True,
@@ -1150,11 +1201,15 @@ async def upscale_job(job_id: str, body: dict):
             "account_index": used_account_index,
         }
 
-    for _ in range(80):
+    media_names = [str(item.get("name") or "") for item in upscale_operations if isinstance(item, dict)]
+    logger.info("[Upscale] Poll media status: %s", media_names)
+    for attempt in range(1, 80 + 1):
         await asyncio.sleep(3)
         status_result = await adapter.check_video_status(upscale_operations, used_account.get("ACCESS_TOKEN", ""))
         if not status_result.get("ok"):
             continue
+        if attempt == 1 or attempt % 5 == 0:
+            logger.info("[Upscale] status poll %s/80: %s", attempt, adapter.upscale_media_status_summary(status_result.get("body", "")))
         videos = adapter.parse_video_results(status_result.get("body", ""))
         if videos:
             upscaled = []
@@ -1165,6 +1220,50 @@ async def upscale_job(job_id: str, body: dict):
                     "operation_name": v.get("operationName") or (((upscale_operations[0] or {}).get("operation") or {}).get("name", "")),
                 })
             return {"ok": True, "completed": True, "outputs": upscaled, "account_index": used_account_index}
+        if adapter.upscale_media_successful(status_result.get("body", ""), media_names):
+            media_name = media_names[0] if media_names else ""
+            redirect_result = {"ok": False, "status": 0, "body": "Not attempted"}
+            for redirect_attempt in range(1, 6):
+                redirect_result = await adapter.get_media_redirect_url(
+                    media_name,
+                    str(used_account.get("LABS_COOKIE") or ""),
+                    str(used_account.get("PROJECT_ID") or ""),
+                )
+                if redirect_result.get("ok") and redirect_result.get("url"):
+                    break
+                redirect_status = int(redirect_result.get("status") or 0)
+                logger.warning(
+                    "[Upscale] Redirect attempt %s/5 failed media=%s status=%s body=%s",
+                    redirect_attempt,
+                    media_name,
+                    redirect_status,
+                    str(redirect_result.get("body", ""))[:200].replace("\n", " "),
+                )
+                if redirect_status not in (0, 401, 404):
+                    break
+                await asyncio.sleep(3)
+            if redirect_result.get("ok") and redirect_result.get("url"):
+                logger.info("[Upscale] Redirect OK media=%s", media_name)
+                return {
+                    "ok": True,
+                    "completed": True,
+                    "outputs": [{
+                        "video_url": redirect_result.get("url", ""),
+                        "media_id": media_name,
+                        "operation_name": media_name,
+                    }],
+                    "account_index": used_account_index,
+                }
+            return {
+                "ok": True,
+                "started": True,
+                "pending": True,
+                "media_name": media_name,
+                "message": "Upscale media da SUCCESSFUL, nhung chua lay duoc URL redirect",
+                "redirect_status": redirect_result.get("status", 0),
+                "redirect_body": str(redirect_result.get("body", ""))[:300],
+                "account_index": used_account_index,
+            }
 
     return {
         "ok": True,

@@ -261,7 +261,6 @@ async def list_assets() -> list[dict[str, Any]]:
         )
     for asset in assets:
         asset["syncs"] = by_asset.get(asset["id"], [])
-        asset["sync_count"] = len([s for s in asset["syncs"] if s.get("status") == "synced" and s.get("media_id")])
     return assets
 
 

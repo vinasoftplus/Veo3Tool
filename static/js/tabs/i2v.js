@@ -359,7 +359,7 @@
       const idxs = [];
       for (let i = 1; i <= 10; i++) {
         const acc = d[`account${i}`];
-        if (acc && (acc.ACCESS_TOKEN || acc.COOKIE)) idxs.push(i);
+        if (acc && acc.ENABLED !== false && (acc.ACCESS_TOKEN || acc.COOKIE)) idxs.push(i);
       }
       if (idxs.length > 1) accountIndices = idxs;
       maxConcurrent = Math.min(3, Math.max(1, parseInt(d.MAX_CONCURRENT || '2', 10) || 2));

@@ -117,10 +117,15 @@ def kill_port(port: int):
 def start_api_server():
     try:
         import uvicorn
+        _log("checkpoint: imported uvicorn")
         from app import create_app
+        _log("checkpoint: imported create_app")
         import app as _app_mod
         _log(f"Starting API server... version={_app_mod.CURRENT_VERSION} path={_app_mod.__file__}")
+        _log("checkpoint: before create_app()")
         app = create_app()
+        _log("checkpoint: after create_app()")
+        _log("checkpoint: before uvicorn.run")
         uvicorn.run(app, host=HOST, port=PORT, log_level="warning", access_log=False, log_config=None)
     except Exception:
         import traceback
@@ -149,8 +154,8 @@ def main():
     server_thread = threading.Thread(target=start_api_server, daemon=True)
     server_thread.start()
 
-    if not wait_for_server():
-        _log("ERROR: API server failed to start within 15s")
+    if not wait_for_server(timeout=60.0):
+        _log("ERROR: API server failed to start within 60s")
         sys.exit(1)
 
     _log("API server ready, launching webview...")

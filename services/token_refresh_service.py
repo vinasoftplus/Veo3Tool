@@ -30,6 +30,8 @@ async def refresh_account_token(account_index: int) -> bool:
 
     cfg = load_config()
     acc = cfg.get(f"account{account_index}", {})
+    if acc.get("ENABLED", True) is False:
+        return False
     cookie = acc.get("COOKIE", "").strip()
     if not cookie:
         return False
@@ -64,7 +66,7 @@ async def refresh_all_accounts() -> dict[int, bool]:
         idx = acc.get("_index")
         if not idx:
             continue
-        if not acc.get("COOKIE", "").strip():
+        if acc.get("ENABLED", True) is False or not acc.get("COOKIE", "").strip():
             continue  # Bỏ qua account không có cookie
         results[idx] = await refresh_account_token(idx)
         # Delay nhỏ giữa các account để tránh burst

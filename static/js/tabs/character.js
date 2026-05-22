@@ -19,6 +19,10 @@
   let currentGroup    = ''; // '' = first user cat | category id
   let libraryCategories = [];  // [{id, name, created_at}]
   let libraryAssets     = [];  // [{id, name, url, category_id, asset_type, ...}]
+  let consistentCharacters = [];
+  let voicePresets = [];
+  let ccSelectedVoice = null;
+  let ccPreviewUrls = [];
 
   // Wizard state
   let wizSelectedGroup = null; // {id, name}
@@ -32,57 +36,92 @@
     return String(v ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
   }
 
-  function syncBadgeClass(item) {
-    const missing = Number(item.sync_required_count || 0);
-    if (!item.sync_status_label || item.sync_status_label === 'Chưa Sync') return 'missing';
-    return missing > 0 ? 'partial' : 'synced';
-  }
+  function ensureConsistentCharacterUI() {
+    const tabs = $('lib-type-tabs');
+    if (tabs && !tabs.querySelector('[data-type="consistent"]')) {
+      const btn = document.createElement('button');
+      btn.className = 'lib-type-btn';
+      btn.dataset.type = 'consistent';
+      btn.textContent = 'Nhân vật đồng nhất';
+      const vatpham = tabs.querySelector('[data-type="vatpham"]');
+      tabs.insertBefore(btn, vatpham || null);
+    }
 
-  function showSyncProgress(job) {
-    if (!job) return;
-    let card = document.getElementById('sync-progress-card');
-    if (!card) {
-      card = document.createElement('div');
-      card.id = 'sync-progress-card';
-      card.className = 'sync-progress-card';
-      card.style.position = 'fixed';
-      card.style.left = '50%';
-      card.style.bottom = '28px';
-      card.style.transform = 'translateX(-50%)';
-      card.style.zIndex = '99999';
-      card.innerHTML = `
-        <div class="sync-progress-head">
-          <span>Đang đồng bộ nhân vật</span>
-          <strong class="sync-progress-percent">0%</strong>
-        </div>
-        <div class="sync-progress-track"><div class="sync-progress-fill"></div></div>
-        <div class="sync-progress-message"></div>
+    const uploadBtn = $('lib-upload-btn');
+    if (uploadBtn && !$('consistent-create-btn')) {
+      const btn = document.createElement('button');
+      btn.id = 'consistent-create-btn';
+      btn.className = 'btn btn-primary btn-sm';
+      btn.style.display = 'none';
+      btn.innerHTML = `
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M16 21v-2a4 4 0 00-4-4H7a4 4 0 00-4 4v2" />
+          <circle cx="9.5" cy="7" r="4" />
+          <path d="M19 8v6" />
+          <path d="M22 11h-6" />
+        </svg>
+        Tạo nhân vật
       `;
-      document.body.appendChild(card);
+      uploadBtn.parentElement?.appendChild(btn);
     }
-    const progress = Math.max(0, Math.min(100, Number(job.progress || 0)));
-    card.querySelector('.sync-progress-percent').textContent = `${progress}%`;
-    card.querySelector('.sync-progress-fill').style.width = `${progress}%`;
-    card.querySelector('.sync-progress-message').textContent = job.message || `Đã xử lý ${job.done || 0}/${job.total || 0}`;
-    if (job.status === 'completed' || job.status === 'failed') {
-      setTimeout(() => card.remove(), 1800);
-    }
-  }
 
-  async function runCharacterSync(assetIds, btn) {
-    const start = await API.post('/api/image/library/assets/sync-characters/start', { asset_ids: assetIds });
-    if (!start.ok || !start.job_id) throw new Error(start.detail || start.message || 'Không tạo được job đồng bộ');
-    showSyncProgress(start);
-    let job = start;
-    while (job && !['completed', 'failed'].includes(job.status)) {
-      await new Promise(resolve => setTimeout(resolve, 900));
-      job = await API.get(`/api/image/library/assets/sync-characters/${start.job_id}`);
-      showSyncProgress(job);
-      if (btn) {
-        btn.innerHTML = `<span class="spinner" style="width:13px;height:13px;border-width:2px;"></span> ${job.progress || 0}%`;
-      }
+    if (!$('consistent-character-popup')) {
+      const wrap = document.createElement('div');
+      wrap.id = 'consistent-character-popup';
+      wrap.className = 'lib-popup-overlay';
+      wrap.style.display = 'none';
+      wrap.innerHTML = `
+        <div class="lib-popup-box consistent-character-modal">
+          <div class="lib-popup-head">
+            <span>Tạo nhân vật đồng nhất</span>
+            <button class="lib-popup-close" id="consistent-character-close" type="button">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+              </svg>
+            </button>
+          </div>
+          <div class="consistent-character-body">
+            <div class="consistent-character-form">
+              <label class="cc-field-label">Tên nhân vật</label>
+              <input id="cc-name" class="cc-input" type="text" placeholder="VD: Daddy Pig, Dr Brown Bear...">
+              <label class="cc-field-label">Giọng nói</label>
+              <button id="cc-voice-trigger" class="cc-voice-trigger" type="button">
+                <span class="cc-voice-icon">♪</span>
+                <span class="cc-voice-main">
+                  <strong id="cc-voice-name">Chọn giọng nói</strong>
+                  <small id="cc-voice-desc">Chưa chọn</small>
+                </span>
+                <span class="cc-voice-caret">▾</span>
+              </button>
+              <div id="cc-voice-menu" class="cc-voice-menu" style="display:none;">
+                <input id="cc-voice-search" class="cc-voice-search" type="text" placeholder="Tìm giọng nói...">
+                <div id="cc-voice-list" class="cc-voice-list"></div>
+              </div>
+              <label class="cc-field-label">Mô tả / tính cách <span>(tùy chọn)</span></label>
+              <textarea id="cc-description" class="cc-textarea" placeholder="Mô tả tính cách, cách nói, vai trò của nhân vật..."></textarea>
+            </div>
+            <div class="consistent-character-media">
+              <div id="cc-upload-zone" class="cc-upload-zone">
+                <input id="cc-images" type="file" accept="image/*" multiple>
+                <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8">
+                  <rect x="3" y="3" width="18" height="18" rx="2" />
+                  <circle cx="8.5" cy="8.5" r="1.5" />
+                  <path d="M21 15l-5-5L5 21" />
+                </svg>
+                <strong>Upload ảnh nhân vật</strong>
+                <span>Tối đa 2 ảnh cho 1 nhân vật</span>
+              </div>
+              <div id="cc-preview" class="cc-preview-strip"></div>
+            </div>
+          </div>
+          <div class="consistent-character-actions">
+            <button id="cc-cancel" class="btn btn-secondary btn-sm" type="button">Hủy</button>
+            <button id="cc-save" class="btn btn-primary btn-sm" type="button">Lưu nhân vật</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(wrap);
     }
-    return job;
   }
 
   // ── Derived ────────────────────────────────────────────────────
@@ -141,6 +180,11 @@
   function renderGrid() {
     const grid = $('char-grid');
     if (!grid) return;
+    if (currentType === 'consistent') {
+      renderConsistentGrid();
+      return;
+    }
+    grid.classList.remove('consistent-grid');
     const items = filteredItems();
     const countLabel = $('lib-count-label');
     if (countLabel) countLabel.textContent = `${items.length} mục`;
@@ -163,7 +207,6 @@
                ${selectedIds.has(item.id) ? 'checked' : ''} onclick="event.stopPropagation()">
         <img src="${escHtml(item.url)}" alt="${escHtml(item.name)}" loading="lazy">
         <span class="lib-card-badge">${escHtml(typeLabel[item.asset_type] || 'Kho')}</span>
-        ${item.asset_type === 'nhanvat' ? `<span class="studio-vault-sync-badge ${syncBadgeClass(item)}">${escHtml(item.sync_status_label || 'Chưa Sync')}</span>` : ''}
         <div class="lib-card-label lib-card-label--editable" data-id="${escHtml(item.id)}"
              title="Double-click để đổi tên">${escHtml(item.name) || 'Chưa đặt tên'}</div>
       </div>
@@ -224,16 +267,75 @@
     updateInfoBar();
   }
 
+  function renderConsistentGrid() {
+    const grid = $('char-grid');
+    if (!grid) return;
+    grid.classList.add('consistent-grid');
+    const countLabel = $('lib-count-label');
+    if (countLabel) countLabel.textContent = `${consistentCharacters.length} nhân vật`;
+    if (!consistentCharacters.length) {
+      grid.innerHTML = `<div class="consistent-empty">
+        <div class="consistent-empty-icon">+</div>
+        <strong>Chưa có nhân vật đồng nhất</strong>
+        <span>Bấm "Tạo nhân vật" để thêm ảnh, giọng nói và đồng bộ lên VEO.</span>
+      </div>`;
+      updateInfoBar();
+      return;
+    }
+    grid.innerHTML = consistentCharacters.map(item => {
+      const images = item.images || [];
+      const main = images[0]?.url || '';
+      const thumbs = images.map(img => `<img src="${escHtml(img.url)}" alt="">`).join('');
+      return `
+        <div class="consistent-card" data-id="${escHtml(item.id)}">
+          <div class="consistent-card-image">
+            ${main ? `<img src="${escHtml(main)}" alt="${escHtml(item.name)}" loading="lazy">` : ''}
+          </div>
+          <div class="consistent-card-body">
+            <div class="consistent-card-title">${escHtml(item.name)}</div>
+            <div class="consistent-card-voice"><span>♪</span>${escHtml(item.voice_name || item.voice_id || '')}</div>
+            ${item.description ? `<div class="consistent-card-desc">${escHtml(item.description)}</div>` : ''}
+            <div class="consistent-card-thumbs">${thumbs}</div>
+            <div class="consistent-card-actions">
+              <button class="btn btn-secondary btn-sm consistent-sync-btn" data-id="${escHtml(item.id)}" type="button">Đồng bộ lên VEO</button>
+              <button class="btn btn-danger btn-sm consistent-delete-btn" data-id="${escHtml(item.id)}" type="button">Xóa</button>
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+    grid.querySelectorAll('.consistent-sync-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        syncConsistentCharacter(btn.dataset.id, btn);
+      });
+    });
+    grid.querySelectorAll('.consistent-delete-btn').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        deleteConsistentCharacter(btn.dataset.id);
+      });
+    });
+    updateInfoBar();
+  }
+
   function updateInfoBar() {
     const delBtn = $('lib-delete-selected-btn');
-    const syncBtn = $('lib-sync-selected-btn');
     const countEl = $('lib-selected-count');
     const selAll = $('lib-select-all');
     const items = filteredItems();
-    const selectedItems = libraryAssets.filter(i => selectedIds.has(i.id));
-    const selectedChars = selectedItems.filter(i => i.asset_type === 'nhanvat');
+    const uploadBtn = $('lib-upload-btn');
+    const createBtn = $('consistent-create-btn');
+    const sidebar = document.querySelector('#tab-character .lib-sidebar');
+    if (uploadBtn) uploadBtn.style.display = currentType === 'consistent' ? 'none' : 'inline-flex';
+    if (createBtn) createBtn.style.display = currentType === 'consistent' ? 'inline-flex' : 'none';
+    if (sidebar) sidebar.style.display = currentType === 'consistent' ? 'none' : '';
+    if (currentType === 'consistent') {
+      if (delBtn) delBtn.style.display = 'none';
+      if (countEl) countEl.textContent = '0';
+      if (selAll) selAll.checked = false;
+      return;
+    }
     if (delBtn) delBtn.style.display = selectedIds.size > 0 ? 'inline-flex' : 'none';
-    if (syncBtn) syncBtn.style.display = selectedChars.length > 0 ? 'inline-flex' : 'none';
     if (countEl) countEl.textContent = selectedIds.size;
     if (selAll) {
       selAll.checked = items.length > 0 && items.every(i => selectedIds.has(i.id));
@@ -245,12 +347,16 @@
   async function loadAll() {
     const grid = $('char-grid');
     if (grid) grid.innerHTML = '<div class="loading"><div class="spinner"></div></div>';
-    const [catsRes, assetsRes] = await Promise.all([
+    const [catsRes, assetsRes, ccRes, voiceRes] = await Promise.all([
       API.get('/api/image/library/categories'),
       API.get('/api/image/library/assets'),
+      API.get('/api/character/consistent/list'),
+      API.get('/api/character/consistent/voices'),
     ]);
     libraryCategories = (catsRes.items || []).filter(c => c.id !== 'default');
     libraryAssets = assetsRes.items || [];
+    consistentCharacters = ccRes.items || [];
+    voicePresets = voiceRes.items || [];
     if (!currentGroup || !libraryCategories.some(c => c.id === currentGroup)) {
       currentGroup = libraryCategories[0]?.id || '';
     }
@@ -288,35 +394,115 @@
     await loadAll();
   }
 
-  async function syncSelectedCharacters() {
-    if (!selectedIds.size) return toast('Chưa chọn ảnh nhân vật nào', 'error');
-    const selected = libraryAssets.filter(a => selectedIds.has(a.id));
-    const targets = selected.filter(a => a.asset_type === 'nhanvat');
-    const skipped = selected.length - targets.length;
-    if (!targets.length) return toast('Chỉ đồng bộ được ảnh loại Nhân Vật', 'error');
-    if (skipped > 0) toast(`Bỏ qua ${skipped} ảnh không phải Nhân Vật`, 'info');
+  function openConsistentPopup() {
+    ensureConsistentCharacterUI();
+    ccSelectedVoice = null;
+    ccPreviewUrls.forEach(u => URL.revokeObjectURL(u));
+    ccPreviewUrls = [];
+    if ($('cc-name')) $('cc-name').value = '';
+    if ($('cc-description')) $('cc-description').value = '';
+    if ($('cc-images')) $('cc-images').value = '';
+    if ($('cc-preview')) $('cc-preview').innerHTML = '';
+    if ($('cc-voice-name')) $('cc-voice-name').textContent = 'Chọn giọng nói';
+    if ($('cc-voice-desc')) $('cc-voice-desc').textContent = 'Chưa chọn';
+    if ($('cc-voice-menu')) $('cc-voice-menu').style.display = 'none';
+    renderVoiceList('');
+    $('consistent-character-popup').style.display = 'flex';
+  }
 
-    const btn = $('lib-sync-selected-btn');
-    if (btn) {
-      btn.disabled = true;
-      btn.dataset.oldText = btn.innerHTML;
-      btn.innerHTML = '<span class="spinner" style="width:13px;height:13px;border-width:2px;"></span> 0%';
-    }
+  function closeConsistentPopup() {
+    const popup = $('consistent-character-popup');
+    if (popup) popup.style.display = 'none';
+  }
+
+  function renderVoiceList(query) {
+    const list = $('cc-voice-list');
+    if (!list) return;
+    const q = String(query || '').trim().toLowerCase();
+    const items = voicePresets.filter(v => !q || String(v.name || '').toLowerCase().includes(q) || String(v.description || '').toLowerCase().includes(q));
+    list.innerHTML = items.map(v => `
+      <button class="cc-voice-option ${ccSelectedVoice?.id === v.id ? 'active' : ''}" data-id="${escHtml(v.id)}" type="button">
+        <span class="cc-voice-avatar">♪</span>
+        <span class="cc-voice-text"><strong>${escHtml(v.name)}</strong><small>${escHtml(v.description || '')}</small></span>
+      </button>
+    `).join('') || '<div class="cc-voice-empty">Không tìm thấy giọng nói</div>';
+    list.querySelectorAll('.cc-voice-option').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const voice = voicePresets.find(v => v.id === btn.dataset.id);
+        if (!voice) return;
+        ccSelectedVoice = voice;
+        $('cc-voice-name').textContent = voice.name;
+        $('cc-voice-desc').textContent = voice.description || voice.id;
+        $('cc-voice-menu').style.display = 'none';
+      });
+    });
+  }
+
+  function showConsistentPreviews(files) {
+    ccPreviewUrls.forEach(u => URL.revokeObjectURL(u));
+    ccPreviewUrls = [];
+    const strip = $('cc-preview');
+    if (!strip) return;
+    strip.innerHTML = '';
+    Array.from(files || []).slice(0, 2).forEach(file => {
+      const url = URL.createObjectURL(file);
+      ccPreviewUrls.push(url);
+      strip.insertAdjacentHTML('beforeend', `<img src="${escHtml(url)}" alt="${escHtml(file.name)}">`);
+    });
+  }
+
+  async function saveConsistentCharacter() {
+    const files = Array.from($('cc-images')?.files || []).slice(0, 2);
+    const name = ($('cc-name')?.value || '').trim();
+    if (!name) return toast('Nhập tên nhân vật trước', 'error');
+    if (!ccSelectedVoice) return toast('Chọn giọng nói trước', 'error');
+    if (!files.length) return toast('Chọn tối thiểu 1 ảnh nhân vật', 'error');
+
+    const btn = $('cc-save');
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang lưu...'; }
     try {
-      const res = await runCharacterSync(targets.map(a => a.id), btn);
-      if (!res || !res.ok || res.status === 'failed') {
-        toast(res?.detail || res?.message || 'Đồng bộ nhân vật thất bại', 'error');
-        return;
-      }
-      toast(`Đồng bộ xong: mới ${res.synced || 0}, đã có ${res.skipped || 0}` + ((res.failed || 0) ? `, lỗi ${res.failed}` : ''), (res.failed || 0) ? 'info' : 'success');
+      const fd = new FormData();
+      files.forEach(file => fd.append('images', file));
+      fd.append('name', name);
+      fd.append('description', $('cc-description')?.value || '');
+      fd.append('voice_id', ccSelectedVoice.id);
+      fd.append('voice_name', ccSelectedVoice.name);
+      fd.append('voice_desc', ccSelectedVoice.description || '');
+      const res = await API.postForm('/api/character/consistent/create', fd);
+      if (!res.ok) throw new Error(res.detail || 'Tạo nhân vật thất bại');
+      toast('Đã tạo nhân vật đồng nhất', 'success');
+      closeConsistentPopup();
       await loadAll();
     } catch (err) {
-      toast('Lỗi đồng bộ nhân vật: ' + (err.message || err), 'error');
+      toast(err.message || String(err), 'error');
     } finally {
-      if (btn) {
-        btn.disabled = false;
-        if (btn.dataset.oldText) btn.innerHTML = btn.dataset.oldText;
-      }
+      if (btn) { btn.disabled = false; btn.textContent = 'Lưu nhân vật'; }
+    }
+  }
+
+  async function syncConsistentCharacter(id, btn) {
+    if (!id) return;
+    if (btn) { btn.disabled = true; btn.textContent = 'Đang đồng bộ...'; }
+    try {
+      const res = await API.post('/api/character/consistent/sync', { id });
+      if (!res.ok) throw new Error(res.detail || res.message || 'Đồng bộ thất bại');
+      toast(`Đồng bộ VEO xong: ${res.synced || 0} account` + ((res.failed || 0) ? `, lỗi ${res.failed}` : ''), (res.failed || 0) ? 'info' : 'success');
+      await loadAll();
+    } catch (err) {
+      toast('Lỗi đồng bộ VEO: ' + (err.message || err), 'error');
+    } finally {
+      if (btn) { btn.disabled = false; btn.textContent = 'Đồng bộ lên VEO'; }
+    }
+  }
+
+  async function deleteConsistentCharacter(id) {
+    if (!id || !confirm('Xóa nhân vật đồng nhất này?')) return;
+    const res = await API.delete(`/api/character/consistent/${id}`);
+    if (res.ok || res.detail === undefined) {
+      toast('Đã xóa nhân vật', 'success');
+      await loadAll();
+    } else {
+      toast(res.detail || 'Xóa thất bại', 'error');
     }
   }
 
@@ -515,18 +701,58 @@
 
   // ── Init ───────────────────────────────────────────────────────
   window.init_character = function () {
+    ensureConsistentCharacterUI();
     // Type filter tabs
     document.querySelectorAll('.lib-type-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.lib-type-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');
         currentType = btn.dataset.type;
+        selectedIds.clear();
         renderGrid();
       });
     });
 
     // Upload button → open wizard
     $('lib-upload-btn')?.addEventListener('click', openUploadWizard);
+    $('consistent-create-btn')?.addEventListener('click', openConsistentPopup);
+    $('consistent-character-close')?.addEventListener('click', closeConsistentPopup);
+    $('cc-cancel')?.addEventListener('click', closeConsistentPopup);
+    $('cc-save')?.addEventListener('click', saveConsistentCharacter);
+    $('consistent-character-popup')?.addEventListener('click', e => {
+      if (e.target === $('consistent-character-popup')) closeConsistentPopup();
+    });
+    $('cc-voice-trigger')?.addEventListener('click', () => {
+      const menu = $('cc-voice-menu');
+      if (!menu) return;
+      menu.style.display = menu.style.display === 'none' ? 'block' : 'none';
+      if (menu.style.display === 'block') $('cc-voice-search')?.focus();
+    });
+    $('cc-voice-search')?.addEventListener('input', e => renderVoiceList(e.target.value));
+
+    const ccZone = $('cc-upload-zone');
+    const ccInput = $('cc-images');
+    if (ccZone && ccInput && !ccZone.dataset.bound) {
+      ccZone.dataset.bound = '1';
+      ccZone.addEventListener('click', e => { if (e.target !== ccInput) ccInput.click(); });
+      ccInput.addEventListener('click', e => e.stopPropagation());
+      ccInput.addEventListener('change', () => {
+        const dt = new DataTransfer();
+        Array.from(ccInput.files || []).slice(0, 2).forEach(f => dt.items.add(f));
+        ccInput.files = dt.files;
+        showConsistentPreviews(ccInput.files);
+      });
+      ccZone.addEventListener('dragover', e => { e.preventDefault(); ccZone.classList.add('drag-over'); });
+      ccZone.addEventListener('dragleave', () => ccZone.classList.remove('drag-over'));
+      ccZone.addEventListener('drop', e => {
+        e.preventDefault();
+        ccZone.classList.remove('drag-over');
+        const dt = new DataTransfer();
+        Array.from(e.dataTransfer?.files || []).slice(0, 2).forEach(f => dt.items.add(f));
+        ccInput.files = dt.files;
+        showConsistentPreviews(ccInput.files);
+      });
+    }
 
     // Wizard close
     $('lib-upload-wizard-close')?.addEventListener('click', closeUploadWizard);
@@ -593,7 +819,6 @@
       renderGrid();
     });
     $('lib-delete-selected-btn')?.addEventListener('click', deleteSelected);
-    $('lib-sync-selected-btn')?.addEventListener('click', syncSelectedCharacters);
     $('lib-download-sel-btn')?.addEventListener('click', () => {
       const items = filteredItems().filter(i => selectedIds.has(i.id));
       if (!items.length) return toast('Chưa chọn mục nào', 'info');

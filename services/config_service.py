@@ -7,6 +7,7 @@ from __future__ import annotations
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +36,7 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 SETTINGS_FILE = CONFIG_DIR / "settings.json"
 CHROME_USER_DATA_ROOT = BASE_DIR / "chrome_user_data"
 CLOAK_USER_DATA_ROOT = BASE_DIR / "cloak_user_data"
+_CONFIG_LOCK = threading.RLock()
 
 # Ensure dirs exist at import time
 for _p in (
@@ -56,6 +58,7 @@ _DEFAULT_CONFIG: dict = {
         "COOKIE": "",
         "PROJECT_ID": "",
         "PROFILE_NAME": "PROFILE_1",
+        "ENABLED": True,
     },
     "GEMINI_API_KEY": "",
     "YOUTUBE_API_KEY": "",
@@ -143,13 +146,17 @@ def get_all_accounts(max_accounts: int = 10) -> list[dict]:
 
 def get_active_accounts() -> list[dict]:
     """Return accounts that have an ACCESS_TOKEN."""
-    return [a for a in get_all_accounts() if a.get("ACCESS_TOKEN", "").strip()]
+    return [
+        a for a in get_all_accounts()
+        if a.get("ENABLED", True) is not False and a.get("ACCESS_TOKEN", "").strip()
+    ]
 
 
 def save_account(index: int, account_data: dict) -> None:
-    cfg = load_config()
-    cfg[f"account{index}"] = account_data
-    save_config(cfg)
+    with _CONFIG_LOCK:
+        cfg = load_config()
+        cfg[f"account{index}"] = account_data
+        save_config(cfg)
 
 
 def get_gemini_keys() -> list[str]:

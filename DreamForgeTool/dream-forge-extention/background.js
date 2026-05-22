@@ -706,6 +706,117 @@ async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GEN
 }
 
 // Upload images + POST generation request — all via labs.google tab for x-browser-* headers
+async function executeCharacterEntitySync(payload, accessToken, accountIndex = 1) {
+  const acc = normalizeAccountIndex(accountIndex, 1);
+  const freshToken = await getFreshToken(accessToken, acc);
+  const tabId = await ensureAccountTab(acc);
+  const p = JSON.parse(JSON.stringify(payload || {}));
+  const projectId = String(p.projectId || '');
+  const entityId = String(p.entityId || '');
+  const images = Array.isArray(p.images) ? p.images.slice(0, 2) : [];
+  if (!projectId) return { ok: false, status: 0, reason: 'NO_PROJECT_ID', body: '' };
+  if (!entityId) return { ok: false, status: 0, reason: 'NO_ENTITY_ID', body: '' };
+  if (!images.length) return { ok: false, status: 0, reason: 'NO_IMAGES', body: '' };
+
+  const release = await acquireAccountSubmitSlot(acc, 'IMAGE_GENERATION');
+  try {
+    const results = await withTimeout(
+      chrome.scripting.executeScript({
+        target: { tabId },
+        world: 'MAIN',
+        func: async (data, token) => {
+          const pickWorkflowId = (value) => {
+            if (!value) return '';
+            if (Array.isArray(value)) {
+              for (const child of value) {
+                const got = pickWorkflowId(child);
+                if (got) return got;
+              }
+              return '';
+            }
+            if (typeof value === 'object') {
+              if (value.workflow && typeof value.workflow.name === 'string') return value.workflow.name;
+              if (value.workflow && value.workflow.metadata && typeof value.workflow.metadata.workflowId === 'string') return value.workflow.metadata.workflowId;
+              if (typeof value.workflowId === 'string') return value.workflowId;
+              for (const child of Object.values(value)) {
+                const got = pickWorkflowId(child);
+                if (got) return got;
+              }
+            }
+            return '';
+          };
+
+          const entityId = String(data.entityId || '');
+          const workflowIds = [];
+          for (const image of data.images || []) {
+            const uploadResp = await fetch('https://aisandbox-pa.googleapis.com/v1/flow/uploadImage', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+                'Authorization': `Bearer ${token}`,
+              },
+              body: JSON.stringify({
+                clientContext: { projectId: data.projectId, tool: 'PINHOLE' },
+                imageBytes: image.base64 || '',
+                isUserUploaded: true,
+                isHidden: false,
+                mimeType: image.mimeType || 'image/jpeg',
+                fileName: image.fileName || 'character.jpg',
+              }),
+              credentials: 'include',
+              mode: 'cors',
+            });
+            const uploadText = await uploadResp.text();
+            if (!uploadResp.ok) return { ok: false, status: uploadResp.status, reason: 'UPLOAD_IMAGE_FAILED', body: uploadText };
+            let uploadJson = {};
+            try { uploadJson = JSON.parse(uploadText); } catch (_) {}
+            const workflowId = pickWorkflowId(uploadJson);
+            if (!workflowId) return { ok: false, status: 0, reason: 'NO_WORKFLOW_ID', body: uploadText };
+            workflowIds.push(workflowId);
+          }
+
+          const imageReferences = workflowIds.map(workflowId => ({ workflowId }));
+          while (imageReferences.length < 2) imageReferences.push({});
+          const patchResp = await fetch('https://aisandbox-pa.googleapis.com/v1/flow/entities', {
+            method: 'PATCH',
+            headers: {
+              'Content-Type': 'text/plain;charset=UTF-8',
+              'Authorization': `Bearer ${token}`,
+            },
+            body: JSON.stringify({
+              entity: {
+                projectId: data.projectId,
+                entityId,
+                entityInfo: {
+                  displayName: data.name || 'Character',
+                  characterInfo: {
+                    personalityNotes: data.description || '',
+                    audioReferences: [{ presetVoiceId: data.voiceId || '' }],
+                    imageReferences,
+                  },
+                },
+              },
+              updateMask: 'entityInfo.displayName,entityInfo.characterInfo.personalityNotes,entityInfo.characterInfo.audioReferences,entityInfo.characterInfo.imageReferences',
+            }),
+            credentials: 'include',
+            mode: 'cors',
+          });
+          const patchText = await patchResp.text();
+          if (!patchResp.ok) return { ok: false, status: patchResp.status, reason: 'PATCH_ENTITY_FAILED', body: patchText };
+          return { ok: true, status: patchResp.status, reason: '', body: patchText || JSON.stringify({ entityId }) };
+        },
+        args: [p, freshToken],
+      }),
+      120000, 'executeCharacterEntitySync'
+    );
+    return results[0]?.result || { ok: false, status: 0, reason: 'NO_RESULT', body: '' };
+  } catch (error) {
+    return { ok: false, status: 0, reason: 'CHARACTER_ENTITY_ERROR', body: String(error?.message || error || '') };
+  } finally {
+    release();
+  }
+}
+
 async function executeBrowserUploadAndPost(url, payload, accessToken, accountIndex = 1, action = 'VIDEO_GENERATION') {
   const freshToken = await getFreshToken(accessToken, accountIndex);
   const uploads = payload.__uploads__ || [];
@@ -783,7 +894,7 @@ async function executeJob(data) {
     fetch(`${APP_URL}/api/extension/poll-job`).catch(() => {});
   }, 20000);
 
-  const isBrowserJob = data.jobKind === 'browser_upload_post' || data.jobKind === 'browser_submit';
+  const isBrowserJob = data.jobKind === 'browser_upload_post' || data.jobKind === 'browser_submit' || data.jobKind === 'browser_character_entity';
   try {
     if (data.jobKind === 'browser_upload_post') {
       log('Upload+submit for job:', data.jobId, 'account:', accountIndex);
@@ -811,6 +922,19 @@ async function executeJob(data) {
       }
       log('Browser-submit done for job:', data.jobId, 'status:', result.status);
       await maybeRotateProxy();
+
+    } else if (data.jobKind === 'browser_character_entity') {
+      log('Character entity sync for job:', data.jobId, 'account:', accountIndex);
+      const result = await executeCharacterEntitySync(data.payload || {}, data.accessToken || '', accountIndex);
+      await fetch(`${APP_URL}/api/extension/submit-browser`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId: data.jobId, accountIndex, ok: !!result.ok, status: result.status || 0, reason: result.reason || '', body: result.body || '' }),
+      }).catch(() => {});
+      if (result.status !== 200 && result.status !== 0) {
+        log('Character entity sync FAIL job:', data.jobId, 'status:', result.status, 'body:', String(result.body || '').slice(0, 500));
+      }
+      log('Character entity sync done for job:', data.jobId, 'status:', result.status);
 
     } else {
       // Captcha job — needs tab, must run from SW but tab is used for grecaptcha.execute()

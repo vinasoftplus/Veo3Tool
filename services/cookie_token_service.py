@@ -89,10 +89,13 @@ def get_token_from_cookie_sync(cookie_string: str, log=None) -> dict[str, Any]:
     session = Session()
     session.headers.update(HEADERS_BASE)
 
-    # ── Set cookie cho cả 2 domain (bám sát test_cookie_chrome.py) ──────────
-    n1 = _set_cookies_for_domain(session, cookies, ".google.com")
+    # The saved cookie string has no domain metadata. Setting the same names on
+    # multiple Google domains makes requests send duplicate Cookie headers and
+    # Google redirects to the "clear cache & cookies" help page. Keep one copy
+    # for the OAuth host and one copy for Labs.
+    n1 = _set_cookies_for_domain(session, cookies, "accounts.google.com")
     n2 = _set_cookies_for_domain(session, cookies, "labs.google")
-    _log(f"[INFO] Set {n1} cookies cho .google.com, {n2} cho labs.google")
+    _log(f"[INFO] Set {n1} cookies cho accounts.google.com, {n2} cho labs.google")
 
     # ── Bước 1: CSRF token ───────────────────────────────────────────────────
     _log("[1/4] Lấy CSRF token...")

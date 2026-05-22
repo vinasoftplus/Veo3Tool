@@ -30,6 +30,7 @@ URL_IMG_GEN_TPL = "https://aisandbox-pa.googleapis.com/v1/projects/{project_id}/
 URL_FLOW_UPLOAD = "https://aisandbox-pa.googleapis.com/v1/flow/uploadImage"
 URL_WHISK = "https://aisandbox-pa.googleapis.com/v1/whisk:generateImage"
 URL_UPLOAD = "https://aisandbox-pa.googleapis.com/v1:uploadUserImage"
+URL_MEDIA_REDIRECT_TPL = "https://labs.google/fx/api/trpc/media.getMediaUrlRedirect?name={name}"
 
 # Model keys (from API_text_to_video.py and API_image_to_video.py)
 _T2V_MODEL_KEYS = {
@@ -184,11 +185,12 @@ def _video_duration_seconds(value: int | str | None) -> int:
     return seconds if seconds in (4, 6, 8, 10) else 8
 
 
-def _omni_flash_model_key(model: str, duration_seconds: int | str | None = 8) -> str | None:
+def _omni_flash_model_key(model: str, duration_seconds: int | str | None = 8, kind: str = "r2v") -> str | None:
     normalized = str(model or "").strip().lower()
     if normalized != "omni_flash":
         return None
-    return f"abra_r2v_{_video_duration_seconds(duration_seconds)}s"
+    prefix = "abra_t2v" if str(kind or "").lower() == "t2v" else "abra_r2v"
+    return f"{prefix}_{_video_duration_seconds(duration_seconds)}s"
 
 
 def _endpoint_name(url: str) -> str:
@@ -264,6 +266,73 @@ async def _async_send(url: str, payload: dict, token: str, cookie: str = "") -> 
         except Exception as _e:
             logger.warning("[AutoRefresh] Error during 401 auto-refresh: %s", _e)
     return result
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+def _get_media_redirect_url(media_name: str, labs_cookie: str, project_id: str = "") -> dict:
+    name = str(media_name or "").strip()
+    cookie = str(labs_cookie or "").strip()
+    if not name:
+        return {"ok": False, "status": 0, "body": "Missing media name"}
+    if not cookie:
+        return {"ok": False, "status": 0, "body": "Missing LABS_COOKIE"}
+
+    url = URL_MEDIA_REDIRECT_TPL.format(name=quote(name, safe=""))
+    headers = {
+        "Accept": "*/*",
+        "Cookie": cookie,
+        "Referer": (
+            f"https://labs.google/fx/vi/tools/flow/project/{project_id}"
+            if project_id else "https://labs.google/fx/vi/tools/flow"
+        ),
+        "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/148.0.0.0 Safari/537.36",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Sec-Ch-Ua": '"Chromium";v="148", "Google Chrome";v="148", "Not/A)Brand";v="99"',
+        "Sec-Ch-Ua-Mobile": "?0",
+        "Sec-Ch-Ua-Platform": '"Windows"',
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
+    }
+
+    try:
+        from curl_cffi import requests as curl_requests
+        resp = curl_requests.get(
+            url,
+            headers=headers,
+            allow_redirects=False,
+            timeout=30,
+            impersonate="chrome120",
+        )
+        location = resp.headers.get("Location", "")
+        if resp.status_code in (301, 302, 303, 307, 308) and location:
+            return {"ok": True, "status": resp.status_code, "url": location, "body": ""}
+        return {"ok": False, "status": resp.status_code, "body": resp.text[:1000]}
+    except Exception as exc:
+        logger.warning("[Labs] curl_cffi media redirect failed, fallback urllib: %s", exc)
+
+    req = urllib.request.Request(url=url, headers=headers, method="GET")
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(req, timeout=30) as resp:
+            body = resp.read().decode("utf-8", errors="replace")
+            return {"ok": False, "status": resp.status, "body": body}
+    except urllib.error.HTTPError as exc:
+        location = exc.headers.get("Location", "")
+        if exc.code in (301, 302, 303, 307, 308) and location:
+            return {"ok": True, "status": exc.code, "url": location, "body": ""}
+        body = exc.read().decode("utf-8", errors="replace")
+        return {"ok": False, "status": exc.code, "body": body}
+    except urllib.error.URLError as exc:
+        return {"ok": False, "status": 0, "body": str(exc)}
+
+
+async def _async_get_media_redirect_url(media_name: str, labs_cookie: str, project_id: str = "") -> dict:
+    return await asyncio.to_thread(_get_media_redirect_url, media_name, labs_cookie, project_id)
 
 
 # ---------------------------------------------------------------------------
@@ -344,7 +413,7 @@ class GoogleLabsAdapter:
         structured_prompt_parts: list[dict] | None = None,
         duration_seconds: int = 8,
     ) -> dict:
-        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("t2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds, "t2v") or _resolve_video_model_key("t2v", account, aspect_ratio, model)
         eff_seed = seed if seed is not None else _random_seed()
 
         def _make_t2v_req() -> dict:
@@ -380,7 +449,7 @@ class GoogleLabsAdapter:
         recaptcha_token: str = "",
         duration_seconds: int = 8,
     ) -> dict:
-        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("i2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds, "i2v") or _resolve_video_model_key("i2v", account, aspect_ratio, model)
 
         def _make_i2v_req() -> dict:
             return {
@@ -580,7 +649,7 @@ class GoogleLabsAdapter:
         recaptcha_token: str = "",
         duration_seconds: int = 8,
     ) -> dict:
-        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("i2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds, "i2v") or _resolve_video_model_key("i2v", account, aspect_ratio, model)
         def _make_startend_req() -> dict:
             r: dict[str, Any] = {
                 "aspectRatio": aspect_ratio,
@@ -619,7 +688,7 @@ class GoogleLabsAdapter:
         structured_prompt_parts: list[dict] | None = None,
         duration_seconds: int = 8,
     ) -> dict:
-        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("r2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds, "r2v") or _resolve_video_model_key("r2v", account, aspect_ratio, model)
         refs = [
             {"mediaId": mid, "imageUsageType": "IMAGE_USAGE_TYPE_ASSET"}
             for mid in reference_media_ids[:3] if mid
@@ -660,7 +729,7 @@ class GoogleLabsAdapter:
         recaptcha_token: str = "",
         duration_seconds: int = 8,
     ) -> dict:
-        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("i2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds, "i2v") or _resolve_video_model_key("i2v", account, aspect_ratio, model)
         def _make_se_req() -> dict:
             r: dict[str, Any] = {
                 "aspectRatio": aspect_ratio,
@@ -702,7 +771,7 @@ class GoogleLabsAdapter:
         structured_prompt_parts: list[dict] | None = None,
         duration_seconds: int = 8,
     ) -> dict:
-        model_key = _omni_flash_model_key(model, duration_seconds) or _resolve_video_model_key("r2v", account, aspect_ratio, model)
+        model_key = _omni_flash_model_key(model, duration_seconds, "r2v") or _resolve_video_model_key("r2v", account, aspect_ratio, model)
         refs = [
             {"mediaId": mid, "imageUsageType": "IMAGE_USAGE_TYPE_ASSET"}
             for mid in reference_media_ids[:3]
@@ -736,9 +805,19 @@ class GoogleLabsAdapter:
 
     # --- Check video status ---
     async def check_video_status(self, operations: list[dict], token: str) -> dict:
+        media_items: list[dict] = []
         clean_operations: list[dict] = []
         for item in operations or []:
             if not isinstance(item, dict):
+                continue
+            if item.get("_format") == "media":
+                name = str(item.get("name") or "").strip()
+                project_id = str(item.get("projectId") or item.get("project_id") or "").strip()
+                if name:
+                    media_item = {"name": name}
+                    if project_id:
+                        media_item["projectId"] = project_id
+                    media_items.append(media_item)
                 continue
             if item.get("_format") == "workflow":
                 name = str(item.get("_primary_media_id") or item.get("primaryMediaId") or "").strip()
@@ -752,6 +831,10 @@ class GoogleLabsAdapter:
                     "status": str(item.get("status") or "MEDIA_GENERATION_STATUS_PENDING"),
                 })
 
+        if media_items and not clean_operations:
+            payload = {"media": media_items}
+            return await _async_send(URL_STATUS, payload, token)
+
         payload = {"operations": clean_operations or operations}
         return await _async_send(URL_STATUS, payload, token)
 
@@ -762,7 +845,14 @@ class GoogleLabsAdapter:
             return operation_name
         return media_id
 
-    def build_upscale_payload(self, media_id: str, account: dict | None = None, recaptcha_token: str = "", resolution: str = "1080p") -> dict:
+    def build_upscale_payload(
+        self,
+        media_id: str,
+        account: dict | None = None,
+        recaptcha_token: str = "",
+        resolution: str = "1080p",
+        workflow_id: str = "",
+    ) -> dict:
         if resolution == "4k":
             res_key = "VIDEO_RESOLUTION_4K"
             model_key = "veo_3_1_upsampler_4k"
@@ -770,6 +860,10 @@ class GoogleLabsAdapter:
             res_key = "VIDEO_RESOLUTION_1080P"
             model_key = "veo_3_1_upsampler_1080p"
         return {
+            "mediaGenerationContext": {
+                "batchId": str(uuid.uuid4()),
+                "audioFailurePreference": "BLOCK_SILENCED_VIDEOS",
+            },
             "clientContext": {
                 "sessionId": str(uuid.uuid4()),
                 "tool": "PINHOLE",
@@ -782,18 +876,27 @@ class GoogleLabsAdapter:
                 "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
                 "seed": _random_seed(),
                 "videoModelKey": model_key,
-                "metadata": {"workflowId": str(uuid.uuid4())},
+                "metadata": {"workflowId": str(workflow_id or uuid.uuid4())},
                 "videoInput": {"mediaId": media_id},
             }],
+            "useV2ModelConfig": True,
         }
 
-    async def upscale_video(self, operation_name: str, token: str, media_id: str = "", account: dict | None = None, recaptcha_token: str = "") -> dict:
+    async def upscale_video(
+        self,
+        operation_name: str,
+        token: str,
+        media_id: str = "",
+        account: dict | None = None,
+        recaptcha_token: str = "",
+        workflow_id: str = "",
+    ) -> dict:
         """Upscale video lên 1080p — direct API call (Option 1 only)."""
         media_id = self._resolve_upscale_media_id(operation_name, media_id)
         if not media_id:
             return {"ok": False, "status": 0, "body": "Missing mediaId for upscale"}
-        payload = self.build_upscale_payload(media_id, account=account, recaptcha_token=recaptcha_token)
-        logger.info("[Upscale] mediaId=%s recaptcha=%s", media_id, bool(recaptcha_token))
+        payload = self.build_upscale_payload(media_id, account=account, recaptcha_token=recaptcha_token, workflow_id=workflow_id)
+        logger.info("[Upscale] mediaId=%s workflowId=%s recaptcha=%s", media_id, workflow_id or "-", bool(recaptcha_token))
         return await _async_send(URL_UPSCALE_VIDEO, payload, token)
 
     # --- Generate images (Banana / Imagen) ---
@@ -951,6 +1054,8 @@ class GoogleLabsAdapter:
                     or metadata.get("projectId")
                     or body.get("projectId")
                 )
+                workflow_id = item.get("workflowId") or workflow.get("workflowId") or item.get("name") or workflow.get("name")
+                batch_id = item.get("batchId") or workflow.get("batchId") or metadata.get("batchId")
                 operation_name = ""
                 op = item.get("operation") or workflow.get("operation")
                 if isinstance(op, dict):
@@ -961,6 +1066,8 @@ class GoogleLabsAdapter:
                     results.append({
                         "_format": "workflow",
                         "_primary_media_id": str(primary_media_id),
+                        "_workflow_id": str(workflow_id or ""),
+                        "_batch_id": str(batch_id or ""),
                         "_project_id": str(project_id or ""),
                         "operation": {"name": operation_name or str(primary_media_id)},
                         "sceneId": item.get("sceneId") or workflow.get("sceneId") or str(uuid.uuid4()),
@@ -979,6 +1086,82 @@ class GoogleLabsAdapter:
                     "status": "MEDIA_GENERATION_STATUS_ACTIVE",
                 })
         return results
+
+    def parse_upscale_media_status_requests(self, response_body: str, fallback_project_id: str = "") -> list[dict]:
+        try:
+            body = json.loads(response_body)
+        except Exception:
+            return []
+
+        project_id = str(fallback_project_id or "").strip()
+        for workflow in body.get("workflows", []) or []:
+            if isinstance(workflow, dict):
+                project_id = str(workflow.get("projectId") or project_id).strip()
+                if project_id:
+                    break
+        for media in body.get("media", []) or []:
+            if isinstance(media, dict):
+                project_id = str(media.get("projectId") or project_id).strip()
+                if project_id:
+                    break
+
+        names: list[str] = []
+        for item in body.get("operations", []) or []:
+            if not isinstance(item, dict):
+                continue
+            op = item.get("operation") if isinstance(item.get("operation"), dict) else {}
+            name = str(op.get("name") or item.get("name") or "").strip()
+            if name.endswith("_upsampled") and name not in names:
+                names.append(name)
+        for item in body.get("media", []) or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if name.endswith("_upsampled") and name not in names:
+                names.append(name)
+
+        return [{"_format": "media", "name": name, "projectId": project_id} for name in names]
+
+    def upscale_media_successful(self, response_body: str, media_names: list[str] | None = None) -> bool:
+        try:
+            body = json.loads(response_body)
+        except Exception:
+            return False
+
+        wanted = {str(x or "").strip() for x in (media_names or []) if str(x or "").strip()}
+        for item in body.get("media", []) or []:
+            if not isinstance(item, dict):
+                continue
+            name = str(item.get("name") or "").strip()
+            if wanted and name not in wanted:
+                continue
+            metadata = item.get("mediaMetadata") if isinstance(item.get("mediaMetadata"), dict) else {}
+            media_status = metadata.get("mediaStatus") if isinstance(metadata.get("mediaStatus"), dict) else {}
+            status = str(media_status.get("mediaGenerationStatus") or item.get("mediaGenerationStatus") or "").upper()
+            if "SUCCESS" in status or "SUCCEEDED" in status:
+                return True
+        return False
+
+    def upscale_media_status_summary(self, response_body: str) -> list[dict]:
+        try:
+            body = json.loads(response_body)
+        except Exception:
+            return []
+
+        rows: list[dict] = []
+        for item in body.get("media", []) or []:
+            if not isinstance(item, dict):
+                continue
+            metadata = item.get("mediaMetadata") if isinstance(item.get("mediaMetadata"), dict) else {}
+            media_status = metadata.get("mediaStatus") if isinstance(metadata.get("mediaStatus"), dict) else {}
+            rows.append({
+                "name": str(item.get("name") or ""),
+                "status": str(media_status.get("mediaGenerationStatus") or item.get("mediaGenerationStatus") or ""),
+            })
+        return rows
+
+    async def get_media_redirect_url(self, media_name: str, labs_cookie: str, project_id: str = "") -> dict:
+        return await _async_get_media_redirect_url(media_name, labs_cookie, project_id)
 
     def parse_video_results(self, response_body: str) -> list[dict]:
         """Parse status response → list of completed video dicts."""
@@ -1007,6 +1190,8 @@ class GoogleLabsAdapter:
                         "videoUrl": url,
                         "mediaId": obj.get("mediaId") or obj.get("mediaGenerationId") or obj.get("name", ""),
                         "operationName": obj.get("operationName") or obj.get("name", ""),
+                        "workflowId": obj.get("workflowId") or "",
+                        "batchId": obj.get("batchId") or ((obj.get("metadata") or {}).get("batchId") if isinstance(obj.get("metadata"), dict) else ""),
                     })
                 elif status and _is_failure(status):
                     # Log full object (capped at 1000 chars) để debug nguyên nhân fail
@@ -1034,6 +1219,8 @@ class GoogleLabsAdapter:
                             "videoUrl": url,
                             "mediaId": obj.get("mediaId") or obj.get("mediaGenerationId") or obj.get("name", ""),
                             "operationName": obj.get("operationName") or obj.get("name", ""),
+                            "workflowId": obj.get("workflowId") or "",
+                            "batchId": obj.get("batchId") or ((obj.get("metadata") or {}).get("batchId") if isinstance(obj.get("metadata"), dict) else ""),
                         })
                     for v in obj.values():
                         _collect_any(v)
