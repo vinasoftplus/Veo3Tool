@@ -527,7 +527,7 @@ function _injectRecaptcha(bodyStr, recaptchaToken) {
   try {
     const p = JSON.parse(bodyStr);
     if (p.clientContext) {
-      p.clientContext.sessionId = crypto.randomUUID();
+      p.clientContext.sessionId = String(p.clientContext.sessionId || '').startsWith(';') ? `;${Date.now()}` : crypto.randomUUID();
       if (recaptchaToken) p.clientContext.recaptchaContext = { token: recaptchaToken, applicationType: 'RECAPTCHA_APPLICATION_TYPE_WEB' };
     }
     return JSON.stringify(p);
@@ -539,7 +539,7 @@ function _injectRecaptcha(bodyStr, recaptchaToken) {
 // reCAPTCHA is acquired inside the submit slot so it's fetched immediately before POST.
 // 403 reCAPTCHA: release slot → get fresh reCAPTCHA → re-acquire → retry.
 // 403 token expired: acquire an exclusive slot → reload tab → get new token → retry.
-async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', accountIndex = 1, action = 'VIDEO_GENERATION' } = {}) {
+async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', accountIndex = 1, action = 'VIDEO_GENERATION', contentType = 'application/json' } = {}) {
   const acc = normalizeAccountIndex(accountIndex, 1);
 
   const doFetchWithMutex = async (tid, fetchTok, fetchBody, isRetry = false) => {
@@ -556,18 +556,21 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
         chrome.scripting.executeScript({
           target: { tabId: tid },
           world: 'MAIN',
-          func: async (reqUrl, tok, b) => {
+          func: async (reqUrl, tok, b, reqContentType) => {
             try {
+              const bearer = String(tok || '').replace(/^Bearer\s+/i, '');
               const resp = await fetch(reqUrl, {
                 method: 'POST',
                 headers: {
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${tok}`,
+                  'Accept': '*/*',
+                  'Content-Type': reqContentType || 'application/json',
+                  'Authorization': `Bearer ${bearer}`,
                   'X-Goog-Encode-Response-If-Executable': 'base64',
                 },
                 body: b,
                 credentials: 'include',
                 mode: 'cors',
+                referrer: 'https://labs.google/',
               });
               const text = await resp.text();
               return { ok: resp.ok, status: resp.status, reason: resp.statusText, body: text };
@@ -575,7 +578,7 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
               return { ok: false, status: 0, reason: 'TAB_FETCH_ERROR', body: String(e?.message || e) };
             }
           },
-          args: [url, fetchTok, fetchBody],
+          args: [url, fetchTok, fetchBody, contentType],
         }),
         60000, 'fetchViaTab'
       );
@@ -646,7 +649,7 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
 
 // Execute upload from inside the account's dedicated labs.google tab
 // Limited via per-account submit limiter to prevent excessive frame conflicts
-async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, accountIndex = 1, action = 'VIDEO_GENERATION') {
+async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, accountIndex = 1, action = 'VIDEO_GENERATION', contentType = 'application/json') {
   const acc = normalizeAccountIndex(accountIndex, 1);
   const release = await acquireAccountSubmitSlot(acc, action);
   try {
@@ -654,26 +657,30 @@ async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, acco
       chrome.scripting.executeScript({
         target: { tabId },
         world: 'MAIN',
-        func: async (reqUrl, token, body) => {
+        func: async (reqUrl, token, body, reqContentType) => {
           try {
+            const bearer = String(token || '').replace(/^Bearer\s+/i, '');
             const resp = await fetch(reqUrl, {
               method: 'POST',
               headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${token}`,
+                'Accept': '*/*',
+                'Content-Type': reqContentType || 'application/json',
+                'Authorization': `Bearer ${bearer}`,
               },
               body,
               credentials: 'include',
               mode: 'cors',
+              referrer: 'https://labs.google/',
             });
-            if (!resp.ok) return { ok: false, status: resp.status, body: null };
-            const json = await resp.json();
+            const text = await resp.text();
+            if (!resp.ok) return { ok: false, status: resp.status, body: text };
+            const json = text ? JSON.parse(text) : {};
             return { ok: true, status: resp.status, body: json };
           } catch (e) {
-            return { ok: false, status: 0, body: null };
+            return { ok: false, status: 0, body: String(e?.message || e || '') };
           }
         },
-        args: [uploadUrl, fetchToken, uploadPayloadStr],
+        args: [uploadUrl, fetchToken, uploadPayloadStr, contentType],
       }),
       30000, 'uploadViaTab'
     );
@@ -820,8 +827,10 @@ async function executeCharacterEntitySync(payload, accessToken, accountIndex = 1
 async function executeBrowserUploadAndPost(url, payload, accessToken, accountIndex = 1, action = 'VIDEO_GENERATION') {
   const freshToken = await getFreshToken(accessToken, accountIndex);
   const uploads = payload.__uploads__ || [];
+  const postContentType = payload.__contentType__ || 'application/json';
   const cleanPayload = Object.assign({}, payload);
   delete cleanPayload.__uploads__;
+  delete cleanPayload.__contentType__;
 
   function parseUploadMediaId(body) {
     if (!body || typeof body !== 'object') return null;
@@ -846,35 +855,49 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
 
     // Upload each image via account's tab so Chrome adds x-browser-* headers
     for (const up of uploads) {
-      const uploadPayload = {
+      const useUploadUserImageSchema = up.schema === 'uploadUserImage';
+      const uploadPayload = useUploadUserImageSchema ? {
+        clientContext: {
+          sessionId: `;${Date.now()}`,
+          projectId: p.clientContext?.projectId || '',
+          tool: 'PINHOLE',
+          userPaygateTier: p.clientContext?.userPaygateTier || 'PAYGATE_TIER_NOT_PAID',
+        },
+        imageBytes: up.base64,
+        mimeType: up.mimeType,
+      } : {
         imageInput: { rawImageBytes: up.base64, mimeType: up.mimeType, isUserUploaded: true },
         clientContext: { sessionId: crypto.randomUUID(), tool: 'ASSET_MANAGER' },
       };
-      const upResult = await uploadViaTab(tabId, URL_UPLOAD_IMAGE, freshToken, JSON.stringify(uploadPayload), acc, action);
-      if (!upResult.ok) return { ok: false, status: upResult.status, reason: 'UPLOAD_FAILED', body: '' };
+      const uploadContentType = useUploadUserImageSchema ? 'text/plain;charset=UTF-8' : 'application/json';
+      const upResult = await uploadViaTab(tabId, URL_UPLOAD_IMAGE, freshToken, JSON.stringify(uploadPayload), acc, action, uploadContentType);
+      if (!upResult.ok) return { ok: false, status: upResult.status, reason: 'UPLOAD_FAILED', body: upResult.body || '' };
       const mediaId = parseUploadMediaId(upResult.body);
       if (!mediaId) return { ok: false, status: 0, reason: 'UPLOAD_NO_MEDIA_ID', body: '' };
 
-      // Inject mediaId into payload at the correct path
-      const parts = up.payloadPath.split('.');
-      let obj = p;
-      for (let i = 0; i < parts.length - 1; i++) {
-        const seg = parts[i];
-        const arrMatch = seg.match(/^(\w+)\[(\d+)\]$/);
-        obj = arrMatch ? obj[arrMatch[1]][parseInt(arrMatch[2])] : obj[seg];
+      // Inject mediaId into payload at the correct path(s)
+      const payloadPaths = Array.isArray(up.payloadPaths) && up.payloadPaths.length ? up.payloadPaths : [up.payloadPath];
+      for (const payloadPath of payloadPaths.filter(Boolean)) {
+        const parts = payloadPath.split('.');
+        let obj = p;
+        for (let i = 0; i < parts.length - 1; i++) {
+          const seg = parts[i];
+          const arrMatch = seg.match(/^(\w+)\[(\d+)\]$/);
+          obj = arrMatch ? obj[arrMatch[1]][parseInt(arrMatch[2])] : obj[seg];
+        }
+        const finalKey = parts[parts.length - 1];
+        const finalArrMatch = finalKey.match(/^(\w+)\[(\d+)\]$/);
+        if (finalArrMatch) obj[finalArrMatch[1]][parseInt(finalArrMatch[2])] = mediaId;
+        else obj[finalKey] = mediaId;
       }
-      const finalKey = parts[parts.length - 1];
-      const finalArrMatch = finalKey.match(/^(\w+)\[(\d+)\]$/);
-      if (finalArrMatch) obj[finalArrMatch[1]][parseInt(finalArrMatch[2])] = mediaId;
-      else obj[finalKey] = mediaId;
     }
 
     // POST via tab — reCAPTCHA acquired inside fetchViaTab mutex, not here
     if (p.clientContext) {
-      p.clientContext.sessionId = crypto.randomUUID();
+      p.clientContext.sessionId = String(p.clientContext.sessionId || '').startsWith(';') ? `;${Date.now()}` : crypto.randomUUID();
     }
 
-    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex: acc, action });
+    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex: acc, action, contentType: postContentType });
   } catch (error) {
     return { ok: false, status: 0, reason: 'SW_ERROR', body: String(error?.message || error || '') };
   }

@@ -11,7 +11,7 @@
   <link
     href="https://fonts.googleapis.com/css2?family=Be+Vietnam+Pro:wght@400;500;600;700&family=Noto+Sans:wght@400;500;600;700&display=swap"
     rel="stylesheet">
-  <link rel="stylesheet" href="/static/css/app.css?v=34">
+  <link rel="stylesheet" href="/static/css/app.css?v=39">
 </head>
 
 <body>
@@ -120,7 +120,7 @@
             <path d="M3 9h18M9 21V9" />
             <circle cx="15.5" cy="15.5" r="2.5" />
           </svg>
-          <span class="nav-label">Studio</span>
+          <span class="nav-label">VEO Studio</span>
         </div>
         <div class="nav-item" data-tab="grok">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -505,6 +505,14 @@
                   </button>
                 </div>
                 <div class="studio-toolbar-top-right">
+                  <button id="se-import-images" class="btn btn-secondary btn-sm">
+                    <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="18" height="18" rx="2" />
+                      <path d="M3 15l5-5 4 4 3-3 5 5" />
+                      <circle cx="8.5" cy="8.5" r="1.5" />
+                    </svg>
+                    Import Ảnh
+                  </button>
                   <button id="se-import-prompt" class="btn btn-secondary btn-sm">
                     <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
                       <path d="M14 2H6a2 2 0 00-2 2v16a2 2 0 002 2h12a2 2 0 002-2V8z" />
@@ -561,7 +569,16 @@
                       <line x1="12" y1="5" x2="12" y2="19" />
                       <line x1="5" y1="12" x2="19" y2="12" />
                     </svg>
-                    Thêm card
+                    Thêm cụm
+                  </button>
+                  <button id="se-layout-toggle" class="btn btn-secondary btn-sm"
+                    title="Chuyển bố cục cụm ngang/dọc">
+                    <svg id="se-layout-icon" width="13" height="13" viewBox="0 0 24 24" fill="none"
+                      stroke="currentColor" stroke-width="2">
+                      <rect x="3" y="3" width="8" height="18" rx="1" />
+                      <rect x="13" y="3" width="8" height="18" rx="1" />
+                    </svg>
+                    <span class="studio-layout-toggle-label">Cụm ngang</span>
                   </button>
                   <div class="studio-aspect-group">
                     <button type="button" class="se-aspect-btn studio-aspect-btn active"
@@ -571,19 +588,19 @@
                     <button type="button" class="se-aspect-btn studio-aspect-btn" data-val="VIDEO_ASPECT_RATIO_SQUARE"
                       title="Vuông 1:1">1:1</button>
                   </div>
+                  <div class="studio-duration-group is-locked" id="se-duration-group">
+                    <button type="button" class="studio-duration-btn se-duration-btn" data-val="4" title="4 giây">4s</button>
+                    <button type="button" class="studio-duration-btn se-duration-btn" data-val="6" title="6 giây">6s</button>
+                    <button type="button" class="studio-duration-btn se-duration-btn active" data-val="8" title="8 giây">8s</button>
+                    <button type="button" class="studio-duration-btn se-duration-btn" data-val="10" title="10 giây">10s</button>
+                  </div>
                   <div class="studio-model-field">
                     <div class="studio-model-label">MODEL VIDEO</div>
                     <select id="se-model" class="studio-bar-select" title="Model video">
                       <option value="flow_fast" selected data-credit="10 credit">Veo Fast</option>
+                      <option value="omni_flash" data-credit="25 credit">Omni Flash</option>
                       <option value="flow_lite_low_priority" data-credit="0 credit">Veo Lite Low</option>
                       <option value="flow_lite" data-credit="5 credit">Veo Lite</option>
-                    </select>
-                  </div>
-                  <div class="studio-model-field">
-                    <div class="studio-model-label">VIDEO / CARD</div>
-                    <select id="se-output-count" class="studio-bar-select" title="Số video / card">
-                      <option value="1" selected>Vid×1</option>
-                      <option value="2">Vid×2</option>
                     </select>
                   </div>
                 </div>
@@ -611,7 +628,7 @@
                   </button>
                 </div>
                 <div class="studio-toolbar-bottom-right">
-                  <button id="se-clear-all" class="btn btn-secondary btn-sm">Xóa tất cả card</button>
+                  <button id="se-clear-all" class="btn btn-secondary btn-sm">Xóa tất cả cụm</button>
                   <div class="studio-filter-wrap">
                     <button id="se-filter-toggle" class="studio-filter-toggle" aria-expanded="false" type="button">
                       <span class="studio-filter-toggle-top">BỘ LỌC</span>
@@ -655,8 +672,11 @@
             <input type="file" id="se-prompts-file-txt" accept=".txt" style="display:none;">
             <input type="file" id="se-prompts-file-json" accept=".json" style="display:none;">
             <input type="file" id="se-prompts-file-xlsx" accept=".xlsx,.xls" style="display:none;">
+            <input type="file" id="se-images-start-files" accept="image/*" multiple style="display:none;">
+            <input type="file" id="se-images-end-files" accept="image/*" multiple style="display:none;">
+            <input type="file" id="se-images-pair-files" accept="image/*" multiple style="display:none;">
 
-            <div id="se-cards" style="padding:16px;display:flex;flex-direction:column;gap:12px;"></div>
+            <div id="se-cards" class="studio-cards se-cards"></div>
             <div id="se-empty" style="text-align:center;padding:60px 20px;color:var(--text3);">
               <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1"
                 style="margin:0 auto 12px;display:block;opacity:.3;">
@@ -727,6 +747,80 @@
                 Đang có <strong id="se-import-card-count">0</strong> card. Import sẽ <strong>thay thế prompt</strong> —
                 số prompt phải khớp số card.
               </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="se-import-images-popup" class="studio-popup-overlay" style="display:none;">
+          <div class="studio-modal" style="max-width:520px;">
+            <div class="studio-modal-header">
+              <div>
+                <div class="studio-modal-title">Import Ảnh Start - End</div>
+                <div class="studio-modal-subtitle">Chọn cách ghép ảnh vào các cụm hiện tại</div>
+              </div>
+              <button class="studio-modal-close"
+                onclick="document.getElementById('se-import-images-popup').style.display='none'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div class="studio-modal-body">
+              <div class="studio-import-modes">
+                <button id="se-import-images-two-lists" class="studio-import-mode-btn" type="button">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <rect x="3" y="4" width="7" height="7" rx="1" />
+                    <rect x="14" y="4" width="7" height="7" rx="1" />
+                    <path d="M10 7.5h4" />
+                    <rect x="3" y="15" width="7" height="5" rx="1" />
+                    <rect x="14" y="15" width="7" height="5" rx="1" />
+                  </svg>
+                  <span class="studio-import-mode-name">2 list Start / End</span>
+                  <span class="studio-import-mode-desc">Chọn Start trước, sau đó chọn End cùng số lượng</span>
+                </button>
+                <button id="se-import-images-pairs" class="studio-import-mode-btn" type="button">
+                  <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5">
+                    <path d="M4 7h6l2 2h8v9a2 2 0 0 1-2 2H4z" />
+                    <path d="M8 13h8" />
+                    <path d="M13 10l3 3-3 3" />
+                  </svg>
+                  <span class="studio-import-mode-name">Tên 1a / 1b</span>
+                  <span class="studio-import-mode-desc">a = Start, b = End, số là thứ tự cụm</span>
+                </button>
+              </div>
+              <div id="se-import-images-next" class="studio-import-replace-hint" style="display:none;margin-top:12px;">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <circle cx="12" cy="12" r="10" />
+                  <line x1="12" y1="8" x2="12" y2="12" />
+                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                </svg>
+                <span id="se-import-images-next-text">Đã chọn ảnh Start. Chọn tiếp list ảnh End.</span>
+                <button id="se-import-images-end-next" class="btn btn-primary btn-sm" type="button" style="margin-left:auto;">Chọn ảnh End</button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div id="se-add-card-dialog" class="studio-popup-overlay" style="display:none;">
+          <div class="studio-modal" style="max-width:380px;">
+            <div class="studio-modal-header">
+              <div class="studio-modal-title">Thêm cụm</div>
+              <button class="studio-modal-close"
+                onclick="document.getElementById('se-add-card-dialog').style.display='none'">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            </div>
+            <div class="studio-modal-body">
+              <div class="form-group">
+                <label class="form-label">Số cụm muốn thêm</label>
+                <input type="number" id="se-add-card-count" value="1" min="1" max="200"
+                  style="width:100%;font-size:24px;text-align:center;padding:12px;">
+              </div>
+              <button id="se-add-card-confirm" class="btn btn-primary" style="width:100%;">Thêm cụm</button>
             </div>
           </div>
         </div>
@@ -3394,7 +3488,7 @@
   <script src="/static/js/tabs/studio_unified.js?v=27"></script>
   <script src="/static/js/tabs/grok_studio.js?v=4"></script>
   <script src="/static/js/tabs/video_editor.js?v=1"></script>
-  <script src="/static/js/tabs/startend_video.js?v=6"></script>
+  <script src="/static/js/tabs/startend_video.js?v=11"></script>
   <script src="/static/js/notifications.js?v=1"></script>
 </body>
 

@@ -167,7 +167,15 @@ async def _get_recaptcha_token(job_type: str = "video", account_index: int = 1) 
     logger.info("✅ Đã nhận reCAPTCHA token cho job_%s", job_id[:8])
     return token
 
-async def _poll_video_job(job_id: str, token: str, operations: list, account_index: int = 0):
+async def _poll_video_job(
+    job_id: str,
+    token: str,
+    operations: list,
+    account_index: int = 0,
+    status_mode: str = "",
+    model: str = "auto",
+    aspect_ratio: str = "VIDEO_ASPECT_RATIO_LANDSCAPE",
+):
     from adapters.google_labs import GoogleLabsAdapter
     from services.config_service import load_config
 
@@ -183,7 +191,10 @@ async def _poll_video_job(job_id: str, token: str, operations: list, account_ind
                 cfg = load_config()
                 acc = cfg.get(f"account{account_index}", {})
                 live_token = acc.get("ACCESS_TOKEN", "") or token
-            result = await adapter.check_video_status(operations, live_token)
+            if status_mode == "startend":
+                result = await adapter.check_startend_video_status(operations, live_token, acc, model, aspect_ratio)
+            else:
+                result = await adapter.check_video_status(operations, live_token)
             if result.get("ok"):
                 consecutive_400_errors = 0
                 videos = adapter.parse_video_results(result.get("body", ""))
@@ -198,8 +209,24 @@ async def _poll_video_job(job_id: str, token: str, operations: list, account_ind
                         elif idx < len(operations):
                             op_item = operations[idx] or {}
                             op_name = ((op_item.get("operation") or {}).get("name", ""))
+                        video_url = (
+                            v.get("video_url")
+                            or v.get("videoUrl")
+                            or v.get("videoUri")
+                            or v.get("fifeUrl")
+                            or v.get("downloadUrl")
+                            or v.get("url")
+                            or v.get("uri")
+                            or ""
+                        )
                         outputs.append({
-                            "video_url": v.get("videoUrl") or v.get("fifeUrl", ""),
+                            "video_url": video_url,
+                            "videoUrl": v.get("videoUrl") or video_url,
+                            "videoUri": v.get("videoUri") or v.get("uri") or "",
+                            "fifeUrl": v.get("fifeUrl") or "",
+                            "downloadUrl": v.get("downloadUrl") or "",
+                            "url": v.get("url") or "",
+                            "uri": v.get("uri") or "",
                             "media_id": v.get("mediaId", ""),
                             "operation_name": v.get("operationName") or op_name,
                             "workflow_id": v.get("workflowId") or op_item.get("_workflow_id", ""),
@@ -380,6 +407,7 @@ async def image_to_video(
     aspect_ratio: str = Form("VIDEO_ASPECT_RATIO_LANDSCAPE"),
     output_count: int = Form(1),
     model: str = Form("auto"),
+    duration_seconds: int = Form(8),
     account_index: int = Form(0),
 ):
     from adapters.google_labs import GoogleLabsAdapter, URL_I2V
@@ -478,6 +506,7 @@ async def startend_video(
     aspect_ratio: str = Form("VIDEO_ASPECT_RATIO_LANDSCAPE"),
     output_count: int = Form(1),
     model: str = Form("auto"),
+    duration_seconds: int = Form(8),
     account_index: int = Form(0),
 ):
     from adapters.google_labs import GoogleLabsAdapter
@@ -494,6 +523,11 @@ async def startend_video(
     )
     token_option = _token_option()
     recaptcha_token = "" if token_option == "Option 2" else await _get_recaptcha_token("video", account_index=account_index)
+    duration_seconds = int(duration_seconds or 8)
+    if duration_seconds not in (4, 6, 8, 10):
+        duration_seconds = 8
+    if str(model or "").strip().lower() != "omni_flash":
+        duration_seconds = 8
 
     start_bytes = await start_image.read()
     start_b64 = base64.b64encode(start_bytes).decode()
@@ -517,10 +551,20 @@ async def startend_video(
             output_count=output_count,
             model=model,
             recaptcha_token="",
+            duration_seconds=duration_seconds,
         )
-        uploads = [{"base64": start_b64, "mimeType": start_mime, "payloadPath": "requests[0].startImage.mediaId"}]
+        request_count = max(1, int(output_count or 1))
+        uploads = [{
+            "base64": start_b64,
+            "mimeType": start_mime,
+            "payloadPaths": [f"requests[{i}].startImage.mediaId" for i in range(request_count)],
+        }]
         if end_b64:
-            uploads.append({"base64": end_b64, "mimeType": end_mime, "payloadPath": "requests[0].endImage.mediaId"})
+            uploads.append({
+                "base64": end_b64,
+                "mimeType": end_mime,
+                "payloadPaths": [f"requests[{i}].endImage.mediaId" for i in range(request_count)],
+            })
         browser_job_id = str(uuid.uuid4())
         result = await request_browser_upload_post(
             browser_job_id,
@@ -532,15 +576,21 @@ async def startend_video(
             account_index=account_index,
         )
     else:
-        start_upload = await adapter.upload_image(start_b64, start_mime, account)
+        start_model_key = adapter.resolve_startend_model_key(account, aspect_ratio, model, duration_seconds)
+        start_upload = await adapter.upload_startend_image(start_b64, start_mime, account, start_model_key)
         if not start_upload.get("ok"):
             raise HTTPException(400, "Upload start image that bai")
         start_media_id = adapter.parse_upload_media_id(start_upload.get("body", ""))
+        if not start_media_id:
+            raise HTTPException(400, "Khong lay duoc mediaId anh Start")
         end_media_id = None
         if end_b64:
-            end_upload = await adapter.upload_image(end_b64, end_mime, account)
-            if end_upload.get("ok"):
-                end_media_id = adapter.parse_upload_media_id(end_upload.get("body", ""))
+            end_upload = await adapter.upload_startend_image(end_b64, end_mime, account, start_model_key)
+            if not end_upload.get("ok"):
+                raise HTTPException(400, "Upload end image that bai")
+            end_media_id = adapter.parse_upload_media_id(end_upload.get("body", ""))
+            if not end_media_id:
+                raise HTTPException(400, "Khong lay duoc mediaId anh End")
         result = await adapter.startend_video(
             start_media_id=start_media_id,
             end_media_id=end_media_id,
@@ -550,6 +600,7 @@ async def startend_video(
             output_count=output_count,
             model=model,
             recaptcha_token=recaptcha_token,
+            duration_seconds=duration_seconds,
         )
     if not result.get("ok"):
         logger.warning("❌ startend-video API lỗi | %s", str(result.get("body", ""))[:400].replace("\n", " "))
@@ -562,6 +613,7 @@ async def startend_video(
             "prompt": prompt,
             "aspect_ratio": aspect_ratio,
             "model": model,
+            "duration_seconds": duration_seconds,
             "operations": operations,
             "token": account.get("ACCESS_TOKEN", ""),
             "project_id": account.get("PROJECT_ID", ""),
@@ -570,7 +622,12 @@ async def startend_video(
         },
     )
     logger.info("📹 Tạo job startend_video %s | operations=%s", job_id[:8], len(operations))
-    asyncio.create_task(_poll_video_job(job_id, account.get("ACCESS_TOKEN", ""), operations, int(account.get("_index") or 0)))
+    asyncio.create_task(_poll_video_job(
+        job_id,
+        account.get("ACCESS_TOKEN", ""),
+        operations,
+        int(account.get("_index") or 0),
+    ))
     return {"ok": True, "job_id": job_id}
 
 

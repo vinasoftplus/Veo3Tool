@@ -10,6 +10,7 @@ import json
 import logging
 import random
 import re
+import time
 import urllib.error
 import urllib.request
 import uuid
@@ -50,6 +51,14 @@ _I2V_MODEL_KEYS = {
     ("NORMAL", "portrait"): "veo_3_1_i2v_s_fast_portrait",
     ("PRO", "landscape"): "veo_3_1_i2v_s_fast",
     ("PRO", "portrait"): "veo_3_1_i2v_s_fast_portrait",
+}
+_STARTEND_MODEL_KEYS = {
+    ("ULTRA", "landscape"): "veo_3_1_i2v_s_fast_ultra_fl",
+    ("ULTRA", "portrait"): "veo_3_1_i2v_s_fast_portrait_ultra_fl",
+    ("NORMAL", "landscape"): "veo_3_1_i2v_s_fast_fl",
+    ("NORMAL", "portrait"): "veo_3_1_i2v_s_fast_portrait_fl",
+    ("PRO", "landscape"): "veo_3_1_i2v_s_fast_fl",
+    ("PRO", "portrait"): "veo_3_1_i2v_s_fast_portrait_fl",
 }
 _REF_MODEL_KEYS = {
     ("ULTRA", "landscape"): "veo_3_1_r2v_fast_landscape_ultra",
@@ -96,6 +105,17 @@ def _account_type(account: dict) -> str:
 
 def _paygate(account: dict) -> str:
     return _PAYGATE.get(_account_type(account), "PAYGATE_TIER_TWO")
+
+
+def _paygate_for_video_model(model_key: str) -> str:
+    normalized = str(model_key or "").strip().lower()
+    if "_ultra" in normalized and "_relaxed" not in normalized:
+        return "PAYGATE_TIER_TWO"
+    return "PAYGATE_TIER_NOT_PAID"
+
+
+def _labs_session_id() -> str:
+    return f";{int(time.time() * 1000)}"
 
 
 def _token(account: dict) -> str:
@@ -152,6 +172,25 @@ def _resolve_video_model_key(kind: str, account: dict, aspect_ratio: str, model:
         if normalized.startswith("veo_"):
             return model
         return _I2V_MODEL_KEYS.get((acc_type, orient), "veo_3_1_i2v_s_fast_ultra")
+
+    if kind == "startend":
+        relaxed_map = {
+            "landscape": "veo_3_1_i2v_s_fast_fl_ultra_relaxed",
+            "portrait": "veo_3_1_i2v_s_fast_portrait_fl_ultra_relaxed",
+        }
+        if normalized == "flow_lite_low_priority" or normalized == "flow_lite":
+            return "veo_3_1_interpolation_lite"
+        if normalized == "flow_fast_relaxed":
+            if acc_type == "ULTRA":
+                return relaxed_map.get(orient, "veo_3_1_i2v_s_fast_fl_ultra_relaxed")
+            return _STARTEND_MODEL_KEYS.get(("NORMAL", orient), "veo_3_1_i2v_s_fast_fl")
+        if normalized == "flow_fast_no_ultra":
+            return _STARTEND_MODEL_KEYS.get(("NORMAL", orient), "veo_3_1_i2v_s_fast_fl")
+        if normalized in ("flow_fast", "flow_quality"):
+            return _STARTEND_MODEL_KEYS.get((acc_type, orient), _STARTEND_MODEL_KEYS.get(("NORMAL", orient), "veo_3_1_i2v_s_fast_fl"))
+        if normalized.startswith("veo_"):
+            return model
+        return _STARTEND_MODEL_KEYS.get((acc_type, orient), "veo_3_1_i2v_s_fast_ultra_fl")
 
     if kind == "r2v":
         if normalized == "flow_lite_low_priority":
@@ -211,15 +250,25 @@ def _endpoint_name(url: str) -> str:
     return url.rsplit("/", 1)[-1]
 
 
-def _send_request(url: str, payload: dict, token: str, cookie: str = "", method: str = "POST") -> dict:
+def _send_request(
+    url: str,
+    payload: dict,
+    token: str,
+    cookie: str = "",
+    method: str = "POST",
+    content_type: str = "application/json",
+    accept: str = "",
+) -> dict:
     data = json.dumps(payload).encode("utf-8")
     headers: dict[str, str] = {
-        "Content-Type": "application/json",
+        "Content-Type": content_type,
         "Authorization": f"Bearer {token}",
         "Origin": "https://labs.google",
         "Referer": "https://labs.google/",
         "User-Agent": "Mozilla/5.0",
     }
+    if accept:
+        headers["Accept"] = accept
     if cookie:
         headers["Cookie"] = cookie
     logger.info("🌐 [Labs] %s %s", method, _endpoint_name(url))
@@ -243,8 +292,15 @@ def _send_request(url: str, payload: dict, token: str, cookie: str = "", method:
         return {"ok": False, "status": 0, "body": str(exc)}
 
 
-async def _async_send(url: str, payload: dict, token: str, cookie: str = "") -> dict:
-    result = await asyncio.to_thread(_send_request, url, payload, token, cookie)
+async def _async_send(
+    url: str,
+    payload: dict,
+    token: str,
+    cookie: str = "",
+    content_type: str = "application/json",
+    accept: str = "",
+) -> dict:
+    result = await asyncio.to_thread(_send_request, url, payload, token, cookie, "POST", content_type, accept)
     # Auto-refresh: nếu 401 và account có cookie → refresh token rồi retry 1 lần
     if result.get("status") == 401 and token:
         try:
@@ -261,7 +317,7 @@ async def _async_send(url: str, payload: dict, token: str, cookie: str = "") -> 
                         new_token = load_config().get(f"account{i}", {}).get("ACCESS_TOKEN", "")
                         if new_token and new_token != token:
                             logger.info("🔄 [AutoRefresh] Retrying request with new token...")
-                            result = await asyncio.to_thread(_send_request, url, payload, new_token, cookie)
+                            result = await asyncio.to_thread(_send_request, url, payload, new_token, cookie, "POST", content_type, accept)
                     break
         except Exception as _e:
             logger.warning("[AutoRefresh] Error during 401 auto-refresh: %s", _e)
@@ -486,6 +542,25 @@ class GoogleLabsAdapter:
         }
         return await _async_send(URL_UPLOAD, payload, _token(account), _cookie(account))
 
+    async def upload_startend_image(self, base64_image: str, mime_type: str, account: dict, model_key: str = "") -> dict:
+        payload = {
+            "imageInput": {
+                "rawImageBytes": base64_image,
+                "mimeType": mime_type,
+                "isUserUploaded": True,
+            },
+            "clientContext": {
+                "sessionId": str(uuid.uuid4()),
+                "tool": "ASSET_MANAGER",
+            },
+        }
+        return await _async_send(
+            URL_UPLOAD,
+            payload,
+            _token(account),
+            _cookie(account),
+        )
+
     async def upload_flow_image(
         self,
         base64_image: str,
@@ -637,6 +712,15 @@ class GoogleLabsAdapter:
         return await _async_send(URL_I2V, payload, _token(account), _cookie(account))
 
     # --- Start-End Video ---
+    def resolve_startend_model_key(
+        self,
+        account: dict,
+        aspect_ratio: str = "VIDEO_ASPECT_RATIO_LANDSCAPE",
+        model: str = "auto",
+        duration_seconds: int = 8,
+    ) -> str:
+        return _omni_flash_model_key(model, duration_seconds, "i2v") or _resolve_video_model_key("startend", account, aspect_ratio, model)
+
     def build_startend_video_payload(
         self,
         start_media_id: str,
@@ -649,7 +733,7 @@ class GoogleLabsAdapter:
         recaptcha_token: str = "",
         duration_seconds: int = 8,
     ) -> dict:
-        model_key = _omni_flash_model_key(model, duration_seconds, "i2v") or _resolve_video_model_key("i2v", account, aspect_ratio, model)
+        model_key = self.resolve_startend_model_key(account, aspect_ratio, model, duration_seconds)
         def _make_startend_req() -> dict:
             r: dict[str, Any] = {
                 "aspectRatio": aspect_ratio,
@@ -657,20 +741,21 @@ class GoogleLabsAdapter:
                 "videoModelKey": model_key,
                 "startImage": {"mediaId": start_media_id},
                 "metadata": {"sceneId": str(uuid.uuid4())},
+                "textInput": {"prompt": prompt},
             }
             if end_media_id:
                 r["endImage"] = {"mediaId": end_media_id}
-                r["textInput"] = {"structuredPrompt": {"parts": [{"text": prompt}]}}
-            else:
-                r["textInput"] = {"prompt": prompt}
             return r
         return {
             "clientContext": {
-                "recaptchaContext": {"token": recaptcha_token},
-                "sessionId": str(uuid.uuid4()),
+                "recaptchaContext": {
+                    "token": recaptcha_token,
+                    "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB",
+                },
+                "sessionId": _labs_session_id(),
                 "projectId": _project_id(account),
                 "tool": "PINHOLE",
-                "userPaygateTier": _paygate(account),
+                "userPaygateTier": _paygate_for_video_model(model_key),
             },
             "requests": [_make_startend_req() for _ in range(max(1, output_count))],
         }
@@ -729,33 +814,26 @@ class GoogleLabsAdapter:
         recaptcha_token: str = "",
         duration_seconds: int = 8,
     ) -> dict:
-        model_key = _omni_flash_model_key(model, duration_seconds, "i2v") or _resolve_video_model_key("i2v", account, aspect_ratio, model)
-        def _make_se_req() -> dict:
-            r: dict[str, Any] = {
-                "aspectRatio": aspect_ratio,
-                "seed": _random_seed(),
-                "videoModelKey": model_key,
-                "startImage": {"mediaId": start_media_id},
-                "metadata": {"sceneId": str(uuid.uuid4())},
-            }
-            if end_media_id:
-                r["endImage"] = {"mediaId": end_media_id}
-                r["textInput"] = {"structuredPrompt": {"parts": [{"text": prompt}]}}
-            else:
-                r["textInput"] = {"prompt": prompt}
-            return r
         url = URL_STARTEND if end_media_id else URL_I2V
-        payload = {
-            "clientContext": {
-                "recaptchaContext": {"token": recaptcha_token},
-                "sessionId": str(uuid.uuid4()),
-                "projectId": _project_id(account),
-                "tool": "PINHOLE",
-                "userPaygateTier": _paygate(account),
-            },
-            "requests": [_make_se_req() for _ in range(max(1, output_count))],
-        }
-        return await _async_send(url, payload, _token(account), _cookie(account))
+        payload = self.build_startend_video_payload(
+            start_media_id=start_media_id,
+            end_media_id=end_media_id,
+            prompt=prompt,
+            account=account,
+            aspect_ratio=aspect_ratio,
+            output_count=output_count,
+            model=model,
+            recaptcha_token=recaptcha_token,
+            duration_seconds=duration_seconds,
+        )
+        return await _async_send(
+            url,
+            payload,
+            _token(account),
+            _cookie(account),
+            content_type="text/plain;charset=UTF-8",
+            accept="*/*",
+        )
 
     # --- Reference / Consistent Video ---
     async def reference_video(
@@ -837,6 +915,41 @@ class GoogleLabsAdapter:
 
         payload = {"operations": clean_operations or operations}
         return await _async_send(URL_STATUS, payload, token)
+
+    async def check_startend_video_status(
+        self,
+        operations: list[dict],
+        token: str,
+        account: dict,
+        model: str = "auto",
+        aspect_ratio: str = "VIDEO_ASPECT_RATIO_LANDSCAPE",
+    ) -> dict:
+        operation_names: list[str] = []
+        for item in operations or []:
+            if not isinstance(item, dict):
+                continue
+            op = item.get("operation") if isinstance(item.get("operation"), dict) else {}
+            name = str(op.get("name") or item.get("name") or "").strip()
+            if name:
+                operation_names.append(name)
+        model_key = self.resolve_startend_model_key(account, aspect_ratio, model)
+        payload = {
+            "clientContext": {
+                "sessionId": _labs_session_id(),
+                "projectId": _project_id(account),
+                "tool": "PINHOLE",
+                "userPaygateTier": _paygate_for_video_model(model_key),
+            },
+            "operationNames": operation_names,
+        }
+        return await _async_send(
+            URL_STATUS,
+            payload,
+            token,
+            _cookie(account),
+            content_type="text/plain;charset=UTF-8",
+            accept="*/*",
+        )
 
     # --- Upscale video ---
     def _resolve_upscale_media_id(self, operation_name: str, media_id: str) -> str:

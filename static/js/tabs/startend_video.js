@@ -10,6 +10,7 @@
   let cfg = {
     aspect: 'VIDEO_ASPECT_RATIO_LANDSCAPE',
     model: 'flow_fast',
+    durationSeconds: 8,
     outputCount: 1,
     autoUpscale: false,
     autoDownload: false,
@@ -19,6 +20,8 @@
   };
 
   let _activeFilter = 'all';
+  let _cardLayout = localStorage.getItem('seCardLayout') || 'vertical';
+  let _pendingStartImportFiles = [];
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
@@ -119,7 +122,8 @@
     for (let i = 0; i < 120; i++) {
       await new Promise(r => setTimeout(r, 3000));
       try {
-        const job = await API.get('/api/veo/job/' + jobId);
+        const res = await API.get('/api/veo/job/' + jobId);
+        const job = res.job || res;
         await callback(job);
         if (job.status === 'completed' || job.status === 'done' || job.status === 'failed') return;
       } catch (_) {}
@@ -204,24 +208,83 @@
 
   // ─── Render ─────────────────────────────────────────────────────────────────
 
+  function _outputVideoUrl(out) {
+    if (!out) return '';
+    return out.video_url || out.videoUrl || out.videoUri || out.fifeUrl || out.downloadUrl || out.url || out.uri || '';
+  }
+
+  function _escapeHtml(value) {
+    return String(value || '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;',
+      '<': '&lt;',
+      '>': '&gt;',
+      '"': '&quot;',
+      "'": '&#39;',
+    }[ch]));
+  }
+
+  function _openPromptModal(card) {
+    if (!card) return;
+    let modal = $('se-prompt-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'se-prompt-modal';
+      modal.className = 'studio-prompt-modal';
+      modal.innerHTML = `
+        <div class="studio-prompt-modal-box">
+          <div class="studio-prompt-modal-header">
+            <div class="studio-prompt-modal-title">Text Prompt</div>
+            <button type="button" class="studio-prompt-modal-close" aria-label="Đóng">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
+            </button>
+          </div>
+          <textarea></textarea>
+          <div class="studio-prompt-modal-actions">
+            <button type="button" class="btn btn-secondary btn-sm se-prompt-cancel">Hủy</button>
+            <button type="button" class="btn btn-primary btn-sm se-prompt-save">Lưu prompt</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => { if (e.target === modal) modal.style.display = 'none'; });
+      modal.querySelector('.studio-prompt-modal-close')?.addEventListener('click', () => { modal.style.display = 'none'; });
+      modal.querySelector('.se-prompt-cancel')?.addEventListener('click', () => { modal.style.display = 'none'; });
+    }
+    const ta = modal.querySelector('textarea');
+    ta.value = card.prompt || '';
+    modal.querySelector('.se-prompt-save').onclick = () => {
+      card.prompt = ta.value;
+      modal.style.display = 'none';
+      renderCard(card, false);
+    };
+    modal.style.display = 'flex';
+    setTimeout(() => ta.focus(), 0);
+  }
+
   function _imgSlotHtml(slot, imgObj, cardId) {
     const label = slot === 'start' ? 'Ảnh Start' : 'Ảnh End';
     if (!imgObj) {
       return `
-        <div class="se-slot-wrap">
-          <div class="se-slot-label">${label}</div>
-          <label class="se-img-slot se-img-slot--empty" onclick="SETab.triggerImgPick('${cardId}','${slot}')">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" style="opacity:.35"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 15l5-5 4 4 3-3 5 5"/><circle cx="8.5" cy="8.5" r="1.5"/></svg>
-            <span style="font-size:11px;color:var(--text3);margin-top:4px;">Chọn ảnh</span>
+        <div class="se-startend-slot-wrap">
+          <label class="se-startend-slot se-startend-slot--empty" onclick="SETab.triggerImgPick('${cardId}','${slot}')">
+            <strong>${slot === 'start' ? 'Start' : 'End'}</strong>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7">
+              <rect x="3" y="3" width="18" height="18" rx="2"></rect>
+              <path d="M3 15l5-5 4 4 3-3 5 5"></path>
+              <circle cx="8.5" cy="8.5" r="1.5"></circle>
+            </svg>
+            <span>Chọn ảnh</span>
           </label>
         </div>`;
     }
     return `
-      <div class="se-slot-wrap">
-        <div class="se-slot-label">${label}</div>
-        <div class="se-img-slot se-img-slot--filled" style="position:relative;cursor:pointer;" onclick="SETab.triggerImgPick('${cardId}','${slot}')">
-          <img src="${imgObj.url}" style="width:100%;height:100%;object-fit:cover;border-radius:10px;">
-          <button class="se-img-remove" onclick="event.stopPropagation();SETab.removeImg('${cardId}','${slot}')" title="Xóa ảnh">
+      <div class="se-startend-slot-wrap">
+        <div class="se-startend-slot se-startend-slot--filled" onclick="SETab.triggerImgPick('${cardId}','${slot}')">
+          <img src="${imgObj.url}" alt="${label}">
+          <span class="se-startend-slot-badge">${slot === 'start' ? 'Start' : 'End'}</span>
+          <button class="se-img-remove" onclick="event.stopPropagation();SETab.removeImg('${cardId}','${slot}')" title="Xóa ảnh" aria-label="Xóa ảnh">
             <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -241,15 +304,22 @@
     }
 
     const idx = cards.indexOf(card) + 1;
-    const statusCls = { idle: '', running: 'status-running', completed: 'status-done', failed: 'status-failed' }[card.status] || '';
+    const statusCls = card.status === 'completed'
+      ? 'completed'
+      : card.status === 'failed'
+        ? 'failed'
+        : (card.status === 'running' || card.busy || card.upscaling ? 'running' : '');
     const hasOutput = card.outputs && card.outputs.length > 0;
     const curOut = hasOutput ? card.outputs[card.outputIndex || 0] : null;
-    const videoUrl = curOut ? (curOut.video_url || curOut.videoUri || curOut.fifeUrl || '') : '';
+    const videoUrl = curOut ? _outputVideoUrl(curOut) : '';
 
-    // Left: preview panel
-    const previewHtml = hasOutput && videoUrl
-      ? `<video src="${videoUrl}" controls style="width:100%;height:100%;object-fit:contain;border-radius:10px;background:#000;" preload="metadata"></video>`
-      : `<div class="studio-preview-panel" style="display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:13px;height:100%;">Chưa có preview</div>`;
+    const previewHtml = (() => {
+      if (card.upscaling) return '<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang upscale 1080p...</div></div>';
+      if (card.status === 'running' || card.busy) return `<div style="text-align:center;"><div class="spinner" style="margin:0 auto 8px;"></div><div class="pulse">Đang tạo video...</div>${card.error ? `<div style="margin-top:8px;color:var(--orange);font-size:12px;white-space:pre-wrap;">${_escapeHtml(card.error)}</div>` : ''}</div>`;
+      if (card.status === 'failed') return `<div style="padding:12px;color:var(--red);font-size:12px;white-space:pre-wrap;">${_escapeHtml(card.error || 'Thất bại')}</div>`;
+      if (hasOutput && videoUrl) return `<video src="${videoUrl}" controls preload="metadata"></video>`;
+      return '<span>Chưa có preview</span>';
+    })();
 
     const outputNav = hasOutput && card.outputs.length > 1
       ? `<div style="display:flex;align-items:center;gap:6px;font-size:12px;color:var(--text2);">
@@ -258,30 +328,42 @@
           <button class="btn btn-secondary btn-sm" onclick="SETab.nextOutput('${card.id}')" ${card.outputIndex >= card.outputs.length - 1 ? 'disabled' : ''}>›</button>
         </div>` : '';
 
-    // Right panel
-    const rightHtml = `
-      <div class="se-right-prompt">
-        <div class="se-slot-label" style="margin-bottom:6px;">Text Prompt</div>
-        <textarea class="se-prompt-ta" placeholder="Mô tả chuyển động (để trống = smooth transition)"
-          oninput="SETab.onPromptInput(event,'${card.id}')">${card.prompt || ''}</textarea>
+    const promptBlock = `
+      <div class="form-group">
+        <label class="form-label" style="display:flex;align-items:center;justify-content:space-between;">
+          <span>Text Prompt</span>
+          <span style="font-size:10px;color:var(--text3);font-weight:400;">Nhấn để chỉnh sửa</span>
+        </label>
+        <div class="studio-prompt-display se-prompt-open ${!card.prompt ? 'empty' : ''}" onclick="SETab.openPrompt('${card.id}')">${card.prompt ? _escapeHtml(card.prompt) : 'Nhập prompt cho cụm này...'}</div>
       </div>
+    `;
 
-      <div class="se-images-row">
-        ${_imgSlotHtml('start', card.startImg, card.id)}
-        <div class="se-arrow-mid">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2.5"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+    const imageBlock = `
+      <div class="studio-strip-block se-startend-block">
+        <div class="studio-ref-head">
+          <div class="studio-ref-head-left">
+            <span class="studio-ref-title">Ảnh Start - End</span>
+          </div>
         </div>
-        ${_imgSlotHtml('end', card.endImg, card.id)}
+        <div class="se-startend-pair">
+          ${_imgSlotHtml('start', card.startImg, card.id)}
+          <div class="se-startend-arrow">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+              <path d="M5 12h14"></path>
+              <path d="M12 5l7 7-7 7"></path>
+            </svg>
+          </div>
+          ${_imgSlotHtml('end', card.endImg, card.id)}
+        </div>
+        <input type="file" id="se-img-file-${card.id}" accept="image/*" style="display:none" onchange="SETab.onImgFileChange(event,'${card.id}')">
       </div>
+    `;
 
-      <input type="file" id="se-img-file-${card.id}" accept="image/*" style="display:none" onchange="SETab.onImgFileChange(event,'${card.id}')">
-
-      ${card.error ? `<div class="se-error">${card.error}</div>` : ''}
-
+    const actionBlock = `
       <div class="se-card-actions">
         ${card.busy
-          ? `<button class="btn btn-primary" disabled>Đang tạo...</button>`
-          : `<button class="btn btn-primary" onclick="SETab.genOne('${card.id}')">
+          ? `<button class="btn btn-primary studio-generate-video" disabled>Đang tạo video...</button>`
+          : `<button class="btn btn-primary studio-generate-video" onclick="SETab.genOne('${card.id}')">
               <svg width="13" height="13" viewBox="0 0 24 24" fill="currentColor"><polygon points="5 3 19 12 5 21 5 3"/></svg>
               ${card.status === 'completed' ? 'Tạo lại' : card.status === 'failed' ? 'Thử lại' : 'Tạo video'}
             </button>`}
@@ -294,43 +376,59 @@
             ? `<button class="btn btn-secondary btn-sm" onclick="SETab.upscaleOne('${card.id}')">1080p</button>`
             : `<span style="font-size:11px;color:var(--text2);">Upscaling...</span>`}
           ${outputNav}` : ''}
-      </div>
+      </div>`;
 
-      <div class="se-video-strip">
-        <div class="se-slot-label" style="margin-bottom:6px;">Video đã tạo (${card.outputs.length})</div>
-        <div class="se-strip">
+    const outputBlocks = `
+      <div class="studio-strip-block">
+        <div class="studio-strip-head"><span>Video đã tạo (${card.outputs.length})</span>${outputNav}</div>
+        <div class="studio-strip">
           ${card.outputs.length
             ? card.outputs.map((out, i) => {
-                const u = out.video_url || out.videoUri || out.fifeUrl || '';
-                return `<div class="se-video-thumb ${i === (card.outputIndex||0) ? 'active' : ''}" onclick="SETab.selectOutput('${card.id}',${i})">
+                const u = _outputVideoUrl(out);
+                return `<div class="studio-video-thumb se-video-thumb ${i === (card.outputIndex||0) ? 'active' : ''}" onclick="SETab.selectOutput('${card.id}',${i})">
                   ${u ? `<video src="${u}" muted preload="metadata"></video>` : '<div style="font-size:10px;color:var(--text3);display:flex;align-items:center;justify-content:center;height:100%;">Video</div>'}
                 </div>`;
               }).join('')
-            : `<div style="font-size:12px;color:var(--text3);">Chưa có</div>`}
+            : `<div class="studio-note" style="font-size:10px;">Chưa có</div>`}
         </div>
       </div>`;
+
+    const bodyContent = _cardLayout === 'horizontal'
+      ? `
+        <div class="studio-card-left">
+          <div class="studio-preview-panel se-preview-panel">${previewHtml}</div>
+        </div>
+        <div class="studio-card-right">
+          ${promptBlock}
+          ${imageBlock}
+          ${card.error && card.status !== 'running' && card.status !== 'failed' ? `<div class="se-error">${_escapeHtml(card.error)}</div>` : ''}
+          ${actionBlock}
+          <div class="studio-right-strips">${outputBlocks}</div>
+        </div>
+      `
+      : `
+        <div class="studio-preview-panel se-preview-panel">${previewHtml}</div>
+        ${promptBlock}
+        ${imageBlock}
+        ${card.error && card.status !== 'running' && card.status !== 'failed' ? `<div class="se-error">${_escapeHtml(card.error)}</div>` : ''}
+        ${actionBlock}
+        ${outputBlocks}
+      `;
 
     el.innerHTML = `
       <div class="studio-card-header">
         <span class="studio-card-status-dot ${statusCls}"></span>
-        <span class="studio-card-title">Card ${idx}</span>
+        <span class="studio-card-title">Cụm ${idx}</span>
         <div class="studio-toolbar-spacer"></div>
-        <button class="btn btn-secondary btn-sm studio-icon-btn studio-icon-btn-danger" onclick="SETab.removeCard('${card.id}')" title="Xóa card">
+        <button class="btn btn-secondary btn-sm studio-icon-btn studio-icon-btn-danger" onclick="SETab.removeCard('${card.id}')" title="Xóa cụm" aria-label="Xóa cụm">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M3 7h18"/><path d="M8 7V5a1 1 0 011-1h6a1 1 0 011 1v2"/>
             <path d="M6 7l1 12a1 1 0 001 .9h8a1 1 0 001-.9l1-12"/>
           </svg>
         </button>
       </div>
-      <div class="studio-card-body is-horizontal se-card-body-h">
-        <div class="studio-card-left">
-          <div class="studio-preview-panel se-preview-panel">
-            ${previewHtml}
-          </div>
-        </div>
-        <div class="studio-card-right">
-          ${rightHtml}
-        </div>
+      <div class="studio-card-body ${_cardLayout === 'horizontal' ? 'is-horizontal' : ''}">
+        ${bodyContent}
       </div>`;
 
     if (scroll && isNew) el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
@@ -389,6 +487,10 @@
       if (card) card.prompt = e.target.value;
     },
 
+    openPrompt(cardId) {
+      _openPromptModal(cards.find(c => c.id === cardId));
+    },
+
     removeCard(cardId) {
       const idx = cards.findIndex(c => c.id === cardId);
       if (idx === -1) return;
@@ -422,7 +524,7 @@
       const card = cards.find(c => c.id === cardId);
       if (!card || !card.outputs.length) return;
       const out = card.outputs[card.outputIndex || 0];
-      const url = out.video_url || out.videoUri || out.fifeUrl;
+      const url = _outputVideoUrl(out);
       if (!url) return toast('Không có video để lưu', 'error');
       if (!cfg.saveHandle && window.showDirectoryPicker) await chooseFolder();
       const idx = String(cards.indexOf(card) + 1).padStart(3, '0');
@@ -491,8 +593,9 @@
           const fd = new FormData();
           fd.append('prompt', card.prompt || 'Smooth transition');
           fd.append('aspect_ratio', cfg.aspect);
-          fd.append('output_count', String(cfg.outputCount));
+          fd.append('output_count', '1');
           fd.append('model', cfg.model);
+          fd.append('duration_seconds', String(cfg.durationSeconds || 8));
           if (accountIndex !== null) fd.append('account_index', String(accountIndex));
 
           let startFile = card.startImg.file;
@@ -601,6 +704,110 @@
     reader.readAsArrayBuffer(file);
   }
 
+  function _imageObjFromFile(file) {
+    return { url: URL.createObjectURL(file), file, media_id: '' };
+  }
+
+  function _ensureCardsForImageImport(count) {
+    if (cards.length > 0) return cards.length === count;
+    for (let i = 0; i < count; i++) createCard('');
+    return true;
+  }
+
+  function _filesFromInput(e) {
+    return Array.from(e.target.files || []).filter(file => String(file.type || '').startsWith('image/'));
+  }
+
+  function _closeImageImportModal() {
+    const modal = $('se-import-images-popup');
+    if (modal) modal.style.display = 'none';
+  }
+
+  function openImageImportModal() {
+    const modal = $('se-import-images-popup');
+    const next = $('se-import-images-next');
+    if (next) next.style.display = _pendingStartImportFiles.length ? 'flex' : 'none';
+    const nextText = $('se-import-images-next-text');
+    if (nextText && _pendingStartImportFiles.length) {
+      nextText.textContent = `Đã chọn ${_pendingStartImportFiles.length} ảnh Start. Chọn tiếp list ảnh End.`;
+    }
+    if (modal) modal.style.display = 'flex';
+  }
+
+  function importStartImageList(files) {
+    if (!files.length) return toast('Không có ảnh Start hợp lệ', 'error');
+    if (!_ensureCardsForImageImport(files.length)) {
+      return toast(`Số ảnh Start (${files.length}) không khớp số cụm hiện tại (${cards.length})`, 'error');
+    }
+    _pendingStartImportFiles = files;
+    cards.forEach((card, i) => {
+      card.startImg = _imageObjFromFile(files[i]);
+    });
+    rerender();
+    updateStats();
+    toast(`Đã import ${files.length} ảnh Start. Bấm chọn tiếp list ảnh End.`, 'info');
+    openImageImportModal();
+  }
+
+  function importEndImageList(files) {
+    if (!_pendingStartImportFiles.length) return toast('Chưa chọn list ảnh Start', 'error');
+    if (files.length !== cards.length) {
+      return toast(`Số ảnh End (${files.length}) không khớp số cụm (${cards.length})`, 'error');
+    }
+    cards.forEach((card, i) => {
+      if (!card.startImg && _pendingStartImportFiles[i]) card.startImg = _imageObjFromFile(_pendingStartImportFiles[i]);
+      card.endImg = _imageObjFromFile(files[i]);
+    });
+    _pendingStartImportFiles = [];
+    _closeImageImportModal();
+    rerender();
+    updateStats();
+    toast(`Đã import ${files.length} cặp ảnh Start - End`, 'success');
+  }
+
+  function _parsePairName(file) {
+    const base = String(file.name || '').replace(/\.[^.]+$/, '').trim().toLowerCase();
+    const m = base.match(/^(\d+)\s*([ab])(?:\b|[_\-\s.]|$)/i);
+    if (!m) return null;
+    return { index: parseInt(m[1], 10), side: m[2].toLowerCase() };
+  }
+
+  function importNamedPairs(files) {
+    if (!files.length) return toast('Không có ảnh hợp lệ', 'error');
+    const groups = new Map();
+    const ignored = [];
+    for (const file of files) {
+      const parsed = _parsePairName(file);
+      if (!parsed || !parsed.index) {
+        ignored.push(file.name);
+        continue;
+      }
+      const row = groups.get(parsed.index) || {};
+      row[parsed.side] = file;
+      groups.set(parsed.index, row);
+    }
+    const ordered = Array.from(groups.entries()).sort((a, b) => a[0] - b[0]);
+    const complete = ordered.filter(([, row]) => row.a && row.b);
+    const incomplete = ordered.filter(([, row]) => !row.a || !row.b);
+    if (!complete.length) return toast('Không tìm thấy cặp ảnh dạng 1a/1b', 'error');
+    if (incomplete.length) {
+      const names = incomplete.map(([idx]) => idx).slice(0, 8).join(', ');
+      return toast(`Thiếu ảnh a/b cho cụm: ${names}`, 'error');
+    }
+    if (cards.length > 0 && complete.length !== cards.length) {
+      return toast(`Số cặp ảnh (${complete.length}) không khớp số cụm hiện tại (${cards.length})`, 'error');
+    }
+    if (cards.length === 0) complete.forEach(() => createCard(''));
+    complete.forEach(([, row], i) => {
+      cards[i].startImg = _imageObjFromFile(row.a);
+      cards[i].endImg = _imageObjFromFile(row.b);
+    });
+    rerender();
+    updateStats();
+    const ignoredText = ignored.length ? `, bỏ qua ${ignored.length} file sai tên` : '';
+    toast(`Đã import ${complete.length} cặp ảnh${ignoredText}`, 'success');
+  }
+
   function openImportModal() {
     const modal = $('se-import-popup');
     if (!modal) return;
@@ -657,7 +864,7 @@
     if (!cfg.saveHandle && window.showDirectoryPicker) await chooseFolder();
     for (const card of done) {
       const out = card.outputs[card.outputIndex || 0];
-      const url = out.video_url || out.videoUri || out.fifeUrl;
+      const url = _outputVideoUrl(out);
       if (url) await saveVideo(url, `startend_${String(cards.indexOf(card) + 1).padStart(3, '0')}.mp4`);
     }
     toast(`Đã lưu ${done.length} video`, 'success');
@@ -673,22 +880,26 @@
       if (value === 'flow_lite')              return _seIcon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L4 14h7l-1 8 10-14h-7l0-6z"/></svg>', 'orange');
       if (value === 'flow_fast_relaxed')      return _seIcon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>', 'violet');
       if (value === 'flow_fast_no_ultra')     return _seIcon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5,3 19,12 5,21"/></svg>', 'blue');
+      if (value === 'omni_flash')             return _seIcon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M13 2L5 13h6l-1 9 9-13h-6l0-7z"/><path d="M4 4l3 3"/><path d="M17 17l3 3"/></svg>', 'violet');
       return _seIcon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 8h8v8H8z"/></svg>', 'green');
-    }
-    if (selectId === 'se-output-count') {
-      return _seIcon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="6" width="14" height="12" rx="2"/><path d="M17 10l4-2v8l-4-2z"/></svg>', 'blue');
     }
     return _seIcon('<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/></svg>', 'slate');
   }
 
   function _seGetLabel(selectId, value, text) {
-    if (selectId === 'se-output-count') return (parseInt(value, 10) || 1) + ' video';
     return text || '';
   }
 
   function _seGetBadge(selectId, value) {
-    if (selectId === 'se-output-count') return String(parseInt(value, 10) || 1);
     return '';
+  }
+
+  function _seModelCredit(opt) {
+    if (!opt) return '';
+    if (opt.value !== 'omni_flash') return opt.dataset?.credit || '';
+    const map = { 4: 15, 6: 20, 8: 25, 10: 30 };
+    const seconds = parseInt(cfg.durationSeconds || 8, 10) || 8;
+    return `${map[seconds] || 25} credit`;
   }
 
   function _seIconHtml(selectId, value) {
@@ -719,7 +930,7 @@
     function render() {
       const selectedOpt = selectEl.options[selectEl.selectedIndex];
       const selectedText = _seGetLabel(selectId, selectEl.value, selectedOpt?.textContent?.trim() || '');
-      const selectedCredit = selectId === 'se-model' ? (selectedOpt?.dataset?.credit || '') : '';
+      const selectedCredit = selectId === 'se-model' ? _seModelCredit(selectedOpt) : '';
       trigger.innerHTML = `
         <span class="studio-dd-trigger-main">
           ${_seIconHtml(selectId, selectEl.value)}
@@ -734,7 +945,7 @@
       Array.from(selectEl.options).forEach(opt => {
         const val = opt.value;
         const label = _seGetLabel(selectId, val, opt.textContent.trim());
-        const credit = selectId === 'se-model' ? (opt.dataset.credit || '') : '';
+        const credit = selectId === 'se-model' ? _seModelCredit(opt) : '';
         const btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'studio-dd-option' + (val === selectEl.value ? ' active' : '');
@@ -768,6 +979,37 @@
     render();
   }
 
+  function _syncSEDurationControls() {
+    const group = $('se-duration-group');
+    if (!group) return;
+    const omni = cfg.model === 'omni_flash';
+    if (!omni) cfg.durationSeconds = 8;
+    group.classList.toggle('is-locked', !omni);
+    group.querySelectorAll('.se-duration-btn').forEach(btn => {
+      const value = parseInt(btn.dataset.val, 10) || 8;
+      btn.classList.toggle('active', value === cfg.durationSeconds);
+      btn.disabled = !omni;
+      btn.setAttribute('aria-disabled', String(!omni));
+    });
+  }
+
+  function _applySECardLayout() {
+    const cardsEl = $('se-cards');
+    const btn = $('se-layout-toggle');
+    if (!cardsEl || !btn) return;
+    const label = btn.querySelector('.studio-layout-toggle-label');
+    const icon = btn.querySelector('svg');
+    if (_cardLayout === 'horizontal') {
+      cardsEl.classList.add('layout-horizontal');
+      if (icon) icon.innerHTML = '<rect x="3" y="3" width="18" height="8" rx="1"></rect><rect x="3" y="13" width="18" height="8" rx="1"></rect>';
+      if (label) label.textContent = 'Cụm dọc';
+    } else {
+      cardsEl.classList.remove('layout-horizontal');
+      if (icon) icon.innerHTML = '<rect x="3" y="3" width="8" height="18" rx="1"></rect><rect x="13" y="3" width="8" height="18" rx="1"></rect>';
+      if (label) label.textContent = 'Cụm ngang';
+    }
+  }
+
   // ─── Init ────────────────────────────────────────────────────────────────────
 
   window.init_startend_video = function () {
@@ -785,17 +1027,28 @@
 
     // Model
     const modelSel = $('se-model');
-    if (modelSel) modelSel.addEventListener('change', e => { cfg.model = e.target.value; });
+    if (modelSel) modelSel.addEventListener('change', e => { cfg.model = e.target.value; _syncSEDurationControls(); });
 
-    // Output count (select)
-    const outputCountSel = $('se-output-count');
-    if (outputCountSel) outputCountSel.addEventListener('change', e => {
-      cfg.outputCount = parseInt(e.target.value, 10) || 1;
-    });
+    cfg.outputCount = 1;
 
     // Enhance selects to fancy Studio dropdowns
     _enhanceSESelect(modelSel);
-    _enhanceSESelect(outputCountSel);
+    _syncSEDurationControls();
+    _applySECardLayout();
+
+    $('se-layout-toggle')?.addEventListener('click', () => {
+      _cardLayout = _cardLayout === 'horizontal' ? 'vertical' : 'horizontal';
+      localStorage.setItem('seCardLayout', _cardLayout);
+      _applySECardLayout();
+      rerender();
+    });
+
+    document.querySelectorAll('.se-duration-btn').forEach(btn => btn.addEventListener('click', () => {
+      if (cfg.model !== 'omni_flash') return;
+      cfg.durationSeconds = parseInt(btn.dataset.val, 10) || 8;
+      _syncSEDurationControls();
+      $('se-model')?.dispatchEvent(new Event('change', { bubbles: true }));
+    }));
 
     // Auto upscale / download
     $('se-auto-upscale')?.addEventListener('change', e => { cfg.autoUpscale = e.target.checked; });
@@ -888,7 +1141,57 @@
       updateStats();
       toast('Đã xóa tất cả card', 'success');
     });
-    $('se-add-card')?.addEventListener('click', () => createCard(''));
+    $('se-add-card')?.addEventListener('click', () => {
+      const dialog = $('se-add-card-dialog');
+      if (dialog) {
+        dialog.style.display = 'flex';
+        if ($('se-add-card-count')) $('se-add-card-count').value = '1';
+      } else {
+        createCard('');
+      }
+    });
+    $('se-add-card-confirm')?.addEventListener('click', () => {
+      const n = Math.max(1, Math.min(200, parseInt($('se-add-card-count')?.value || '1', 10) || 1));
+      for (let i = 0; i < n; i++) createCard('');
+      if ($('se-add-card-dialog')) $('se-add-card-dialog').style.display = 'none';
+      toast('Đã thêm ' + n + ' cụm', 'success');
+    });
+    $('se-add-card-dialog')?.addEventListener('click', e => {
+      if (e.target === $('se-add-card-dialog')) $('se-add-card-dialog').style.display = 'none';
+    });
+
+    // Import image modal
+    $('se-import-images')?.addEventListener('click', openImageImportModal);
+    $('se-import-images-two-lists')?.addEventListener('click', () => {
+      _closeImageImportModal();
+      _pendingStartImportFiles = [];
+      $('se-images-start-files')?.click();
+    });
+    $('se-import-images-pairs')?.addEventListener('click', () => {
+      _closeImageImportModal();
+      $('se-images-pair-files')?.click();
+    });
+    $('se-import-images-popup')?.addEventListener('click', e => {
+      if (e.target === $('se-import-images-popup')) $('se-import-images-popup').style.display = 'none';
+    });
+    $('se-import-images-end-next')?.addEventListener('click', () => {
+      $('se-images-end-files')?.click();
+    });
+    $('se-images-start-files')?.addEventListener('change', e => {
+      const files = _filesFromInput(e);
+      e.target.value = '';
+      importStartImageList(files);
+    });
+    $('se-images-end-files')?.addEventListener('change', e => {
+      const files = _filesFromInput(e);
+      e.target.value = '';
+      importEndImageList(files);
+    });
+    $('se-images-pair-files')?.addEventListener('change', e => {
+      const files = _filesFromInput(e);
+      e.target.value = '';
+      importNamedPairs(files);
+    });
 
     // Import prompt modal
     $('se-import-prompt')?.addEventListener('click', openImportModal);
