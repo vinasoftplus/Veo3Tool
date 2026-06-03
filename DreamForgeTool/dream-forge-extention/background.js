@@ -24,8 +24,8 @@ const LABS_FLOW_MATCH = '*://labs.google/fx/tools/flow*';
 const TOKEN_SOURCE_HOSTS = ['aisandbox-pa.googleapis.com'];
 // Natural page tokens are observed only for diagnostics. Submit jobs always
 // generate a fresh one-time token in the correct account tab.
-const RECAPTCHA_COOLDOWN_BASE_MS = 60 * 1000;
-const RECAPTCHA_COOLDOWN_JITTER_MS = 30 * 1000;
+const RECAPTCHA_COOLDOWN_BASE_MS = 10 * 1000;
+const RECAPTCHA_COOLDOWN_JITTER_MS = 50 * 1000;
 const FLOW_TAB_IDLE_CLOSE_MS = 90 * 1000;
 const FLOW_TAB_IDLE_CHECK_MS = 30 * 1000;
 
@@ -392,6 +392,30 @@ async function _fetchExtensionServerStatus() {
   }
 }
 
+async function wipeAndReloadLabsTabs(reason = 'recaptcha') {
+  try {
+    const tabs = await chrome.tabs.query({ url: '*://labs.google/*' });
+    for (const tab of tabs) {
+      if (!tab.id) continue;
+      try {
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id },
+          world: 'MAIN',
+          func: () => {
+            try { window.localStorage && window.localStorage.clear(); } catch (_) {}
+            try { window.sessionStorage && window.sessionStorage.clear(); } catch (_) {}
+          },
+        });
+      } catch (_) {}
+      try { await chrome.tabs.reload(tab.id, { bypassCache: true }); } catch (_) {}
+    }
+    _accountTabs.clear();
+    log('Wiped storage and reloaded Labs tabs:', tabs.length, 'reason:', reason);
+  } catch (e) {
+    log('wipeAndReloadLabsTabs error:', e.message);
+  }
+}
+
 async function _closeManagedFlowTabs() {
   const entries = Array.from(_accountTabs.entries());
   if (!entries.length) return 0;
@@ -539,24 +563,29 @@ function _injectRecaptcha(bodyStr, recaptchaToken) {
 // reCAPTCHA is acquired inside the submit slot so it's fetched immediately before POST.
 // 403 reCAPTCHA: release slot → get fresh reCAPTCHA → re-acquire → retry.
 // 403 token expired: acquire an exclusive slot → reload tab → get new token → retry.
-async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', accountIndex = 1, action = 'VIDEO_GENERATION', contentType = 'application/json' } = {}) {
+async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', accountIndex = 1, action = 'VIDEO_GENERATION', contentType = 'application/json', omitCredentials = false, requireRecaptcha = false } = {}) {
   const acc = normalizeAccountIndex(accountIndex, 1);
 
   const doFetchWithMutex = async (tid, fetchTok, fetchBody, isRetry = false) => {
     const rel = await acquireAccountSubmitSlot(acc, action);
+    let missingRequiredRecaptcha = false;
     // Lấy reCAPTCHA bên trong submit slot — ngay trước POST, tránh stale token
     if (!isRetry) {
       try {
         const recaptcha = await getRecaptchaFromTab(action, acc).catch(() => '') || '';
         if (recaptcha) fetchBody = _injectRecaptcha(fetchBody, recaptcha);
-      } catch (_) {}
+        else if (requireRecaptcha) missingRequiredRecaptcha = true;
+      } catch (_) {
+        if (requireRecaptcha) missingRequiredRecaptcha = true;
+      }
     }
     try {
+      if (missingRequiredRecaptcha) return { ok: false, status: 0, reason: 'NO_RECAPTCHA', body: 'Missing reCAPTCHA token before browser submit' };
       const results = await withTimeout(
         chrome.scripting.executeScript({
           target: { tabId: tid },
           world: 'MAIN',
-          func: async (reqUrl, tok, b, reqContentType) => {
+          func: async (reqUrl, tok, b, reqContentType, reqOmitCredentials) => {
             try {
               const bearer = String(tok || '').replace(/^Bearer\s+/i, '');
               const resp = await fetch(reqUrl, {
@@ -568,7 +597,7 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
                   'X-Goog-Encode-Response-If-Executable': 'base64',
                 },
                 body: b,
-                credentials: 'include',
+                credentials: reqOmitCredentials ? 'omit' : 'include',
                 mode: 'cors',
                 referrer: 'https://labs.google/',
               });
@@ -578,7 +607,7 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
               return { ok: false, status: 0, reason: 'TAB_FETCH_ERROR', body: String(e?.message || e) };
             }
           },
-          args: [url, fetchTok, fetchBody, contentType],
+          args: [url, fetchTok, fetchBody, contentType, !!omitCredentials],
         }),
         60000, 'fetchViaTab'
       );
@@ -602,6 +631,7 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
       if (isRecaptchaFail) {
         if (_isUnusualActivityBody(body403)) {
           _setRecaptchaCooldown(acc, body403);
+          await wipeAndReloadLabsTabs('recaptcha');
           return result;
         }
         // reCAPTCHA fail — mutex free, get fresh token then re-acquire for retry
@@ -611,6 +641,7 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
         result = await doFetchWithMutex(tabId, fetchToken, _injectRecaptcha(bodyStr, retryRecaptcha), true);
         if ((result.status === 401 || result.status === 403) && _isUnusualActivityBody(result.body)) {
           _setRecaptchaCooldown(acc, result.body);
+          await wipeAndReloadLabsTabs('recaptcha');
         }
       } else {
         // Token expired — reload this account's tab inside mutex
@@ -636,6 +667,7 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
         result = await doFetchWithMutex(newTabId, retryToken, _injectRecaptcha(bodyStr, retryRecaptcha), true);
         if ((result.status === 401 || result.status === 403) && _isUnusualActivityBody(result.body)) {
           _setRecaptchaCooldown(acc, result.body);
+          await wipeAndReloadLabsTabs('recaptcha');
         }
       }
     }
@@ -649,7 +681,7 @@ async function fetchViaTab(tabId, url, fetchToken, bodyStr, { accessToken = '', 
 
 // Execute upload from inside the account's dedicated labs.google tab
 // Limited via per-account submit limiter to prevent excessive frame conflicts
-async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, accountIndex = 1, action = 'VIDEO_GENERATION', contentType = 'application/json') {
+async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, accountIndex = 1, action = 'VIDEO_GENERATION', contentType = 'application/json', omitCredentials = false) {
   const acc = normalizeAccountIndex(accountIndex, 1);
   const release = await acquireAccountSubmitSlot(acc, action);
   try {
@@ -657,7 +689,7 @@ async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, acco
       chrome.scripting.executeScript({
         target: { tabId },
         world: 'MAIN',
-        func: async (reqUrl, token, body, reqContentType) => {
+          func: async (reqUrl, token, body, reqContentType, reqOmitCredentials) => {
           try {
             const bearer = String(token || '').replace(/^Bearer\s+/i, '');
             const resp = await fetch(reqUrl, {
@@ -668,7 +700,7 @@ async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, acco
                 'Authorization': `Bearer ${bearer}`,
               },
               body,
-              credentials: 'include',
+              credentials: reqOmitCredentials ? 'omit' : 'include',
               mode: 'cors',
               referrer: 'https://labs.google/',
             });
@@ -680,7 +712,7 @@ async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, acco
             return { ok: false, status: 0, body: String(e?.message || e || '') };
           }
         },
-        args: [uploadUrl, fetchToken, uploadPayloadStr, contentType],
+        args: [uploadUrl, fetchToken, uploadPayloadStr, contentType, !!omitCredentials],
       }),
       30000, 'uploadViaTab'
     );
@@ -695,18 +727,26 @@ async function uploadViaTab(tabId, uploadUrl, fetchToken, uploadPayloadStr, acco
 
 // POST via account's dedicated labs.google tab — Chrome auto-adds x-browser-validation and x-client-data
 // reCAPTCHA is acquired inside fetchViaTab's per-account mutex, not here, to avoid burst on batch jobs
-async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GENERATION', accountIndex = 1) {
+async function executeBrowserPost(url, payload, accessToken, action = 'VIDEO_GENERATION', accountIndex = 1, options = {}) {
   const acc = normalizeAccountIndex(accountIndex, 1);
   const freshToken = await getFreshToken(accessToken, acc);
 
   const p = JSON.parse(JSON.stringify(payload));
+  const postContentType = options.contentType || 'application/json';
   if (p.clientContext) {
-    p.clientContext.sessionId = crypto.randomUUID();
+    p.clientContext.sessionId = String(p.clientContext.sessionId || '').startsWith(';') ? `;${Date.now()}` : crypto.randomUUID();
   }
 
   try {
     const tabId = await ensureAccountTab(acc);
-    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex: acc, action });
+    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), {
+      accessToken,
+      accountIndex: acc,
+      action,
+      contentType: postContentType,
+      omitCredentials: !!options.omitCredentials,
+      requireRecaptcha: !!options.requireRecaptcha,
+    });
   } catch (error) {
     return { ok: false, status: 0, reason: 'FETCH_ERROR', body: String(error?.message || error || '') };
   }
@@ -824,10 +864,12 @@ async function executeCharacterEntitySync(payload, accessToken, accountIndex = 1
   }
 }
 
-async function executeBrowserUploadAndPost(url, payload, accessToken, accountIndex = 1, action = 'VIDEO_GENERATION') {
+async function executeBrowserUploadAndPost(url, payload, accessToken, accountIndex = 1, action = 'VIDEO_GENERATION', options = {}) {
   const freshToken = await getFreshToken(accessToken, accountIndex);
   const uploads = payload.__uploads__ || [];
-  const postContentType = payload.__contentType__ || 'application/json';
+  const postContentType = options.contentType || payload.__contentType__ || 'application/json';
+  const omitCredentials = !!options.omitCredentials;
+  const requireRecaptcha = options.requireRecaptcha !== false;
   const cleanPayload = Object.assign({}, payload);
   delete cleanPayload.__uploads__;
   delete cleanPayload.__contentType__;
@@ -870,7 +912,7 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
         clientContext: { sessionId: crypto.randomUUID(), tool: 'ASSET_MANAGER' },
       };
       const uploadContentType = useUploadUserImageSchema ? 'text/plain;charset=UTF-8' : 'application/json';
-      const upResult = await uploadViaTab(tabId, URL_UPLOAD_IMAGE, freshToken, JSON.stringify(uploadPayload), acc, action, uploadContentType);
+      const upResult = await uploadViaTab(tabId, URL_UPLOAD_IMAGE, freshToken, JSON.stringify(uploadPayload), acc, action, uploadContentType, omitCredentials);
       if (!upResult.ok) return { ok: false, status: upResult.status, reason: 'UPLOAD_FAILED', body: upResult.body || '' };
       const mediaId = parseUploadMediaId(upResult.body);
       if (!mediaId) return { ok: false, status: 0, reason: 'UPLOAD_NO_MEDIA_ID', body: '' };
@@ -897,7 +939,14 @@ async function executeBrowserUploadAndPost(url, payload, accessToken, accountInd
       p.clientContext.sessionId = String(p.clientContext.sessionId || '').startsWith(';') ? `;${Date.now()}` : crypto.randomUUID();
     }
 
-    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), { accessToken, accountIndex: acc, action, contentType: postContentType });
+    return await fetchViaTab(tabId, url, freshToken, JSON.stringify(p), {
+      accessToken,
+      accountIndex: acc,
+      action,
+      contentType: postContentType,
+      omitCredentials,
+      requireRecaptcha,
+    });
   } catch (error) {
     return { ok: false, status: 0, reason: 'SW_ERROR', body: String(error?.message || error || '') };
   }
@@ -922,7 +971,11 @@ async function executeJob(data) {
     if (data.jobKind === 'browser_upload_post') {
       log('Upload+submit for job:', data.jobId, 'account:', accountIndex);
       const _uploadAction = data.jobType === 'image' ? 'IMAGE_GENERATION' : 'VIDEO_GENERATION';
-      const result = await executeBrowserUploadAndPost(data.url, data.payload || {}, data.accessToken || '', accountIndex, _uploadAction);
+      const result = await executeBrowserUploadAndPost(data.url, data.payload || {}, data.accessToken || '', accountIndex, _uploadAction, {
+        contentType: data.contentType || 'application/json',
+        omitCredentials: !!data.omitCredentials,
+        requireRecaptcha: data.requireRecaptcha !== false,
+      });
       await fetch(`${APP_URL}/api/extension/submit-browser`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -934,7 +987,11 @@ async function executeJob(data) {
     } else if (data.jobKind === 'browser_submit') {
       log('Browser-submit for job:', data.jobId, 'account:', accountIndex);
       const action = (data.jobType === 'image' || data.jobType === 'image_upscale') ? 'IMAGE_GENERATION' : 'VIDEO_GENERATION';
-      const result = await executeBrowserPost(data.url, data.payload || {}, data.accessToken || '', action, accountIndex);
+      const result = await executeBrowserPost(data.url, data.payload || {}, data.accessToken || '', action, accountIndex, {
+        contentType: data.contentType || 'application/json',
+        omitCredentials: !!data.omitCredentials,
+        requireRecaptcha: !!data.requireRecaptcha,
+      });
       await fetch(`${APP_URL}/api/extension/submit-browser`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -1005,7 +1062,9 @@ async function pollLoop() {
       clearTimeout(timer);
       const data = await res.json();
 
-      if (data.hasJob && data.jobId && !_runningJobs.has(data.jobId)) {
+      if (data.refresh) {
+        await wipeAndReloadLabsTabs(data.reason || 'recaptcha');
+      } else if (data.hasJob && data.jobId && !_runningJobs.has(data.jobId)) {
         markJobActivity();
         _runningJobs.add(data.jobId);
         // Fire and forget — allows next poll immediately for parallel jobs

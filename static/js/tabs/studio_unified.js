@@ -29,6 +29,10 @@
 
   const norm = text => String(text || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/Đ/g, 'd').toLowerCase();
 
+  function escHtml(value) {
+    return String(value || '').replace(/[&<>\"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
+  }
+
   function parsePrompts(text) {
     const raw = String(text || '').trim();
     if (!raw) return [];
@@ -1239,6 +1243,8 @@
     modal.innerHTML = `
       <div style="background:var(--bg2);border-radius:14px;padding:22px;min-width:320px;max-width:90vw;">
         <div style="font-weight:600;margin-bottom:14px;">Lưu vào kho (1K)</div>
+        <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Tên ảnh (tùy chọn)</label>
+        <input id="studio-save-lib-name" type="text" placeholder="Tên ảnh tùy chọn" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);margin-bottom:12px;">
         <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Nhóm</label>
         <select id="studio-save-lib-cat" style="width:100%;padding:8px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text1);margin-bottom:12px;">${opts}</select>
         <label style="font-size:12px;color:var(--text2);display:block;margin-bottom:4px;">Thể loại</label>
@@ -1258,8 +1264,9 @@
     $('studio-save-lib-confirm').onclick = async () => {
       const categoryId = $('studio-save-lib-cat').value || 'default';
       const assetType = $('studio-save-lib-type').value || 'nhanvat';
+      const customName = String($('studio-save-lib-name')?.value || '').trim();
       modal.style.display = 'none';
-      await _batchSaveLibSSE([{ url: popup.url, media_id: popup.media_id || '', prompt: popup.prompt || '', asset_type: assetType }], categoryId, '1k');
+      await _batchSaveLibSSE([{ url: popup.url, media_id: popup.media_id || '', prompt: popup.prompt || '', asset_type: assetType, name: customName }], categoryId, '1k');
       await loadLibrarySources().catch(() => { });
       if (window.LibraryModule && typeof window.LibraryModule.refresh === 'function') {
         await window.LibraryModule.refresh().catch(() => { });
@@ -1407,7 +1414,53 @@
 
   async function addToCard() {
     if (!popup) return;
-    let card = cards.find(c => c.id === popup.cardId);
+    if (!cards.length) return toast('Khong co cum de them anh', 'error');
+    let modal = $('studio-popup-card-picker-modal');
+    if (!modal) {
+      modal = document.createElement('div');
+      modal.id = 'studio-popup-card-picker-modal';
+      modal.className = 'studio-popup-overlay';
+      document.body.appendChild(modal);
+    }
+    const currentCardId = popup.cardId;
+    const rows = cards.map((card, idx) => {
+      const active = card.id === currentCardId;
+      const thumb = (card.refs && card.refs[0] && card.refs[0].url) || (card.images && card.images[0] && card.images[0].url) || '';
+      return `
+        <button type="button" class="studio-popup-card-pick" data-card-id="${escHtml(card.id)}"
+          style="display:grid;grid-template-columns:48px 1fr auto;align-items:center;gap:10px;width:100%;text-align:left;padding:8px 10px;border:1px solid ${active ? 'var(--accent)' : 'var(--border)'};border-radius:10px;background:${active ? 'color-mix(in srgb,var(--accent) 12%,var(--bg3))' : 'var(--bg3)'};color:var(--text);cursor:pointer;">
+          <div style="width:48px;height:48px;border-radius:8px;background:var(--bg2);overflow:hidden;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:11px;">
+            ${thumb ? `<img src="${escHtml(thumb)}" alt="" style="width:100%;height:100%;object-fit:cover;display:block;">` : (idx + 1)}
+          </div>
+          <div style="min-width:0;">
+            <div style="font-size:12px;font-weight:700;color:var(--text);">C&#7909;m ${idx + 1}</div>
+            <div style="font-size:11px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-top:3px;">${escHtml(card.prompt || '(trống)')}</div>
+          </div>
+          <span style="font-size:11px;color:${active ? 'var(--accent)' : 'var(--text3)'};font-weight:700;">${active ? 'Hi&#7879;n t&#7841;i' : 'Ch&#7885;n'}</span>
+        </button>`;
+    }).join('');
+    modal.innerHTML = `
+      <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:18px;width:min(520px,92vw);max-height:86vh;display:flex;flex-direction:column;box-shadow:0 24px 80px rgba(0,0,0,.45);">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;">
+          <div>
+            <div style="font-weight:700;color:var(--text);">Th&#234;m &#7843;nh v&#224;o c&#7909;m</div>
+            <div style="font-size:12px;color:var(--text2);margin-top:3px;">Ch&#7885;n c&#7909;m s&#7889; m&#7845;y &#273;&#7875; g&#7855;n &#7843;nh preview l&#224;m &#7843;nh tham chi&#7871;u.</div>
+          </div>
+          <button class="btn btn-secondary btn-sm" id="studio-popup-card-picker-close">&#272;&#243;ng</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;overflow:auto;padding-right:2px;max-height:60vh;">${rows}</div>
+      </div>`;
+    modal.style.display = 'flex';
+    modal.onclick = e => { if (e.target === modal) modal.style.display = 'none'; };
+    $('studio-popup-card-picker-close').onclick = () => { modal.style.display = 'none'; };
+    modal.querySelectorAll('.studio-popup-card-pick').forEach(btn => {
+      btn.addEventListener('click', () => addPopupImageToCard(btn.dataset.cardId));
+    });
+  }
+
+  async function addPopupImageToCard(cardId = popup?.cardId) {
+    if (!popup) return;
+    let card = cards.find(c => c.id === cardId);
     if (!card) return toast('Không tìm thấy cụm', 'error');
     let file = null;
     try {
@@ -1422,6 +1475,8 @@
     card.refs.unshift({ url: popup.url, file, label: 'Ảnh chèn từ preview', media_id: popup.media_id || '', account_index: popup.account_index || 0 });
     card.refIndex = 0;
     renderCard(card, false);
+    const modal = $('studio-popup-card-picker-modal');
+    if (modal) modal.style.display = 'none';
     closePopup();
     toast('Đã thêm ảnh vào cụm làm ảnh tham chiếu', 'success');
   }

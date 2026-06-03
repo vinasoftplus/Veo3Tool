@@ -36,7 +36,7 @@ def _setup_logging() -> None:
     root.setLevel(logging.INFO)
 
 
-CURRENT_VERSION = "1.5.4"
+CURRENT_VERSION = "1.5.5"
 
 _update_info: dict = {}  # cache kết quả check update
 

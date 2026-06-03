@@ -1033,6 +1033,7 @@ async def batch_save_lib(req: BatchSaveLibRequest):
         url = item.get("url", "")
         prompt = item.get("prompt", "")
         asset_type = item.get("asset_type", "nhanvat")
+        custom_name = str(item.get("name") or item.get("filename") or "").strip()
 
         import json as _json, base64 as _b64
         upscaled_bytes: bytes | None = None
@@ -1072,7 +1073,12 @@ async def batch_save_lib(req: BatchSaveLibRequest):
                         resp = await client.get(url)
                         resp.raise_for_status()
                         image_bytes = resp.content
-                fname = f"studio_{uuid.uuid4().hex[:12]}.jpg"
+                if custom_name:
+                    import re as _re
+                    safe_stem = _re.sub(r"[\\/:*?\"<>|]+", "_", custom_name).strip().strip(".")
+                    fname = f"{safe_stem or ('studio_' + uuid.uuid4().hex[:12])}.jpg"
+                else:
+                    fname = f"studio_{uuid.uuid4().hex[:12]}.jpg"
                 asset = await save_library_asset(
                     image_bytes=image_bytes,
                     filename=fname,

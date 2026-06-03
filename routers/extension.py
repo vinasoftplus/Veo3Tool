@@ -34,13 +34,50 @@ _inflight_jobs: set[str] = set()
 _inflight_browser_counts: dict[tuple[int, str], int] = {}
 _browser_account_cooldown_until: dict[int, float] = {}
 
-_RECAPTCHA_COOLDOWN_BASE_SECONDS = 60
-_RECAPTCHA_COOLDOWN_JITTER_SECONDS = 30
+_RECAPTCHA_COOLDOWN_BASE_SECONDS = 10
+_RECAPTCHA_COOLDOWN_JITTER_SECONDS = 50
+_EXTENSION_REFRESH_SIGNAL_SECONDS = 12
+_extension_refresh_until = 0.0
+_extension_refresh_reason = ""
+
+def _is_aisandbox_url(url: str) -> bool:
+    return "aisandbox-pa.googleapis.com" in str(url or "")
+
+def _default_browser_content_type(url: str, content_type: str = "") -> str:
+    explicit = str(content_type or "").strip()
+    if explicit:
+        return explicit
+    return "text/plain;charset=UTF-8" if _is_aisandbox_url(url) else "application/json"
+
+def _default_omit_credentials(url: str, omit_credentials: bool | None = None) -> bool:
+    if omit_credentials is not None:
+        return bool(omit_credentials)
+    return _is_aisandbox_url(url)
+
+def _classify_google_error(status: int, body: str = "", reason: str = "") -> str:
+    text = f"{body or ''} {reason or ''}".lower()
+    if int(status or 0) == 401:
+        return "TOKEN_EXPIRED"
+    if int(status or 0) == 429 or "rate limit" in text or "quota" in text:
+        return "RATE_LIMIT"
+    if "high_traffic" in text or "public_error_high_traffic" in text:
+        return "HIGH_TRAFFIC"
+    if int(status or 0) == 403 and ("recaptcha" in text or "unusual_activity" in text or "unusual activity" in text):
+        return "RECAPTCHA"
+    if any(x in text for x in ("content policy", "safety", "unsafe", "blocked by policy", "policy_violation")):
+        return "CONTENT_POLICY"
+    if any(x in text for x in ("upload policy", "invalid image", "unsupported image", "image policy", "upload_failed")):
+        return "UPLOAD_POLICY"
+    return "OTHER"
+
+def _request_extension_refresh(reason: str = "recaptcha") -> None:
+    global _extension_refresh_until, _extension_refresh_reason
+    _extension_refresh_until = time.monotonic() + _EXTENSION_REFRESH_SIGNAL_SECONDS
+    _extension_refresh_reason = str(reason or "recaptcha")
 
 
 def _is_unusual_activity(body: str) -> bool:
-    text = str(body or "").lower()
-    return "public_error_unusual_activity" in text or "recaptcha evaluation failed" in text
+    return _classify_google_error(403, body) == "RECAPTCHA"
 
 
 def _set_browser_account_cooldown(account_index: int, body: str = "") -> int:
@@ -171,6 +208,9 @@ async def request_browser_upload_post(
     access_token: str,
     account_index: int = 1,
     timeout_seconds: float = 300.0,
+    content_type: str = "",
+    omit_credentials: bool | None = None,
+    require_recaptcha: bool = True,
 ) -> dict:
     """Queue a browser job that uploads image(s) then POSTs the generation request.
     uploads: list of {base64, mimeType, payloadPath} dicts.
@@ -183,6 +223,8 @@ async def request_browser_upload_post(
     _browser_job_accounts[job_id] = normalized_account_index
     full_payload = dict(payload)
     full_payload["__uploads__"] = uploads
+    effective_content_type = _default_browser_content_type(url, content_type)
+    effective_omit_credentials = _default_omit_credentials(url, omit_credentials)
     _browser_submit_queue.append(
         {
             "jobId": job_id,
@@ -192,6 +234,9 @@ async def request_browser_upload_post(
             "url": url,
             "payload": full_payload,
             "accessToken": access_token,
+            "contentType": effective_content_type,
+            "omitCredentials": bool(effective_omit_credentials),
+            "requireRecaptcha": bool(require_recaptcha),
         }
     )
     logger.info(
@@ -224,12 +269,17 @@ async def request_browser_submit(
     access_token: str,
     account_index: int = 1,
     timeout_seconds: float = 300.0,
+    content_type: str = "",
+    omit_credentials: bool | None = None,
+    require_recaptcha: bool = True,
 ) -> dict:
     loop = asyncio.get_event_loop()
     fut: asyncio.Future = loop.create_future()
     normalized_account_index = max(1, int(account_index or 1))
     _pending_browser_submit[job_id] = fut
     _browser_job_accounts[job_id] = normalized_account_index
+    effective_content_type = _default_browser_content_type(url, content_type)
+    effective_omit_credentials = _default_omit_credentials(url, omit_credentials)
     _browser_submit_queue.append(
         {
             "jobId": job_id,
@@ -239,6 +289,9 @@ async def request_browser_submit(
             "url": url,
             "payload": payload,
             "accessToken": access_token,
+            "contentType": effective_content_type,
+            "omitCredentials": bool(effective_omit_credentials),
+            "requireRecaptcha": bool(require_recaptcha),
         }
     )
     logger.info(
@@ -311,6 +364,13 @@ async def request_browser_character_entity(
 
 @router.get("/poll-job")
 async def poll_job():
+    if _extension_refresh_until > time.monotonic():
+        return {
+            "hasJob": False,
+            "refresh": True,
+            "reason": _extension_refresh_reason or "recaptcha",
+        }
+
     # Browser submit jobs — pop ngay khi trả, đánh dấu in-flight
     for i, job in enumerate(_browser_submit_queue):
         job_id = job["jobId"]
@@ -348,6 +408,9 @@ async def poll_job():
             "url": job.get("url", ""),
             "payload": job.get("payload", {}),
             "accessToken": job.get("accessToken", ""),
+            "contentType": job.get("contentType", ""),
+            "omitCredentials": bool(job.get("omitCredentials", False)),
+            "requireRecaptcha": bool(job.get("requireRecaptcha", False)),
         }
 
     # Captcha jobs
@@ -444,7 +507,9 @@ async def submit_browser(req: BrowserSubmitResponse):
             received_account,
             req.status,
         )
+        error_kind = ""
         if (not req.ok) or int(req.status or 0) >= 400:
+            error_kind = _classify_google_error(int(req.status or 0), req.body, req.reason)
             body_preview = str(req.body or "").replace("\n", " ")[:1200]
             reason_preview = str(req.reason or "").replace("\n", " ")[:300]
             logger.warning(
@@ -455,14 +520,16 @@ async def submit_browser(req: BrowserSubmitResponse):
                 reason_preview,
                 body_preview,
             )
-            if int(req.status or 0) == 403 and _is_unusual_activity(req.body):
+            if error_kind == "RECAPTCHA":
                 _set_browser_account_cooldown(received_account, req.body)
+                _request_extension_refresh("recaptcha")
         fut.set_result(
             {
                 "ok": bool(req.ok),
                 "status": int(req.status or 0),
                 "body": req.body or "",
                 "reason": req.reason or "",
+                "error_kind": error_kind,
             }
         )
         return {"ok": True}
@@ -470,8 +537,9 @@ async def submit_browser(req: BrowserSubmitResponse):
     fallback_account = int(mapped_account or req.accountIndex or 1)
     fallback_type = str((queued_job or {}).get("jobType") or "video")
     _release_browser_slot(req.jobId, fallback_account, fallback_type)
-    if int(req.status or 0) == 403 and _is_unusual_activity(req.body):
+    if _classify_google_error(int(req.status or 0), req.body, req.reason) == "RECAPTCHA":
         _set_browser_account_cooldown(fallback_account, req.body)
+        _request_extension_refresh("recaptcha")
     logger.warning("⚠️ [Extension] submit-browser bị trễ hoặc job không còn: job_%s", req.jobId[:8])
     return {"ok": False, "detail": "Browser submit job not found or already completed"}
 

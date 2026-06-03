@@ -26,9 +26,8 @@
     ]);
     const accounts = (accData && accData.accounts) || [];
     const activeIndices = accounts
-      .map((acc, i) => ({ acc, i }))
-      .filter(({ acc }) => acc.enabled !== false && acc.has_cookie)
-      .map(({ i }) => i);
+      .filter(acc => acc && acc.enabled !== false && acc.has_cookie && Number.isInteger(acc.index))
+      .map(acc => acc.index);
     const v = parseInt((cfgData?.data ?? cfgData)?.MAX_CONCURRENT_GROK ?? _grokMaxConcurrent, 10);
     const maxConcurrent = Math.min(5, Math.max(1, isNaN(v) ? _grokMaxConcurrent : v));
     _grokMaxConcurrent = maxConcurrent;

@@ -260,16 +260,19 @@ def _send_request(
     accept: str = "",
 ) -> dict:
     data = json.dumps(payload).encode("utf-8")
+    is_aisandbox = "aisandbox-pa.googleapis.com" in str(url or "")
+    effective_content_type = "text/plain;charset=UTF-8" if is_aisandbox and content_type == "application/json" else content_type
+    effective_accept = accept or ("*/*" if is_aisandbox else "")
     headers: dict[str, str] = {
-        "Content-Type": content_type,
+        "Content-Type": effective_content_type,
         "Authorization": f"Bearer {token}",
         "Origin": "https://labs.google",
         "Referer": "https://labs.google/",
         "User-Agent": "Mozilla/5.0",
     }
-    if accept:
-        headers["Accept"] = accept
-    if cookie:
+    if effective_accept:
+        headers["Accept"] = effective_accept
+    if cookie and not is_aisandbox:
         headers["Cookie"] = cookie
     logger.info("🌐 [Labs] %s %s", method, _endpoint_name(url))
     req = urllib.request.Request(url=url, data=data, headers=headers, method=method)
@@ -977,13 +980,6 @@ class GoogleLabsAdapter:
                 "batchId": str(uuid.uuid4()),
                 "audioFailurePreference": "BLOCK_SILENCED_VIDEOS",
             },
-            "clientContext": {
-                "sessionId": str(uuid.uuid4()),
-                "tool": "PINHOLE",
-                "projectId": _project_id(account) if account else "",
-                "userPaygateTier": _paygate(account) if account else "PAYGATE_TIER_ONE",
-                "recaptchaContext": {"token": recaptcha_token},
-            },
             "requests": [{
                 "resolution": res_key,
                 "aspectRatio": "VIDEO_ASPECT_RATIO_LANDSCAPE",
@@ -992,6 +988,16 @@ class GoogleLabsAdapter:
                 "metadata": {"workflowId": str(workflow_id or uuid.uuid4())},
                 "videoInput": {"mediaId": media_id},
             }],
+            "clientContext": {
+                "sessionId": _labs_session_id(),
+                "projectId": _project_id(account) if account else "",
+                "tool": "PINHOLE",
+                "userPaygateTier": "PAYGATE_TIER_TWO",
+                "recaptchaContext": {
+                    "token": recaptcha_token,
+                    "applicationType": "RECAPTCHA_APPLICATION_TYPE_WEB",
+                },
+            },
             "useV2ModelConfig": True,
         }
 
@@ -1010,7 +1016,13 @@ class GoogleLabsAdapter:
             return {"ok": False, "status": 0, "body": "Missing mediaId for upscale"}
         payload = self.build_upscale_payload(media_id, account=account, recaptcha_token=recaptcha_token, workflow_id=workflow_id)
         logger.info("[Upscale] mediaId=%s workflowId=%s recaptcha=%s", media_id, workflow_id or "-", bool(recaptcha_token))
-        return await _async_send(URL_UPSCALE_VIDEO, payload, token)
+        return await _async_send(
+            URL_UPSCALE_VIDEO,
+            payload,
+            token,
+            content_type="text/plain;charset=UTF-8",
+            accept="*/*",
+        )
 
     # --- Generate images (Banana / Imagen) ---
     async def generate_images(
@@ -1284,6 +1296,29 @@ class GoogleLabsAdapter:
             return []
 
         videos = []
+        url_keys = (
+            "fifeUrl",
+            "upsampledFifeUri",
+            "mediaUri",
+            "videoUri",
+            "downloadUrl",
+            "videoUrl",
+            "url",
+            "uri",
+        )
+
+        def _url_of(obj: dict) -> str:
+            for key in url_keys:
+                value = obj.get(key)
+                if isinstance(value, str) and value.strip():
+                    return value.strip()
+            video = obj.get("video")
+            if isinstance(video, dict):
+                for key in url_keys:
+                    value = video.get(key)
+                    if isinstance(value, str) and value.strip():
+                        return value.strip()
+            return ""
 
         def _status_of(obj: dict) -> str:
             return str(obj.get("mediaGenerationStatus") or obj.get("status") or "").upper()
@@ -1296,7 +1331,7 @@ class GoogleLabsAdapter:
 
         def _collect(obj: Any):
             if isinstance(obj, dict):
-                url = obj.get("fifeUrl") or obj.get("downloadUrl") or obj.get("videoUrl") or obj.get("uri")
+                url = _url_of(obj)
                 status = _status_of(obj)
                 if url and _is_success(status):
                     videos.append({
@@ -1326,7 +1361,7 @@ class GoogleLabsAdapter:
         if not videos:
             def _collect_any(obj: Any):
                 if isinstance(obj, dict):
-                    url = obj.get("fifeUrl") or obj.get("downloadUrl") or obj.get("videoUrl") or obj.get("uri")
+                    url = _url_of(obj)
                     if url:
                         videos.append({
                             "videoUrl": url,

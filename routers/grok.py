@@ -15,6 +15,7 @@ from pydantic import BaseModel
 from services.grok_service import (
     GrokClient,
     GrokError,
+    _acc_has_cookie,
     cloak_browser_installed,
     delete_grok_profile,
     ensure_cloak_browser,
@@ -106,6 +107,15 @@ def _grok_slot_used(acc: Any) -> bool:
     return isinstance(acc, dict) and bool(acc.get("email") or acc.get("cookie") or acc.get("profile") or acc.get("last_login") or acc.get("last_error"))
 
 
+def _grok_account_ready(acc: Any) -> bool:
+    return (
+        isinstance(acc, dict)
+        and _grok_slot_used(acc)
+        and acc.get("enabled", True)
+        and _acc_has_cookie(acc)
+    )
+
+
 def _first_free_grok_slot(accounts: list[dict[str, Any]]) -> int:
     for idx, acc in enumerate(accounts):
         if not _grok_slot_used(acc):
@@ -134,10 +144,10 @@ async def _run_image_job(
     # Build ordered list of account indices to try: preferred first, then others
     accounts = load_grok_accounts()
     order: list[int] = []
-    if account_index is not None and 0 <= account_index < len(accounts):
+    if account_index is not None and 0 <= account_index < len(accounts) and _grok_account_ready(accounts[account_index]):
         order.append(account_index)
     for i, acc in enumerate(accounts):
-        if i not in order and acc.get("enabled", True) and acc.get("cookie"):
+        if i not in order and _grok_account_ready(acc):
             order.append(i)
 
     for idx in order:
@@ -201,10 +211,10 @@ async def _run_video_job(
 
     accounts = load_grok_accounts()
     order: list[int] = []
-    if account_index is not None and 0 <= account_index < len(accounts):
+    if account_index is not None and 0 <= account_index < len(accounts) and _grok_account_ready(accounts[account_index]):
         order.append(account_index)
     for i, acc in enumerate(accounts):
-        if i not in order and acc.get("enabled", True) and acc.get("cookie"):
+        if i not in order and _grok_account_ready(acc):
             order.append(i)
 
     tried: set[int] = set()

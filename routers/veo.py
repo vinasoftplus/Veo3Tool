@@ -1204,7 +1204,8 @@ async def upscale_job(job_id: str, body: dict):
             upscale_payload["requests"][0]["aspectRatio"] = job_aspect
 
         browser_job_id = str(uuid.uuid4())
-        logger.info("[Upscale] Thử account #%s mediaId=%r", used_index, resolved_media_id)
+        logger.info("[Upscale] Thử account #%s mediaId=%r resolution=%s", used_index, resolved_media_id, upscale_resolution)
+        await asyncio.sleep(4)
         result = await request_browser_submit(
             browser_job_id,
             job_type="video",
@@ -1212,6 +1213,9 @@ async def upscale_job(job_id: str, body: dict):
             payload=upscale_payload,
             access_token=acc.get("ACCESS_TOKEN", ""),
             account_index=used_index,
+            content_type="text/plain;charset=UTF-8",
+            omit_credentials=True,
+            require_recaptcha=True,
         )
         status = result.get("status", 0)
         if result.get("ok"):
@@ -1245,6 +1249,18 @@ async def upscale_job(job_id: str, body: dict):
             "account_index": used_account_index,
         }
     else:
+        direct_videos = adapter.parse_video_results(result.get("body", ""))
+        if direct_videos:
+            upscaled = []
+            for v in direct_videos:
+                url = v.get("videoUrl") or v.get("fifeUrl") or v.get("downloadUrl") or v.get("url") or ""
+                upscaled.append({
+                    "video_url": url,
+                    "media_id": v.get("mediaId", ""),
+                    "operation_name": v.get("operationName") or operation_name or resolved_media_id,
+                })
+            logger.info("[Upscale] Có URL trực tiếp ngay sau submit | outputs=%s", len(upscaled))
+            return {"ok": True, "completed": True, "outputs": upscaled, "account_index": used_account_index}
         upscale_operations = adapter.parse_upscale_media_status_requests(
             result.get("body", ""),
             fallback_project_id=str(used_account.get("PROJECT_ID") or ""),
@@ -1271,14 +1287,17 @@ async def upscale_job(job_id: str, body: dict):
         if videos:
             upscaled = []
             for v in videos:
+                url = v.get("videoUrl") or v.get("fifeUrl") or v.get("downloadUrl") or v.get("url") or ""
                 upscaled.append({
-                    "video_url": v.get("videoUrl") or v.get("fifeUrl", ""),
+                    "video_url": url,
                     "media_id": v.get("mediaId", ""),
                     "operation_name": v.get("operationName") or (((upscale_operations[0] or {}).get("operation") or {}).get("name", "")),
                 })
+            logger.info("[Upscale] Poll trả URL trực tiếp | outputs=%s", len(upscaled))
             return {"ok": True, "completed": True, "outputs": upscaled, "account_index": used_account_index}
         if adapter.upscale_media_successful(status_result.get("body", ""), media_names):
             media_name = media_names[0] if media_names else ""
+            # Cookie redirect chỉ là fallback khi status đã SUCCESSFUL nhưng response không có URL trực tiếp.
             redirect_result = {"ok": False, "status": 0, "body": "Not attempted"}
             for redirect_attempt in range(1, 6):
                 redirect_result = await adapter.get_media_redirect_url(
