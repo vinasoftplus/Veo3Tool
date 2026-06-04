@@ -49,7 +49,7 @@ async def save_config_route(req: SaveConfigRequest):
         "OPENAI_API_KEY", "DEEPSEEK_API_KEY",
         "SEED_MODE", "SEED_VALUE", "CREATE_IMAGE_MODEL",
         "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE", "MAX_CONCURRENT_GROK",
-        "LICENSE_TOKEN",
+        "LICENSE_TOKEN", "FFMPEG_PATH",
     }
     current = load_config()
     # Allow account keys + whitelisted top-level keys only
@@ -92,7 +92,7 @@ _SAVE_VALUE_WHITELIST = {
     "OPENAI_API_KEY", "DEEPSEEK_API_KEY",
     "SEED_MODE", "SEED_VALUE", "CREATE_IMAGE_MODEL",
     "TOKEN_OPTION", "MAX_CONCURRENT", "MAX_CONCURRENT_IMAGE", "MAX_CONCURRENT_GROK",
-    "LICENSE_TOKEN",
+    "LICENSE_TOKEN", "FFMPEG_PATH",
 }
 
 @router.post("/save-value")

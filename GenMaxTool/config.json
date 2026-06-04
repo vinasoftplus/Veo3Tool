@@ -1,5 +1,5 @@
 {
-  "api_key": "sk_0d3aa9ebdfdee0b22e74512daddfa50e2889b21da459",
+  "api_key": "sk_231abb64c2f25af312bd2dbdabbe5685f9b22be96837",
   "characters": [],
   "output_dir": "C:/Users/PC/Desktop/PROMT/peppa",
   "provider": "elevenlabs",
@@ -13,7 +13,7 @@
     "speed": 1.0
   },
   "batch_workers": 10,
-  "voice_label": "Alex Wright - Clear and Cheerful - american - male - Alex Wright - American, eLearning, Friendly, approachable",
+  "voice_label": "",
   "model_label": "Eleven v3",
   "language_options": [
     "af",
@@ -92,7 +92,6 @@
     "cy"
   ],
   "api_keys": [
-    "sk_0d3aa9ebdfdee0b22e74512daddfa50e2889b21da459",
     "sk_231abb64c2f25af312bd2dbdabbe5685f9b22be96837",
     "sk_4927aaa83e4a6f56275529661a1dc954eb734db32098",
     "sk_3fdbb9546891b2bacd403855c0e867956fd8602a0cb5",

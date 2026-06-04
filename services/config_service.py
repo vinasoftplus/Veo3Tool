@@ -67,6 +67,7 @@ _DEFAULT_CONFIG: dict = {
     "CREATE_IMAGE_MODEL": "Imagen 4",
     "TOKEN_OPTION": "Option 1",
     "LICENSE_TOKEN": "",
+    "FFMPEG_PATH": "",
     "MAX_CONCURRENT": 2,
     "MAX_CONCURRENT_IMAGE": 2,
     "MAX_CONCURRENT_GROK": 2,
